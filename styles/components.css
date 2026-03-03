@@ -1,0 +1,238 @@
+/* components.css - Reusable UI widgets */
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.btn i {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-primary {
+    background-color: var(--accent-primary);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(94, 106, 210, 0.3);
+}
+
+.btn-icon {
+    padding: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-icon:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+/* Dashboard Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.col-span-2 {
+    grid-column: span 2;
+}
+
+/* Cards */
+.card {
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-highlight);
+}
+
+.card-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.card-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 16px 24px 24px;
+    flex: 1;
+}
+
+.highlight-danger {
+    position: relative;
+    overflow: hidden;
+}
+
+.highlight-danger::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background-color: var(--accent-danger);
+}
+
+/* Badges */
+.badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+}
+
+.badge-info {
+    background-color: rgba(52, 152, 219, 0.1);
+    color: var(--accent-info);
+    border: 1px solid rgba(52, 152, 219, 0.2);
+}
+
+.badge-warning {
+    background-color: rgba(243, 156, 18, 0.1);
+    color: var(--accent-warning);
+    border: 1px solid rgba(243, 156, 18, 0.2);
+}
+
+/* Task List */
+.task-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.task-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    transition: background 0.2s;
+}
+
+.task-item:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+
+.task-checkbox {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--text-muted);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.task-checkbox:hover {
+    border-color: var(--accent-primary);
+}
+
+.task-details {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.task-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.task-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.task-meta i {
+    width: 12px;
+    height: 12px;
+}
+
+/* Cycle Progress */
+.cycle-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cycle-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.875rem;
+}
+
+.cycle-name {
+    font-weight: 500;
+}
+
+.cycle-days {
+    color: var(--text-muted);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--bg-panel);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-info));
+    border-radius: 4px;
+}
+
+/* Empty State */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    height: 100%;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    text-align: center;
+}
+
+.empty-state i {
+    width: 32px;
+    height: 32px;
+}
