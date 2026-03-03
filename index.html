@@ -79,71 +79,15 @@
             </header>
 
             <div class="content-view" id="app-root">
-                <!-- Dynamic Content injected here -->
+                <!-- View header (updated dynamically by router) -->
                 <div class="view-header">
                     <h1>Dashboard</h1>
                     <p class="subtitle">Resumen de tu actividad y próximos entregables.</p>
                 </div>
 
-                <!-- Dashboard Grid -->
-                <div class="dashboard-grid">
-                    <!-- Widget: Activo -->
-                    <div class="card glass-panel col-span-2">
-                        <div class="card-header">
-                            <h3>Mis Tareas Activas</h3>
-                        </div>
-                        <div class="card-body">
-                            <ul class="task-list">
-                                <li class="task-item">
-                                    <div class="task-checkbox"></div>
-                                    <div class="task-details">
-                                        <span class="task-title">Redactar introducción del artículo</span>
-                                        <span class="task-meta"><i data-feather="calendar"></i> Hoy</span>
-                                    </div>
-                                    <span class="badge badge-warning">En elaboración</span>
-                                </li>
-                                <li class="task-item">
-                                    <div class="task-checkbox"></div>
-                                    <div class="task-details">
-                                        <span class="task-title">Revisión bibliográfica</span>
-                                        <span class="task-meta"><i data-feather="calendar"></i> Mañana</span>
-                                    </div>
-                                    <span class="badge badge-info">En preparación</span>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <!-- Widget: Ciclos -->
-                    <div class="card glass-panel">
-                        <div class="card-header">
-                            <h3>Ciclos en Curso</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="cycle-progress">
-                                <div class="cycle-info">
-                                    <span class="cycle-name">Semana de Cierre</span>
-                                    <span class="cycle-days">3 días rest.</span>
-                                </div>
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: 70%;"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Widget: Bloqueos -->
-                    <div class="card glass-panel highlight-danger">
-                        <div class="card-header">
-                            <h3>Bloqueos</h3>
-                        </div>
-                        <div class="card-body">
-                            <div class="empty-state">
-                                <i data-feather="check-circle" class="c-green"></i>
-                                <p>No hay bloqueos activos.</p>
-                            </div>
-                        </div>
-                    </div>
+                <!-- Dynamic content rendered here by app.js -->
+                <div id="view-content">
+                    <div class="loading-state"><div class="spinner"></div></div>
                 </div>
             </div>
         </main>
