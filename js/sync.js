@@ -1,19 +1,30 @@
 /**
  * sync.js — Google Drive Synchronization + Team Import Manager
+ *
+ * Capas implementadas:
+ *   1. Autenticación: Google Identity Services (GIS) + OAuth 2.0 implicit flow
+ *   2. Scopes: drive.file (archivos visibles) + drive.appdata (config invisible)
+ *   3. Acceso a archivos: Drive API v3
+ *   4. Selección de archivos: Google Picker API (requiere API Key + App ID)
+ *   5. Configuración invisible: appDataFolder
  */
 
 const syncManager = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
+    const APPDATA_SETTINGS_FILE = 'workspace-settings.json';
 
     let tokenClient = null;
     let accessToken = null;
     let isSyncing = false;
     let autoSyncTimer = null;
+    let pickerApiLoaded = false;
 
     const defaultConfig = {
         clientId: '',
+        apiKey: '',       // Para Google Picker (Developer Key)
+        appId: '',        // Project Number de Google Cloud (para Picker)
         fileName: 'workspace-team-data.json',
         sharedFileId: '',
         teamName: 'Equipo pequeño',
@@ -68,6 +79,8 @@ const syncManager = (() => {
         }
     }
 
+    // ── Carga de scripts externos ──────────────────────────────────────────────
+
     async function loadGIS() {
         if (window.google?.accounts?.oauth2) return;
         await new Promise((resolve, reject) => {
@@ -86,6 +99,37 @@ const syncManager = (() => {
         });
     }
 
+    /**
+     * Carga la librería gapi y el módulo Picker de Google.
+     * El Picker es una API independiente del Drive API que permite al usuario
+     * seleccionar archivos desde su propio Drive con una UI nativa de Google.
+     */
+    async function loadPickerApi() {
+        if (pickerApiLoaded) return;
+        await new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-gapi="true"]');
+            if (existing) {
+                // Script ya insertado — solo cargar módulo picker
+                if (window.gapi?.load) {
+                    window.gapi.load('picker', () => { pickerApiLoaded = true; resolve(); });
+                } else {
+                    reject(new Error('gapi no disponible'));
+                }
+                return;
+            }
+            const script = document.createElement('script');
+            script.dataset.gapi = 'true';
+            script.src = 'https://apis.google.com/js/api.js';
+            script.onload = () => {
+                window.gapi.load('picker', () => { pickerApiLoaded = true; resolve(); });
+            };
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    }
+
+    // ── Autenticación ──────────────────────────────────────────────────────────
+
     async function initTokenClient() {
         const cfg = getConfig();
         if (!cfg.clientId) return false;
@@ -94,7 +138,7 @@ const syncManager = (() => {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: cfg.clientId,
             scope: SCOPES,
-            callback: (resp) => {
+            callback: async (resp) => {
                 if (resp?.error) {
                     showToast('No se pudo autenticar con Google Drive', 'error');
                     updateSyncUI('error');
@@ -103,6 +147,8 @@ const syncManager = (() => {
                 accessToken = resp.access_token;
                 localStorage.setItem(STATUS_KEY, 'true');
                 updateSyncUI('online');
+                // Restaurar configuración guardada en appDataFolder (sharedFileId, teamName, etc.)
+                await loadSettingsFromAppData();
                 push();
                 pull();
             },
@@ -144,6 +190,162 @@ const syncManager = (() => {
         updateSyncUI('offline');
     }
 
+    // ── Google Picker ──────────────────────────────────────────────────────────
+
+    /**
+     * Abre el selector nativo de Google Drive (Google Picker).
+     * El usuario elige un archivo JSON — onSelect recibe (fileId, fileName).
+     *
+     * Requiere:
+     *   - apiKey (Developer Key) en la configuración
+     *   - appId  (Project Number) opcional pero recomendado
+     *   - accessToken activo con scope drive.file
+     */
+    async function openPicker(onSelect) {
+        const cfg = getConfig();
+
+        if (!cfg.apiKey) {
+            showToast('Añade una API Key en la configuración de Sync para usar el selector de Drive', 'error');
+            return;
+        }
+        if (!accessToken) {
+            showToast('Conecta con Google Drive primero', 'error');
+            return;
+        }
+
+        try {
+            await loadPickerApi();
+        } catch {
+            showToast('No se pudo cargar el selector de Drive', 'error');
+            return;
+        }
+
+        const view = new google.picker.DocsView()
+            .setIncludeFolders(false)
+            .setMimeTypes('application/json');
+
+        const builder = new google.picker.PickerBuilder()
+            .setTitle('Seleccionar archivo de datos del equipo')
+            .addView(view)
+            .setOAuthToken(accessToken)
+            .setDeveloperKey(cfg.apiKey)
+            .setCallback((data) => {
+                if (data.action === google.picker.Action.PICKED && data.docs?.length > 0) {
+                    const doc = data.docs[0];
+                    onSelect(doc.id, doc.name);
+                }
+            });
+
+        if (cfg.appId) builder.setAppId(cfg.appId);
+        builder.build().setVisible(true);
+    }
+
+    // ── AppDataFolder — configuración invisible ────────────────────────────────
+    //
+    // appDataFolder es una carpeta oculta, inaccesible para el usuario y otras apps.
+    // Se usa para guardar configuración operativa del workspace entre dispositivos.
+    // Requiere scope drive.appdata y spaces=appDataFolder en los queries.
+
+    async function findAppDataFile(name) {
+        const q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
+        const resp = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&spaces=appDataFolder`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!resp.ok) return null;
+        const result = await resp.json();
+        return result.files?.[0]?.id ?? null;
+    }
+
+    async function getAppDataContent(fileId) {
+        const resp = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!resp.ok) return null;
+        return resp.json();
+    }
+
+    async function saveAppDataContent(name, content) {
+        const fileId = await findAppDataFile(name);
+        if (fileId) {
+            await fetch(
+                `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(content),
+                }
+            );
+            return fileId;
+        }
+        // Crear en appDataFolder: parents: ['appDataFolder']
+        const metadata = { name, mimeType: 'application/json', parents: ['appDataFolder'] };
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
+        const resp = await fetch(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+            { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+        );
+        const result = await resp.json();
+        return result.id;
+    }
+
+    /**
+     * Al conectar, intenta restaurar la configuración operativa guardada en appDataFolder.
+     * Esto permite que distintos miembros del equipo no tengan que reconfigurar
+     * el sharedFileId manualmente — se sincroniza de forma invisible.
+     */
+    async function loadSettingsFromAppData() {
+        try {
+            const fileId = await findAppDataFile(APPDATA_SETTINGS_FILE);
+            if (!fileId) return;
+            const settings = await getAppDataContent(fileId);
+            if (!settings) return;
+            const local = getConfig();
+            // Las credenciales (clientId, apiKey, appId) se mantienen locales.
+            // El sharedFileId, fileName, teamName y autoSyncMinutes se sincronizan.
+            const merged = {
+                ...local,
+                fileName: settings.fileName || local.fileName,
+                sharedFileId: settings.sharedFileId || local.sharedFileId,
+                teamName: settings.teamName || local.teamName,
+                autoSyncMinutes: settings.autoSyncMinutes || local.autoSyncMinutes,
+            };
+            saveConfig(merged);
+            if (settings.sharedFileId) localStorage.setItem('gdrive_file_id', settings.sharedFileId);
+            showToast('Configuración restaurada desde Drive', 'info');
+        } catch (err) {
+            console.warn('[Sync] No se pudo cargar configuración de appDataFolder:', err);
+        }
+    }
+
+    /**
+     * Guarda la configuración operativa en appDataFolder tras crear o vincular
+     * un archivo compartido, para que otros dispositivos la puedan restaurar.
+     */
+    async function saveSettingsToAppData() {
+        try {
+            const cfg = getConfig();
+            const settings = {
+                fileName: cfg.fileName,
+                sharedFileId: cfg.sharedFileId || localStorage.getItem('gdrive_file_id') || '',
+                teamName: cfg.teamName,
+                autoSyncMinutes: cfg.autoSyncMinutes,
+                savedAt: Date.now(),
+            };
+            await saveAppDataContent(APPDATA_SETTINGS_FILE, settings);
+        } catch (err) {
+            console.warn('[Sync] No se pudo guardar configuración en appDataFolder:', err);
+        }
+    }
+
+    // ── Sincronización con Drive ───────────────────────────────────────────────
+
     function getSnapshot() {
         return {
             version: '1.1',
@@ -171,31 +373,31 @@ const syncManager = (() => {
             const cfg = getConfig();
             const data = getSnapshot();
 
-            // Allow manual override via cfg.sharedFileId or previous creation
             let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
             if (!fileId) fileId = await findFile(cfg.fileName);
 
             if (fileId) {
-                // Pre-flight check to prevent blind overwrites
+                // Pre-flight: evitar sobrescribir cambios remotos más recientes
                 const remoteData = await getFileContentMetadata(fileId);
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
                 if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate + 60000) {
-                    // Release lock before showing confirm dialog
                     isSyncing = false;
-                    const confirmPull = confirm("⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?");
+                    const confirmPull = confirm('⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?');
                     if (confirmPull) {
-                        // Do a clean pull, update local timestamp, then return without pushing
                         await pull();
                         return;
                     }
-                    // User said No, re-acquire lock and continue pushing
                     isSyncing = true;
                 }
                 await updateFile(fileId, data);
             } else {
                 const newId = await createFile(cfg.fileName, data);
-                if (!cfg.sharedFileId) localStorage.setItem('gdrive_file_id', newId);
+                if (!cfg.sharedFileId) {
+                    localStorage.setItem('gdrive_file_id', newId);
+                    // Guardar el nuevo fileId en appDataFolder para otros dispositivos
+                    await saveSettingsToAppData();
+                }
             }
 
             localStorage.setItem('last_sync_local', String(data.updatedAt));
@@ -249,9 +451,10 @@ const syncManager = (() => {
 
     async function findFile(name) {
         const q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const resp = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
         const result = await resp.json();
         return result.files && result.files[0] ? result.files[0].id : null;
     }
@@ -262,44 +465,43 @@ const syncManager = (() => {
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
 
-        const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}` },
-            body: form,
-        });
+        const resp = await fetch(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+            { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+        );
         const result = await resp.json();
         return result.id;
     }
 
     async function updateFile(id, content) {
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
-            method: 'PATCH',
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(content),
-        });
+        await fetch(
+            `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`,
+            {
+                method: 'PATCH',
+                headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(content),
+            }
+        );
     }
 
     async function getFileContent(id) {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!resp.ok) throw new Error("File not found or no permissions");
+        const resp = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!resp.ok) throw new Error('Archivo no encontrado o sin permisos');
         return resp.json();
     }
 
     async function getFileContentMetadata(id) {
-        // Just fetch the content. Drive doesn't allow easy partial downloads for JSON via v3 alt=media
-        try {
-            return await getFileContent(id);
-        } catch { return null; }
+        try { return await getFileContent(id); } catch { return null; }
     }
 
     async function seedFromRemote(data) {
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', data);
     }
+
+    // ── Parsers de importación ─────────────────────────────────────────────────
 
     function parseNotionCsv(text) {
         const rows = text.split(/\r?\n/).filter(Boolean);
@@ -364,7 +566,6 @@ const syncManager = (() => {
     function parseTodoistCsv(text) {
         const rows = parseCsv(text);
         if (rows.length < 2) return [];
-        // Expected columns: CONTENT,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE
         const headers = rows[0].map(h => h.toLowerCase());
         const cIdx = headers.indexOf('content');
         return rows.slice(1).map((cols, idx) => ({
@@ -406,63 +607,114 @@ const syncManager = (() => {
         showToast(`Importadas ${tasks.length} tareas`, 'success');
     }
 
+    // ── Panel de configuración ─────────────────────────────────────────────────
+
     function openPanel() {
         const cfg = getConfig();
         const members = store.get.members();
-        const memberNames = members.map(m => esc(m.name)).join(', ') || 'Sin miembros';
+        const memberNames = members.map(m => esc(m.name)).join(', ') || '';
+        const isConnected = !!accessToken;
 
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.id = 'sync-settings-overlay';
         overlay.innerHTML = `
-      <div class="modal" style="max-width:620px;">
+      <div class="modal" style="max-width:660px;">
         <div class="modal-header">
           <h2><i data-feather="cloud"></i> Sync Google Drive + Equipo</h2>
           <button class="btn btn-icon" id="sync-close"><i data-feather="x"></i></button>
         </div>
         <div class="modal-body">
-          <p style="margin:0;color:var(--text-muted);font-size:0.9rem;">Enfocado para equipos pequeños: un archivo compartido en Drive + importación rápida de tareas desde Notion (CSV) u Obsidian (Markdown checklist).</p>
+          <p style="margin:0 0 16px;color:var(--text-muted);font-size:0.85rem;">
+            Scopes mínimos: <code>drive.file</code> (archivos de la app) + <code>drive.appdata</code> (config invisible).
+            Solo se accede a archivos que esta app crea o que el usuario selecciona explícitamente.
+          </p>
+
+          <!-- Credenciales OAuth -->
           <div class="form-group">
-            <label class="form-label">Google OAuth Client ID</label>
+            <label class="form-label">Google OAuth Client ID <span style="color:var(--accent-danger)">*</span></label>
             <input class="form-input" id="sync-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${esc(cfg.clientId)}">
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
-              <label class="form-label">Nombre del archivo</label>
+              <label class="form-label">
+                API Key
+                <span style="color:var(--text-muted);font-weight:400;"> — para Google Picker</span>
+              </label>
+              <input class="form-input" id="sync-api-key" placeholder="AIzaSy…" value="${esc(cfg.apiKey)}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">
+                App ID
+                <span style="color:var(--text-muted);font-weight:400;"> — Project Number</span>
+              </label>
+              <input class="form-input" id="sync-app-id" placeholder="123456789012" value="${esc(cfg.appId)}">
+            </div>
+          </div>
+
+          <!-- Archivo compartido + Picker -->
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:flex-end;margin-bottom:16px;">
+            <div class="form-group" style="margin:0;">
+              <label class="form-label">ID del archivo compartido del equipo</label>
+              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID manualmente o usar el selector →" value="${esc(cfg.sharedFileId)}">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="sync-pick-file"
+              title="${isConnected ? 'Abrir selector de Google Drive' : 'Conecta primero para usar el selector'}"
+              style="height:38px;white-space:nowrap;"
+              ${isConnected ? '' : 'disabled'}>
+              <i data-feather="folder" style="width:14px;height:14px;margin-right:4px;"></i>Seleccionar
+            </button>
+          </div>
+
+          <!-- Config operativa -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Nombre del archivo (si se crea nuevo)</label>
               <input class="form-input" id="sync-file-name" value="${esc(cfg.fileName)}">
             </div>
             <div class="form-group">
-              <label class="form-label">Shared File ID (Opcional)</label>
-              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID del JSON compartido" value="${esc(cfg.sharedFileId)}">
+              <label class="form-label">Auto-sync (minutos)</label>
+              <input class="form-input" type="number" min="1" max="120" id="sync-auto-min" value="${cfg.autoSyncMinutes}">
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">Auto-sync (minutos)</label>
-            <input class="form-input" type="number" min="1" max="120" id="sync-auto-min" value="${cfg.autoSyncMinutes}">
+            <label class="form-label">Miembros del equipo</label>
+            <input class="form-input" id="sync-members" placeholder="Ana, Luis, Marta" value="${memberNames}">
           </div>
-          <div class="form-group">
-            <label class="form-label">Miembros actuales</label>
-            <input class="form-input" id="sync-members" placeholder="Ana, Luis, Marta" value="${memberNames === 'Sin miembros' ? '' : memberNames}">
+
+          <!-- Importar desde -->
+          <div style="border-top:1px solid var(--border-color);padding-top:16px;margin-top:4px;">
+            <p style="margin:0 0 10px;font-size:0.75rem;color:var(--text-muted);font-weight:600;letter-spacing:.05em;text-transform:uppercase;">Importar desde</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar cards y checklists de Trello">
+                <i data-feather="trello" style="width:14px;height:14px;margin-right:4px;"></i> Trello JSON
+                <input type="file" id="trello-file" accept=".json" style="display:none;">
+              </label>
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar tareas de Notion">
+                <i data-feather="external-link" style="width:14px;height:14px;margin-right:4px;"></i> Notion CSV
+                <input type="file" id="notion-file" accept=".csv" style="display:none;">
+              </label>
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar checklists de Obsidian">
+                <i data-feather="book-open" style="width:14px;height:14px;margin-right:4px;"></i> Obsidian MD
+                <input type="file" id="obsidian-file" accept=".md" style="display:none;">
+              </label>
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar export de Todoist">
+                <i data-feather="check-circle" style="width:14px;height:14px;margin-right:4px;"></i> Todoist CSV
+                <input type="file" id="todoist-file" accept=".csv" style="display:none;">
+              </label>
+            </div>
           </div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap; margin-top:16px;">
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar cards y checklists de Trello">
-              <i data-feather="trello" style="width:14px;height:14px;margin-right:4px;"></i> Trello JSON
-              <input type="file" id="trello-file" accept=".json" style="display:none;">
-            </label>
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar tareas de Notion">
-               <i data-feather="external-link" style="width:14px;height:14px;margin-right:4px;"></i> Notion CSV
-              <input type="file" id="notion-file" accept=".csv" style="display:none;">
-            </label>
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar checklists de Obsidian">
-              <i data-feather="book-open" style="width:14px;height:14px;margin-right:4px;"></i> Obsidian MD
-              <input type="file" id="obsidian-file" accept=".md" style="display:none;">
-            </label>
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar export de Todoist">
-              <i data-feather="check-circle" style="width:14px;height:14px;margin-right:4px;"></i> Todoist CSV
-              <input type="file" id="todoist-file" accept=".csv" style="display:none;">
-            </label>
+
+          <!-- Advertencia modo Testing -->
+          <div style="margin-top:14px;padding:10px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;font-size:0.8rem;color:var(--accent-warning);display:flex;gap:8px;align-items:flex-start;">
+            <i data-feather="alert-triangle" style="width:14px;height:14px;flex-shrink:0;margin-top:1px;"></i>
+            <span>
+              Si tu app está en modo <strong>Testing</strong> en Google Cloud Console, los refresh tokens expiran en 7 días.
+              Para uso real del equipo, publica la app o añade a cada miembro como usuario de prueba en la pantalla de consentimiento OAuth.
+            </span>
           </div>
         </div>
+
         <div class="modal-footer" style="justify-content:space-between;">
           <button class="btn btn-secondary" id="sync-disconnect">Desconectar</button>
           <div style="display:flex;gap:8px;">
@@ -477,19 +729,30 @@ const syncManager = (() => {
         feather.replace();
 
         overlay.querySelector('#sync-close').addEventListener('click', () => overlay.remove());
+
         overlay.querySelector('#sync-disconnect').addEventListener('click', () => {
             disconnect();
             overlay.remove();
         });
 
+        // Botón Picker — abre selector nativo de Google Drive
+        overlay.querySelector('#sync-pick-file').addEventListener('click', () => {
+            openPicker((fileId, fileName) => {
+                overlay.querySelector('#sync-shared-id').value = fileId;
+                showToast(`Archivo vinculado: ${fileName}`, 'success');
+            });
+        });
+
         overlay.querySelector('#sync-save-connect').addEventListener('click', async () => {
             const clientId = overlay.querySelector('#sync-client-id').value.trim();
+            const apiKey = overlay.querySelector('#sync-api-key').value.trim();
+            const appId = overlay.querySelector('#sync-app-id').value.trim();
             const fileName = overlay.querySelector('#sync-file-name').value.trim() || defaultConfig.fileName;
             const sharedFileId = overlay.querySelector('#sync-shared-id').value.trim();
             const autoSyncMinutes = Number(overlay.querySelector('#sync-auto-min').value || 5);
             const membersRaw = overlay.querySelector('#sync-members').value.trim();
 
-            saveConfig({ clientId, fileName, sharedFileId, autoSyncMinutes });
+            saveConfig({ clientId, apiKey, appId, fileName, sharedFileId, autoSyncMinutes });
             await syncMembers(membersRaw);
             await authenticate();
             overlay.remove();
@@ -529,6 +792,8 @@ const syncManager = (() => {
         });
     }
 
+    // ── Miembros del equipo ────────────────────────────────────────────────────
+
     async function syncMembers(raw) {
         const names = raw.split(',').map(x => x.trim()).filter(Boolean);
         const current = store.get.members();
@@ -540,7 +805,7 @@ const syncManager = (() => {
         }
     }
 
-    return { init, authenticate, disconnect, push, pull, openPanel };
+    return { init, authenticate, disconnect, push, pull, openPanel, openPicker };
 })();
 
 window.syncManager = syncManager;
