@@ -322,6 +322,35 @@
     font-weight: 700;
 }
 
+/* Urgent & Overdue Tasks */
+.task-urgent {
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.task-urgent:hover {
+    border-color: var(--accent-warning);
+}
+
+.task-urgent .priority-pip {
+    box-shadow: 0 0 8px var(--accent-warning);
+    animation: pulse 2s infinite ease-in-out;
+}
+
+.task-overdue {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+.task-overdue:hover {
+    border-color: var(--accent-danger);
+}
+
+.task-overdue .priority-pip {
+    box-shadow: 0 0 8px var(--accent-danger);
+    animation: pulse 1s infinite ease-in-out;
+}
+
 .task-details {
     flex: 1;
     display: flex;

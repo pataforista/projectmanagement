@@ -382,9 +382,76 @@ function openDecisionModal(defaultProjectId) {
   });
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Profile Modal
+// ────────────────────────────────────────────────────────────────────────────
+
+function updateUserProfileUI() {
+  const name = localStorage.getItem('workspace_user_name') || 'Carlos';
+  const role = localStorage.getItem('workspace_user_role') || 'Owner';
+  const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
+
+  const nameEl = document.getElementById('user-name');
+  const roleEl = document.getElementById('user-role');
+  const avatarEl = document.getElementById('user-avatar');
+
+  if (nameEl) nameEl.textContent = name;
+  if (roleEl) roleEl.textContent = role;
+  if (avatarEl) avatarEl.textContent = avatar;
+}
+
+function openProfileModal() {
+  const currentName = localStorage.getItem('workspace_user_name') || 'Carlos';
+  const currentRole = localStorage.getItem('workspace_user_role') || 'Owner';
+  const currentAvatar = localStorage.getItem('workspace_user_avatar') || currentName.charAt(0).toUpperCase();
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="user"></i> Perfil de Usuario</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input class="form-input" id="profile-name" value="${esc(currentName)}" autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rol en el equipo</label>
+        <input class="form-input" id="profile-role" value="${esc(currentRole)}" placeholder="ej. Investigador Principal">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Avatar (1 o 2 letras)</label>
+        <input class="form-input" id="profile-avatar" value="${esc(currentAvatar)}" maxlength="2">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="profile-save"><i data-feather="save"></i> Guardar cambios</button>
+    </div>`);
+
+  modal.querySelector('#modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  modal.querySelector('#profile-save').addEventListener('click', () => {
+    const name = modal.querySelector('#profile-name').value.trim() || 'Usuario';
+    const role = modal.querySelector('#profile-role').value.trim();
+    const avatar = modal.querySelector('#profile-avatar').value.trim().toUpperCase() || name.charAt(0);
+
+    localStorage.setItem('workspace_user_name', name);
+    localStorage.setItem('workspace_user_role', role);
+    localStorage.setItem('workspace_user_avatar', avatar);
+
+    updateUserProfileUI();
+    closeModal();
+    showToast('Perfil actualizado', 'success');
+  });
+}
+
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.openTaskModal = openTaskModal;
 window.openProjectModal = openProjectModal;
 window.openCycleModal = openCycleModal;
 window.openDecisionModal = openDecisionModal;
+window.openProfileModal = openProfileModal;
+window.updateUserProfileUI = updateUserProfileUI;
+

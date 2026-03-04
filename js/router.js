@@ -13,6 +13,8 @@ const ROUTES = {
     '/board': 'board',
     '/calendar': 'calendar',
     '/decisions': 'decisions',
+    '/library': 'library',
+    '/logs': 'logs',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -24,6 +26,8 @@ const ROUTE_META = {
     board: { label: 'Tablero', subtitle: 'Vista Kanban por estado del trabajo.' },
     calendar: { label: 'Calendario', subtitle: 'Fechas límite, sesiones y entregas.' },
     decisions: { label: 'Decisiones', subtitle: 'Registro de decisiones clave del workspace.' },
+    library: { label: 'Biblioteca', subtitle: 'Recursos de investigación, docencia y gestión open-source.' },
+    logs: { label: 'Actividad', subtitle: 'Registro de actividad del equipo.' },
     project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
     document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
 };
@@ -99,10 +103,13 @@ class Router {
         }
     }
 
-    /** Trigger initial render */
+    /** Trigger initial render — always dispatches synchronously */
     init() {
-        if (!window.location.hash) window.location.hash = '/dashboard';
-        else this._dispatch();
+        if (!window.location.hash || window.location.hash === '#') {
+            history.replaceState(null, '', '#/dashboard');
+        }
+        // Always call _dispatch() directly so handlers registered via .on() are guaranteed available
+        this._dispatch();
     }
 }
 

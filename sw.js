@@ -3,15 +3,17 @@
  * Cache-first strategy for shell assets + offline fallback + sync queue flush stub.
  */
 
-const CACHE_NAME = 'workspace-v1';
+const CACHE_NAME = 'workspace-v4';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
     '/styles/main.css',
     '/styles/components.css',
+    '/styles/animations.css',
     '/js/db.js',
     '/js/utils.js',
+    '/js/components.js',
     '/js/store.js',
     '/js/router.js',
     '/js/views/dashboard.js',
@@ -22,7 +24,11 @@ const SHELL_ASSETS = [
     '/js/views/calendar.js',
     '/js/views/document.js',
     '/js/views/decisions.js',
+    '/js/views/library.js',
+    '/js/views/logs.js',
     '/js/modals.js',
+    '/js/notifications.js',
+    '/js/sync.js',
     '/js/app.js',
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
     'https://unpkg.com/feather-icons/dist/feather.min.js',

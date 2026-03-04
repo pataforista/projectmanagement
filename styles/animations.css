@@ -1,0 +1,461 @@
+/**
+ * animations.css — Micro-interactions, transitions, and motion signals
+ * Goals: Smooth view transitions, tactile button feedback, loading skeletons,
+ *        progress states, ripple clicks, and accessibility-safe animations.
+ */
+
+/* ── Respect reduced motion preference ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────────────────── */
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes rippleOut {
+    0% {
+        transform: scale(0);
+        opacity: 0.35;
+    }
+
+    100% {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0.85);
+        opacity: 0;
+    }
+
+    60% {
+        transform: scale(1.04);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes checkPop {
+    0% {
+        transform: scale(0.5) rotate(-10deg);
+        opacity: 0;
+    }
+
+    60% {
+        transform: scale(1.2) rotate(2deg);
+    }
+
+    100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+}
+
+@keyframes urgentPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+}
+
+@keyframes warningBlink {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.3);
+    }
+
+    50% {
+        box-shadow: 0 0 0 5px rgba(245, 158, 11, 0);
+    }
+}
+
+@keyframes dotBounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0.7);
+        opacity: 0.5;
+    }
+
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* ── View entrance ──────────────────────────────────────────────────────────── */
+.view-inner {
+    animation: slideInUp 0.28s var(--ease-out) both;
+}
+
+/* Stagger children of dashboard grid */
+.dashboard-grid>.card:nth-child(1) {
+    animation-delay: 0.04s;
+}
+
+.dashboard-grid>.card:nth-child(2) {
+    animation-delay: 0.08s;
+}
+
+.dashboard-grid>.card:nth-child(3) {
+    animation-delay: 0.12s;
+}
+
+.dashboard-grid>.card:nth-child(4) {
+    animation-delay: 0.16s;
+}
+
+.dashboard-grid>.card:nth-child(5) {
+    animation-delay: 0.20s;
+}
+
+/* ── Enhanced Button Interactions ───────────────────────────────────────────── */
+.btn {
+    position: relative;
+    overflow: hidden;
+    transform: translateY(0);
+    transition: transform 0.12s var(--ease), box-shadow 0.18s var(--ease),
+        background 0.18s var(--ease), border-color 0.18s var(--ease),
+        color 0.18s var(--ease);
+}
+
+.btn:active {
+    transform: translateY(1px) scale(0.98) !important;
+}
+
+/* Ripple effect on click */
+.btn .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    pointer-events: none;
+    animation: rippleOut 0.6s var(--ease) forwards;
+    transform-origin: center;
+}
+
+/* ── Nav Item hover glow ────────────────────────────────────────────────────── */
+.nav-item {
+    transition: background 0.15s var(--ease), color 0.15s var(--ease),
+        transform 0.1s var(--ease), padding-left 0.15s var(--ease);
+}
+
+.nav-item:hover {
+    transform: translateX(2px);
+}
+
+.nav-item.active {
+    transition: background 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+/* ── Card hover lift ────────────────────────────────────────────────────────── */
+.card {
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease),
+        border-color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.project-card {
+    transition: transform 0.2s var(--ease), box-shadow 0.22s var(--ease),
+        border-color 0.2s var(--ease);
+}
+
+/* ── Task Item animations ───────────────────────────────────────────────────── */
+.task-item {
+    animation: slideInLeft 0.2s var(--ease-out) both;
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+        transform 0.12s var(--ease);
+}
+
+.task-item:hover {
+    transform: translateX(3px);
+}
+
+.task-item:nth-child(1) {
+    animation-delay: 0.02s;
+}
+
+.task-item:nth-child(2) {
+    animation-delay: 0.04s;
+}
+
+.task-item:nth-child(3) {
+    animation-delay: 0.06s;
+}
+
+.task-item:nth-child(4) {
+    animation-delay: 0.08s;
+}
+
+.task-item:nth-child(5) {
+    animation-delay: 0.10s;
+}
+
+.task-item:nth-child(6) {
+    animation-delay: 0.12s;
+}
+
+/* Checkbox pop on completion */
+.task-checkbox {
+    transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
+        transform 0.12s var(--ease);
+}
+
+.task-checkbox.checked {
+    animation: checkPop 0.3s var(--ease-out);
+}
+
+.task-checkbox:hover {
+    transform: scale(1.1);
+}
+
+/* ── Urgent task visual signal ──────────────────────────────────────────────── */
+.task-overdue {
+    animation: urgentPulse 2s infinite;
+}
+
+.task-urgent {
+    animation: warningBlink 2.5s infinite;
+}
+
+/* ── Kanban card animations ─────────────────────────────────────────────────── */
+.kanban-card {
+    animation: scaleIn 0.18s var(--ease-out) both;
+    transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease),
+        border-color 0.15s var(--ease);
+}
+
+.kanban-card:nth-child(1) {
+    animation-delay: 0.02s;
+}
+
+.kanban-card:nth-child(2) {
+    animation-delay: 0.04s;
+}
+
+.kanban-card:nth-child(3) {
+    animation-delay: 0.06s;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────────── */
+.sidebar {
+    transition: transform 0.28s var(--ease-out), width 0.28s var(--ease-out);
+}
+
+/* ── Modal entrance ─────────────────────────────────────────────────────────── */
+.modal {
+    animation: bounceIn 0.28s var(--ease-out) both;
+}
+
+/* ── Skeleton loading states ────────────────────────────────────────────────── */
+.skeleton {
+    background: linear-gradient(90deg,
+            var(--bg-surface) 25%,
+            var(--bg-surface-hover) 50%,
+            var(--bg-surface) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite linear;
+    border-radius: var(--radius-sm);
+}
+
+.skeleton-text {
+    height: 12px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+}
+
+.skeleton-title {
+    height: 18px;
+    width: 60%;
+    margin-bottom: 12px;
+    border-radius: 4px;
+}
+
+/* ── Loading spinner ────────────────────────────────────────────────────────── */
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* ── Loading dots ───────────────────────────────────────────────────────────── */
+.loading-dots {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.loading-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: dotBounce 1.2s infinite ease-in-out;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+/* ── Sync indicator pulse ───────────────────────────────────────────────────── */
+.status-online {
+    background: var(--accent-success);
+    animation: warningBlink 3s infinite;
+}
+
+.status-syncing {
+    background: var(--accent-info);
+    animation: spin 1s linear infinite;
+    border-radius: 0;
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* ── Search overlay animation ───────────────────────────────────────────────── */
+.search-box {
+    animation: slideInUp 0.2s var(--ease-out) both;
+}
+
+/* ── Topbar breadcrumb transition ───────────────────────────────────────────── */
+.breadcrumbs .current {
+    transition: opacity 0.2s var(--ease);
+}
+
+/* ── Progress bar animated fill ─────────────────────────────────────────────── */
+.progress-fill {
+    transition: width 0.7s var(--ease-out);
+    background: linear-gradient(90deg,
+            var(--accent-primary) 0%,
+            var(--accent-teal) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+/* ── Form focus glow ────────────────────────────────────────────────────────── */
+.form-input,
+.form-select,
+.form-textarea {
+    transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease),
+        background 0.18s var(--ease);
+}
+
+/* ── Toast enhanced ─────────────────────────────────────────────────────────── */
+.toast {
+    animation: slideInRight 0.3s var(--ease-out) both;
+    transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+}
+
+/* ── Touch ripple target areas ──────────────────────────────────────────────── */
+.btn,
+.nav-item,
+.task-item,
+.kanban-card,
+.project-card,
+.decision-card,
+.tab-btn {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Active state for mobile (touch feedback) ───────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+    .btn:active {
+        filter: brightness(0.88);
+    }
+
+    .task-item:active,
+    .kanban-card:active {
+        transform: scale(0.98);
+        opacity: 0.9;
+    }
+
+    .nav-item:active {
+        background: var(--bg-surface-hover);
+    }
+}

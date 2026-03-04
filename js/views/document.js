@@ -48,19 +48,14 @@ function renderDocumentView(root, params) {
     <div class="view-header">
       <div class="view-header-text">
         <h1>Documento: ${esc(p?.name || 'Proyecto')}</h1>
-        <p class="view-subtitle">Documento vivo — se guarda automáticamente.</p>
+        <p class="view-subtitle">Documento vivo — se guarda automáticamente. Presiona <kbd>/</kbd> para bloques.</p>
       </div>
       <div class="view-actions">
-        <button class="btn btn-secondary btn-sm" id="doc-add-heading-btn"><i data-feather="type"></i> Título</button>
-        <button class="btn btn-secondary btn-sm" id="doc-add-para-btn"><i data-feather="align-left"></i> Párrafo</button>
-        <button class="btn btn-secondary btn-sm" id="doc-add-check-btn"><i data-feather="check-square"></i> Checklist</button>
-        <button class="btn btn-secondary btn-sm" id="doc-add-div-btn"><i data-feather="minus"></i> Divisor</button>
+        <button class="btn btn-secondary btn-sm" id="doc-export-md-btn"><i data-feather="download"></i> Exportar MD</button>
       </div>
     </div>` : `
     <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-      <button class="btn btn-ghost btn-sm" id="doc-add-heading-btn"><i data-feather="type"></i> + Título</button>
-      <button class="btn btn-ghost btn-sm" id="doc-add-para-btn"><i data-feather="align-left"></i> + Párrafo</button>
-      <button class="btn btn-ghost btn-sm" id="doc-add-check-btn"><i data-feather="check-square"></i> + Checklist</button>
+      <p style="font-size:0.8rem; color:var(--text-muted);">Editor de bloques. Escribe <kbd>/</kbd> para insertar.</p>
     </div>`}
     <div class="doc-editor" id="doc-editor"></div>
     <div class="doc-autosave" id="doc-autosave">Guardado ✓</div>`;
@@ -76,11 +71,13 @@ function renderDocumentView(root, params) {
         const out = [];
         editor.querySelectorAll('[data-block-type]').forEach(el => {
             const type = el.dataset.blockType;
-            if (type === 'heading') out.push({ type, text: el.value || el.textContent });
-            else if (type === 'heading2') out.push({ type, text: el.value || el.textContent });
-            else if (type === 'paragraph') out.push({ type, text: el.value || el.textContent });
-            else if (type === 'divider') out.push({ type });
-            else if (type === 'checklist') {
+            if (type === 'heading' || type === 'heading2' || type === 'paragraph' || type === 'code') {
+                out.push({ type, text: el.value || el.textContent });
+            } else if (type === 'callout') {
+                out.push({ type, text: el.querySelector('textarea').value });
+            } else if (type === 'divider') {
+                out.push({ type });
+            } else if (type === 'checklist') {
                 const items = [];
                 el.querySelectorAll('.doc-checklist-item').forEach(li => {
                     items.push({
@@ -110,23 +107,33 @@ function renderDocumentView(root, params) {
     editor.addEventListener('input', scheduleSave);
     editor.addEventListener('change', scheduleSave);
 
-    // Add block buttons
-    wrap.querySelector('#doc-add-heading-btn')?.addEventListener('click', () => {
-        addBlockToEditor(editor, { type: 'heading2', text: 'Nuevo título...' });
-        scheduleSave();
+    editor.addEventListener('keydown', e => {
+        if (e.key === '/') {
+            const active = document.activeElement;
+            if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
+                // Only trigger if at start of line
+                if (active.selectionStart === 0 || active.value.trim() === '') {
+                    setTimeout(() => showSlashMenu(active, editor, scheduleSave), 10);
+                }
+            }
+        }
     });
-    wrap.querySelector('#doc-add-para-btn')?.addEventListener('click', () => {
-        addBlockToEditor(editor, { type: 'paragraph', text: '' });
-        scheduleSave();
+
+    wrap.querySelector('#doc-export-md-btn')?.addEventListener('click', () => {
+        const content = getBlocks();
+        const text = content.map(b => {
+            if (b.type === 'heading') return `# ${b.text}`;
+            if (b.type === 'heading2') return `## ${b.text}`;
+            if (b.type === 'paragraph') return b.text;
+            if (b.type === 'divider') return '---';
+            if (b.type === 'code') return `\`\`\`\n${b.text}\n\`\`\``;
+            if (b.type === 'callout') return `> [!NOTE]\n> ${b.text}`;
+            if (b.type === 'checklist') return b.items.map(i => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');
+            return '';
+        }).join('\n\n');
+        downloadFile(`${p.name.toLowerCase().replace(/\s+/g, '-')}.md`, text);
     });
-    wrap.querySelector('#doc-add-check-btn')?.addEventListener('click', () => {
-        addBlockToEditor(editor, { type: 'checklist', items: [{ text: '', done: false }] });
-        scheduleSave();
-    });
-    wrap.querySelector('#doc-add-div-btn')?.addEventListener('click', () => {
-        addBlockToEditor(editor, { type: 'divider' });
-        scheduleSave();
-    });
+
 }
 
 function renderDocBlocks(editor, blocks) {
@@ -134,48 +141,47 @@ function renderDocBlocks(editor, blocks) {
     blocks.forEach(b => addBlockToEditor(editor, b));
 }
 
-function addBlockToEditor(editor, block) {
+function addBlockToEditor(editor, block, insertAfterEl = null) {
     const wrap = document.createElement('div');
     wrap.className = 'doc-block';
     wrap.dataset.blockType = block.type;
 
-    if (block.type === 'heading') {
+    const actions = document.createElement('div');
+    actions.className = 'block-actions';
+    actions.innerHTML = `<button class="btn btn-icon btn-xs" title="Eliminar bloque"><i data-feather="trash-2"></i></button>`;
+    actions.querySelector('button').onclick = () => {
+        wrap.remove();
+        editor.dispatchEvent(new Event('input')); // trigger save
+    };
+    wrap.appendChild(actions);
+
+    let focusEl;
+
+    if (block.type === 'heading' || block.type === 'heading2' || block.type === 'paragraph' || block.type === 'code') {
         const el = document.createElement('textarea');
-        el.className = 'doc-block-heading';
-        el.dataset.blockType = 'heading';
+        el.className = `doc-block-${block.type}`;
         el.value = block.text || '';
-        el.rows = 1;
-        el.placeholder = 'Título principal...';
+        el.dataset.blockType = block.type;
+        el.placeholder = block.type === 'code' ? 'Escribe código...' : 'Escribe algo...';
         autoResize(el);
         el.addEventListener('input', () => autoResize(el));
         wrap.appendChild(el);
-    } else if (block.type === 'heading2') {
-        const el = document.createElement('textarea');
-        el.className = 'doc-block-heading2';
-        el.dataset.blockType = 'heading2';
-        el.value = block.text || '';
-        el.rows = 1;
-        el.placeholder = 'Subtítulo...';
-        autoResize(el);
-        el.addEventListener('input', () => autoResize(el));
-        wrap.appendChild(el);
-    } else if (block.type === 'paragraph') {
-        const el = document.createElement('textarea');
-        el.className = 'doc-block-paragraph';
-        el.dataset.blockType = 'paragraph';
-        el.value = block.text || '';
-        el.rows = 2;
-        el.placeholder = 'Escribe algo...';
-        autoResize(el);
-        el.addEventListener('input', () => autoResize(el));
-        wrap.appendChild(el);
+        focusEl = el;
+    } else if (block.type === 'callout') {
+        const container = document.createElement('div');
+        container.className = 'doc-block-callout';
+        container.innerHTML = `<i data-feather="info"></i><textarea style="flex:1;background:none;border:none;color:inherit;resize:none;" placeholder="Nota informativa..."></textarea>`;
+        const tx = container.querySelector('textarea');
+        tx.value = block.text || '';
+        autoResize(tx);
+        tx.addEventListener('input', () => autoResize(tx));
+        wrap.appendChild(container);
+        focusEl = tx;
     } else if (block.type === 'divider') {
         const el = document.createElement('hr');
         el.className = 'doc-block-divider';
-        el.dataset.blockType = 'divider';
         wrap.appendChild(el);
     } else if (block.type === 'checklist') {
-        wrap.dataset.blockType = 'checklist';
         (block.items || []).forEach(item => {
             const li = document.createElement('div');
             li.className = 'doc-checklist-item';
@@ -199,8 +205,69 @@ function addBlockToEditor(editor, block) {
         wrap.appendChild(addBtn);
     }
 
-    editor.appendChild(wrap);
+    if (insertAfterEl) {
+        insertAfterEl.after(wrap);
+    } else {
+        editor.appendChild(wrap);
+    }
+
     feather.replace();
+    if (focusEl) focusEl.focus();
+}
+
+function showSlashMenu(triggerEl, editor, onSelected) {
+    const rect = triggerEl.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'slash-menu';
+    menu.style.left = `${rect.left}px`;
+    menu.style.top = `${rect.bottom + window.scrollY}px`;
+
+    const options = [
+        { label: 'Título', type: 'heading', icon: 'type' },
+        { label: 'Subtítulo', type: 'heading2', icon: 'type' },
+        { label: 'Párrafo', type: 'paragraph', icon: 'align-left' },
+        { label: 'Checklist', type: 'checklist', icon: 'check-square' },
+        { label: 'Nota / Callout', type: 'callout', icon: 'info' },
+        { label: 'Código', type: 'code', icon: 'code' },
+        { label: 'Divisor', type: 'divider', icon: 'minus' },
+    ];
+
+    menu.innerHTML = options.map(opt => `
+    <div class="slash-item" data-type="${opt.type}">
+      <i data-feather="${opt.icon}"></i>
+      <span>${opt.label}</span>
+    </div>
+  `).join('');
+
+    document.body.appendChild(menu);
+    feather.replace();
+
+    const close = () => menu.remove();
+
+    menu.querySelectorAll('.slash-item').forEach(item => {
+        item.onclick = () => {
+            const type = item.dataset.type;
+            const parentBlock = triggerEl.closest('.doc-block');
+            // Remove the trigger slash
+            if (triggerEl.value.startsWith('/')) triggerEl.value = triggerEl.value.slice(1);
+
+            if (triggerEl.value.trim() === '' && parentBlock) {
+                // Replace current block if empty
+                const blockContent = type === 'checklist' ? { type, items: [{ text: '', done: false }] } : { type, text: '' };
+                addBlockToEditor(editor, blockContent, parentBlock);
+                parentBlock.remove();
+            } else {
+                addBlockToEditor(editor, { type, text: '' }, parentBlock);
+            }
+            onSelected();
+            close();
+        };
+    });
+
+    // Close on click outside
+    setTimeout(() => {
+        window.addEventListener('click', close, { once: true });
+    }, 10);
 }
 
 function autoResize(el) {

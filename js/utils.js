@@ -10,6 +10,46 @@ function esc(str) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+function parseCsv(text) {
+    const result = [];
+    let row = [];
+    let cell = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const next = text[i + 1];
+        if (inQuotes) {
+            if (char === '"' && next === '"') { cell += '"'; i++; }
+            else if (char === '"') inQuotes = false;
+            else cell += char;
+        } else {
+            if (char === '"') inQuotes = true;
+            else if (char === ',') { row.push(cell.trim()); cell = ''; }
+            else if (char === '\n' || char === '\r') {
+                if (cell || row.length) { row.push(cell.trim()); result.push(row); }
+                row = []; cell = '';
+                if (char === '\r' && next === '\n') i++;
+            } else cell += char;
+        }
+    }
+    if (cell || row.length) { row.push(cell.trim()); result.push(row); }
+    return result;
+}
+
+String.prototype.slugify = function () {
+    return this.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+};
+
+function downloadFile(name, content) {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 // ── Date formatting ───────────────────────────────────────────────────────────
 function fmtDate(dateStr) {
     if (!dateStr) return '';
@@ -89,8 +129,10 @@ document.addEventListener('click', async e => {
 });
 
 window.esc = esc;
+window.parseCsv = parseCsv;
 window.fmtDate = fmtDate;
 window.statusBadge = statusBadge;
 window.emptyState = emptyState;
 window.showToast = showToast;
 window.bindTaskCheckboxes = bindTaskCheckboxes;
+window.downloadFile = downloadFile;

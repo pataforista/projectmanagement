@@ -5,14 +5,22 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
-    await initDB();
+    // ── 1. Initialize IndexedDB (fail-safe: routing still works without it) ────
+    try {
+        await initDB();
+    } catch (e) {
+        console.warn('[Boot] IndexedDB init failed — continuing without persistence:', e);
+        // IndexedDB failed (e.g. VersionError from stale cache). App runs in-memory until
+        // user clears site data. Instruct user on next build if this happens repeatedly.
+    }
 
     // ── 2. Load & seed store ───────────────────────────────────────────────────
-    await store.load();
-    await syncManager.init();
-    await syncManager.pull();
-    await store.seedIfEmpty();
+    try {
+        await store.load();
+        await store.seedIfEmpty();
+    } catch (e) {
+        console.warn('[Boot] Store load failed — running with empty state:', e);
+    }
 
     // ── 3. Register service worker ─────────────────────────────────────────────
     if ('serviceWorker' in navigator) {
@@ -28,6 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('board', (root) => renderBoard(root))
         .on('calendar', (root) => renderCalendar(root))
         .on('decisions', (root) => renderDecisions(root))
+        .on('library', (root) => renderLibrary(root))
         .on('logs', (root) => renderLogs(root))
         .on('document', (root, params) => renderDocumentView(root, params))
         .on('project', (root, params) => renderProjectDetail(root, params));
@@ -39,9 +48,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 6. Init router ─────────────────────────────────────────────────────────
     router.init();
 
+    // ── 7. Load User Profile & Notifications ──────────────────────────────────
+    if (window.updateUserProfileUI) updateUserProfileUI();
+    if (window.NotificationsManager) NotificationsManager.init();
+
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
+
+    // ── 9. Try sync (non-blocking, safe to fail without credentials) ───────────
+    try {
+        await syncManager.init();
+        await syncManager.pull();
+    } catch (e) {
+        console.warn('[Sync] Could not connect on boot (no credentials?):', e);
+    }
 });
+
+
 
 // ── 8. Wire search button ──────────────────────────────────────────────────
 document.getElementById('btn-search')?.addEventListener('click', openSearch);
@@ -85,6 +108,7 @@ function refreshCurrentView() {
         board: root => renderBoard(root),
         calendar: root => renderCalendar(root),
         decisions: root => renderDecisions(root),
+        library: root => renderLibrary(root),
         document: root => renderDocumentView(root, params),
         project: root => renderProjectDetail(root, params),
     };
@@ -247,6 +271,35 @@ function initUIToggles() {
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('app-theme', newTheme);
     });
+
+    // Mobile Menu Toggle
+    const mobileMenuBtn = document.getElementById('btn-mobile-menu');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    const sidebar = document.querySelector('.sidebar');
+
+    function toggleMobileMenu() {
+        sidebar?.classList.toggle('open');
+        sidebarOverlay?.classList.toggle('open');
+    }
+
+    mobileMenuBtn?.addEventListener('click', toggleMobileMenu);
+    sidebarOverlay?.addEventListener('click', toggleMobileMenu);
+
+    // Close mobile menu on navigation
+    document.querySelectorAll('.nav-item').forEach(el => {
+        el.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar?.classList.remove('open');
+                sidebarOverlay?.classList.remove('open');
+            }
+        });
+    });
+
+    // Profile Click
+    const profileBtn = document.getElementById('btn-user-profile');
+    profileBtn?.addEventListener('click', () => {
+        if (window.openProfileModal) openProfileModal();
+    });
 }
 
 window.refreshCurrentView = refreshCurrentView;
@@ -257,3 +310,70 @@ window.closeSearch = closeSearch;
 window.handleSearch = handleSearch;
 window.initUIToggles = initUIToggles;
 window.exportData = exportData;
+
+// ── Ripple Effect ──────────────────────────────────────────────────────────────
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.5;
+    const x = e.clientX - rect.left - size / 2;
+    const y = e.clientY - rect.top - size / 2;
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;`;
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+});
+
+// ── Page loading bar ──────────────────────────────────────────────────────────
+(function () {
+    const bar = document.createElement('div');
+    bar.id = 'page-loader';
+    bar.style.cssText = `
+        position:fixed;top:0;left:0;height:2px;width:100%;
+        background:linear-gradient(90deg,var(--accent-primary),var(--accent-teal));
+        z-index:9999;transform-origin:left;transform:scaleX(0);
+        transition:transform 0.3s ease,opacity 0.3s ease;opacity:1;pointer-events:none;
+    `;
+    document.body.appendChild(bar);
+
+    window.addEventListener('route:change', () => {
+        bar.style.transform = 'scaleX(0.3)';
+        bar.style.opacity = '1';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                bar.style.transform = 'scaleX(1)';
+                setTimeout(() => { bar.style.opacity = '0'; bar.style.transform = 'scaleX(0)'; }, 350);
+            });
+        });
+    });
+})();
+
+// ── PWA Install prompt ─────────────────────────────────────────────────────────
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    // Show a subtle install badge in the sidebar after 3 seconds
+    setTimeout(() => {
+        const profile = document.querySelector('.user-profile');
+        if (profile && !document.getElementById('install-hint')) {
+            const hint = document.createElement('div');
+            hint.id = 'install-hint';
+            hint.innerHTML = `<i data-feather="download"></i> Instalar app`;
+            hint.style.cssText = `display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--accent-teal);cursor:pointer;padding:2px 0;animation:slideInUp 0.3s ease;`;
+            hint.addEventListener('click', async () => {
+                if (_deferredInstallPrompt) {
+                    _deferredInstallPrompt.prompt();
+                    const { outcome } = await _deferredInstallPrompt.userChoice;
+                    if (outcome === 'accepted') hint.remove();
+                    _deferredInstallPrompt = null;
+                }
+            });
+            profile.insertAdjacentElement('afterend', hint);
+            feather.replace();
+        }
+    }, 3000);
+});
+

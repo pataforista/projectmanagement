@@ -3,7 +3,7 @@
  */
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
 
@@ -15,6 +15,7 @@ const syncManager = (() => {
     const defaultConfig = {
         clientId: '',
         fileName: 'workspace-team-data.json',
+        sharedFileId: '',
         teamName: 'Equipo pequeño',
         autoSyncMinutes: 5,
     };
@@ -169,14 +170,32 @@ const syncManager = (() => {
         try {
             const cfg = getConfig();
             const data = getSnapshot();
-            let fileId = localStorage.getItem('gdrive_file_id');
+
+            // Allow manual override via cfg.sharedFileId or previous creation
+            let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
             if (!fileId) fileId = await findFile(cfg.fileName);
 
             if (fileId) {
+                // Pre-flight check to prevent blind overwrites
+                const remoteData = await getFileContentMetadata(fileId);
+                const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
+
+                if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate + 60000) {
+                    // Release lock before showing confirm dialog
+                    isSyncing = false;
+                    const confirmPull = confirm("⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?");
+                    if (confirmPull) {
+                        // Do a clean pull, update local timestamp, then return without pushing
+                        await pull();
+                        return;
+                    }
+                    // User said No, re-acquire lock and continue pushing
+                    isSyncing = true;
+                }
                 await updateFile(fileId, data);
             } else {
                 const newId = await createFile(cfg.fileName, data);
-                localStorage.setItem('gdrive_file_id', newId);
+                if (!cfg.sharedFileId) localStorage.setItem('gdrive_file_id', newId);
             }
 
             localStorage.setItem('last_sync_local', String(data.updatedAt));
@@ -196,7 +215,7 @@ const syncManager = (() => {
 
         try {
             const cfg = getConfig();
-            const fileId = await findFile(cfg.fileName);
+            const fileId = cfg.sharedFileId || await findFile(cfg.fileName);
             if (!fileId) {
                 updateSyncUI('online');
                 return;
@@ -230,7 +249,7 @@ const syncManager = (() => {
 
     async function findFile(name) {
         const q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}`, {
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
         const result = await resp.json();
@@ -243,7 +262,7 @@ const syncManager = (() => {
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
 
-        const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
             body: form,
@@ -253,7 +272,7 @@ const syncManager = (() => {
     }
 
     async function updateFile(id, content) {
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
@@ -264,10 +283,18 @@ const syncManager = (() => {
     }
 
     async function getFileContent(id) {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, {
+        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
+        if (!resp.ok) throw new Error("File not found or no permissions");
         return resp.json();
+    }
+
+    async function getFileContentMetadata(id) {
+        // Just fetch the content. Drive doesn't allow easy partial downloads for JSON via v3 alt=media
+        try {
+            return await getFileContent(id);
+        } catch { return null; }
     }
 
     async function seedFromRemote(data) {
@@ -295,6 +322,61 @@ const syncManager = (() => {
                 subtasks: [],
             };
         });
+    }
+
+    async function exportToMarkdown(projectId) {
+        const p = store.get.projectById(projectId);
+        const doc = store.get.documentByProject(projectId);
+        if (!doc) return showToast('No hay documento para este proyecto', 'info');
+
+        const text = doc.content.map(b => {
+            if (b.type === 'heading') return `# ${b.text}`;
+            if (b.type === 'heading2') return `## ${b.text}`;
+            if (b.type === 'paragraph') return b.text;
+            if (b.type === 'code') return `\`\`\`\n${b.text}\n\`\`\``;
+            if (b.type === 'callout') return `> [!NOTE]\n> ${b.text}`;
+            if (b.type === 'checklist') return b.items.map(i => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');
+            return '---';
+        }).join('\n\n');
+
+        downloadFile(`${p.name.slugify()}.md`, text);
+    }
+
+    function parseTrelloJson(json) {
+        try {
+            const data = typeof json === 'string' ? JSON.parse(json) : json;
+            const lists = {};
+            data.lists.forEach(l => lists[l.id] = l.name);
+            return data.cards.map(c => ({
+                id: `tr-${c.id}`,
+                title: c.name,
+                description: c.desc || '',
+                status: lists[c.idList] || 'Capturado',
+                priority: 'media',
+                type: 'task',
+                createdAt: Date.now(),
+                tags: (c.labels || []).map(l => l.name || l.color),
+                subtasks: (c.checklists || []).flatMap(cl => cl.checkItems.map(ci => ({ id: ci.id, title: ci.name, done: ci.state === 'complete' })))
+            }));
+        } catch { return []; }
+    }
+
+    function parseTodoistCsv(text) {
+        const rows = parseCsv(text);
+        if (rows.length < 2) return [];
+        // Expected columns: CONTENT,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE
+        const headers = rows[0].map(h => h.toLowerCase());
+        const cIdx = headers.indexOf('content');
+        return rows.slice(1).map((cols, idx) => ({
+            id: `td-${Date.now()}-${idx}`,
+            title: cols[cIdx] || 'Sin título',
+            status: 'Capturado',
+            priority: 'media',
+            type: 'task',
+            createdAt: Date.now(),
+            tags: ['todoist-import'],
+            subtasks: []
+        }));
     }
 
     function parseObsidianMarkdown(text) {
@@ -346,12 +428,12 @@ const syncManager = (() => {
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
-              <label class="form-label">Nombre del archivo en Drive</label>
+              <label class="form-label">Nombre del archivo</label>
               <input class="form-input" id="sync-file-name" value="${esc(cfg.fileName)}">
             </div>
             <div class="form-group">
-              <label class="form-label">Equipo</label>
-              <input class="form-input" id="sync-team-name" value="${esc(cfg.teamName)}">
+              <label class="form-label">Shared File ID (Opcional)</label>
+              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID del JSON compartido" value="${esc(cfg.sharedFileId)}">
             </div>
           </div>
           <div class="form-group">
@@ -362,14 +444,22 @@ const syncManager = (() => {
             <label class="form-label">Miembros actuales</label>
             <input class="form-input" id="sync-members" placeholder="Ana, Luis, Marta" value="${memberNames === 'Sin miembros' ? '' : memberNames}">
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <label class="btn btn-secondary" style="cursor:pointer;">
-              Importar Notion CSV
-              <input type="file" id="notion-file" accept=".csv,text/csv" style="display:none;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap; margin-top:16px;">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar cards y checklists de Trello">
+              <i data-feather="trello" style="width:14px;height:14px;margin-right:4px;"></i> Trello JSON
+              <input type="file" id="trello-file" accept=".json" style="display:none;">
             </label>
-            <label class="btn btn-secondary" style="cursor:pointer;">
-              Importar Obsidian Markdown
-              <input type="file" id="obsidian-file" accept=".md,text/markdown" style="display:none;">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar tareas de Notion">
+               <i data-feather="external-link" style="width:14px;height:14px;margin-right:4px;"></i> Notion CSV
+              <input type="file" id="notion-file" accept=".csv" style="display:none;">
+            </label>
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar checklists de Obsidian">
+              <i data-feather="book-open" style="width:14px;height:14px;margin-right:4px;"></i> Obsidian MD
+              <input type="file" id="obsidian-file" accept=".md" style="display:none;">
+            </label>
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar export de Todoist">
+              <i data-feather="check-circle" style="width:14px;height:14px;margin-right:4px;"></i> Todoist CSV
+              <input type="file" id="todoist-file" accept=".csv" style="display:none;">
             </label>
           </div>
         </div>
@@ -395,11 +485,11 @@ const syncManager = (() => {
         overlay.querySelector('#sync-save-connect').addEventListener('click', async () => {
             const clientId = overlay.querySelector('#sync-client-id').value.trim();
             const fileName = overlay.querySelector('#sync-file-name').value.trim() || defaultConfig.fileName;
-            const teamName = overlay.querySelector('#sync-team-name').value.trim() || defaultConfig.teamName;
+            const sharedFileId = overlay.querySelector('#sync-shared-id').value.trim();
             const autoSyncMinutes = Number(overlay.querySelector('#sync-auto-min').value || 5);
             const membersRaw = overlay.querySelector('#sync-members').value.trim();
 
-            saveConfig({ clientId, fileName, teamName, autoSyncMinutes });
+            saveConfig({ clientId, fileName, sharedFileId, autoSyncMinutes });
             await syncMembers(membersRaw);
             await authenticate();
             overlay.remove();
@@ -408,6 +498,20 @@ const syncManager = (() => {
         overlay.querySelector('#sync-pull').addEventListener('click', async () => {
             await pull();
             overlay.remove();
+        });
+
+        overlay.querySelector('#trello-file').addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const text = await file.text();
+            await importTasks(parseTrelloJson(text));
+        });
+
+        overlay.querySelector('#todoist-file').addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const text = await file.text();
+            await importTasks(parseTodoistCsv(text));
         });
 
         overlay.querySelector('#notion-file').addEventListener('change', async (e) => {

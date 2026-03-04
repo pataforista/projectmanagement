@@ -4,7 +4,7 @@
 
 // ── Stat Pill (Dashboard) ────────────────────────────────────────────────────
 function statPill(count, label, icon, color) {
-    return `<div class="stat-pill" style="${color ? `color:${color};` : ''}">
+  return `<div class="stat-pill" style="${color ? `color:${color};` : ''}">
     <i data-feather="${icon}" style="width:13px;height:13px;"></i>
     <strong>${count}</strong> ${label}
   </div>`;
@@ -12,17 +12,26 @@ function statPill(count, label, icon, color) {
 
 // ── Task Item (Dashboard, Project Detail, etc.) ──────────────────────────────
 function taskItem(t) {
-    const proj = store.get.projectById(t.projectId);
-    const isDone = t.status === 'Terminado' || t.status === 'Archivado';
-    const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && !isDone;
-    return `
-    <li class="task-item" data-task-id="${t.id}">
+  const proj = store.get.projectById(t.projectId);
+  const isDone = t.status === 'Terminado' || t.status === 'Archivado';
+
+  // Urgent logic
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDate = t.dueDate ? new Date(t.dueDate) : null;
+  const isOverdue = dueDate && dueDate < today && !isDone;
+  // 7 days window for urgent
+  const isUrgent = dueDate && !isOverdue && !isDone && (dueDate - today) <= (7 * 24 * 60 * 60 * 1000);
+  const urgentClass = isOverdue ? 'task-overdue' : (isUrgent ? 'task-urgent' : '');
+
+  return `
+    <li class="task-item ${urgentClass}" data-task-id="${t.id}">
       <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}"></div>
       <div class="task-details">
         <span class="task-title ${isDone ? 'done' : ''}">${esc(t.title)}</span>
         <span class="task-meta">
           ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'}">● ${esc(proj.name)}</span>` : ''}
-          ${t.dueDate ? `<i data-feather="calendar"></i><span style="${isOverdue ? 'color:var(--accent-danger)' : ''}">${fmtDate(t.dueDate)}</span>` : ''}
+          ${t.dueDate ? `<i data-feather="calendar"></i><span style="${isOverdue ? 'color:var(--accent-danger)' : (isUrgent ? 'color:var(--accent-warning)' : '')}">${fmtDate(t.dueDate)}</span>` : ''}
           ${statusBadge(t.status)}
         </span>
       </div>
@@ -32,10 +41,10 @@ function taskItem(t) {
 
 // ── Cycle Widget (Dashboard) ─────────────────────────────────────────────────
 function cycleWidget(c) {
-    const proj = store.get.projectById(c.projectId);
-    const pct = store.get.cycleProgress(c.id);
-    const end = c.endDate ? `Hasta ${fmtDate(c.endDate)}` : '';
-    return `
+  const proj = store.get.projectById(c.projectId);
+  const pct = store.get.cycleProgress(c.id);
+  const end = c.endDate ? `Hasta ${fmtDate(c.endDate)}` : '';
+  return `
     <div class="cycle-progress">
       <div class="cycle-info">
         <span class="cycle-name">${esc(c.name)}</span>
@@ -50,10 +59,10 @@ function cycleWidget(c) {
 
 // ── Mini Project Card (Dashboard) ────────────────────────────────────────────
 function miniProjectCard(p) {
-    const pTasks = store.get.tasksByProject(p.id);
-    const done = pTasks.filter(t => t.status === 'Terminado').length;
-    const pct = pTasks.length ? Math.round(done / pTasks.length * 100) : 0;
-    return `
+  const pTasks = store.get.tasksByProject(p.id);
+  const done = pTasks.filter(t => t.status === 'Terminado').length;
+  const pct = pTasks.length ? Math.round(done / pTasks.length * 100) : 0;
+  return `
     <div class="project-card" style="--project-color:${p.color || 'var(--accent-primary)'}; cursor:pointer;"
          onclick="router.navigate('/project/${p.id}')">
       <div class="project-card-name" style="font-size:0.82rem;">${esc(p.name)}</div>
@@ -64,11 +73,11 @@ function miniProjectCard(p) {
 
 // ── Cycle Card (Cycles View, Project Detail) ─────────────────────────────────
 function cycleCard(c) {
-    const proj = store.get.projectById(c.projectId);
-    const pct = store.get.cycleProgress(c.id);
-    const tasks = store.get.tasksByCycle(c.id);
+  const proj = store.get.projectById(c.projectId);
+  const pct = store.get.cycleProgress(c.id);
+  const tasks = store.get.tasksByCycle(c.id);
 
-    return `
+  return `
     <div class="cycle-card">
       <div class="cycle-card-header">
         <div>
@@ -95,8 +104,8 @@ function cycleCard(c) {
       <div>
         <div class="section-label">Tareas en este ciclo</div>
         ${tasks.length === 0
-            ? `<div style="font-size:0.78rem;color:var(--text-muted);">Sin tareas asignadas.</div>`
-            : `<ul class="task-list" style="gap:5px;">${tasks.slice(0, 4).map(t => `
+      ? `<div style="font-size:0.78rem;color:var(--text-muted);">Sin tareas asignadas.</div>`
+      : `<ul class="task-list" style="gap:5px;">${tasks.slice(0, 4).map(t => `
               <li class="task-item" style="padding:7px 10px;">
                 <div class="task-checkbox ${t.status === 'Terminado' ? 'checked' : ''}" data-id="${t.id}"></div>
                 <span class="task-title ${t.status === 'Terminado' ? 'done' : ''}" style="font-size:0.8rem;">${esc(t.title)}</span>
@@ -104,7 +113,7 @@ function cycleCard(c) {
               </li>`).join('')}
               ${tasks.length > 4 ? `<li style="font-size:0.75rem;color:var(--text-muted);padding:4px 10px;">+ ${tasks.length - 4} más</li>` : ''}
           </ul>`
-        }
+    }
       </div>
 
       <div style="display:flex;gap:8px;margin-top:4px;">
@@ -118,9 +127,9 @@ function cycleCard(c) {
 
 // ── Decision Card (Decisions View, Project Detail) ───────────────────────────
 function decisionCard(d) {
-    const proj = store.get.projectById(d.projectId);
-    const impactColor = d.impact === 'alta' ? 'badge-danger' : d.impact === 'media' ? 'badge-warning' : 'badge-neutral';
-    return `
+  const proj = store.get.projectById(d.projectId);
+  const impactColor = d.impact === 'alta' ? 'badge-danger' : d.impact === 'media' ? 'badge-warning' : 'badge-neutral';
+  return `
     <div class="decision-card" data-decision-id="${d.id}">
       <div class="decision-card-header">
         <div>
