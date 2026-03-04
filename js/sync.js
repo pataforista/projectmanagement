@@ -3,7 +3,7 @@
  */
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/tasks';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
 
@@ -18,6 +18,9 @@ const syncManager = (() => {
         sharedFileId: '',
         teamName: 'Equipo pequeño',
         autoSyncMinutes: 5,
+        todoistApiToken: '',
+        zoteroApiKey: '',
+        zoteroUserId: '',
     };
 
     function getConfig() {
@@ -399,6 +402,139 @@ const syncManager = (() => {
             });
     }
 
+    async function fetchGoogleTasks() {
+        if (!accessToken) {
+            showToast('Conecta Google Drive primero para importar Google Tasks', 'error');
+            return;
+        }
+        try {
+            const listsResp = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (!listsResp.ok) throw new Error(`HTTP ${listsResp.status}`);
+            const listsData = await listsResp.json();
+            if (!listsData.items || listsData.items.length === 0) {
+                showToast('No se encontraron listas en Google Tasks', 'info');
+                return;
+            }
+
+            let allTasks = [];
+            for (const list of listsData.items) {
+                const tasksResp = await fetch(
+                    `https://tasks.googleapis.com/tasks/v1/lists/${list.id}/tasks?showCompleted=true&maxResults=100`,
+                    { headers: { Authorization: `Bearer ${accessToken}` } }
+                );
+                if (!tasksResp.ok) continue;
+                const tasksData = await tasksResp.json();
+                if (tasksData.items) {
+                    const converted = tasksData.items.map((t, idx) => ({
+                        id: `gt-${t.id || Date.now()}-${idx}`,
+                        title: t.title || 'Sin título',
+                        status: t.status === 'completed' ? 'Terminado' : 'Capturado',
+                        dueDate: t.due ? t.due.split('T')[0] : '',
+                        priority: 'media',
+                        type: 'task',
+                        createdAt: Date.now(),
+                        tags: ['google-tasks', list.title].filter(Boolean),
+                        subtasks: [],
+                    }));
+                    allTasks = allTasks.concat(converted);
+                }
+            }
+
+            if (allTasks.length === 0) {
+                showToast('No se encontraron tareas en Google Tasks', 'info');
+                return;
+            }
+            await importTasks(allTasks);
+        } catch (err) {
+            console.error('[Sync] Google Tasks fetch failed:', err);
+            showToast('Error al importar de Google Tasks', 'error');
+        }
+    }
+
+    async function fetchTodoistTasks(apiToken) {
+        if (!apiToken) {
+            showToast('Introduce tu API Token de Todoist', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch('https://api.todoist.com/rest/v2/tasks', {
+                headers: { Authorization: `Bearer ${apiToken}` },
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+
+            const tasks = data.map((t, idx) => ({
+                id: `tdapi-${t.id || Date.now()}-${idx}`,
+                title: t.content || 'Sin título',
+                description: t.description || '',
+                status: t.is_completed ? 'Terminado' : 'Capturado',
+                dueDate: t.due?.date || '',
+                priority: t.priority === 4 ? 'alta' : t.priority === 3 ? 'media' : 'baja',
+                type: 'task',
+                createdAt: Date.now(),
+                tags: ['todoist-api', ...(t.labels || [])],
+                subtasks: [],
+            }));
+
+            if (tasks.length === 0) {
+                showToast('No hay tareas activas en Todoist', 'info');
+                return;
+            }
+            await importTasks(tasks);
+        } catch (err) {
+            console.error('[Sync] Todoist API fetch failed:', err);
+            showToast('Error al importar de Todoist. Verifica tu API Token', 'error');
+        }
+    }
+
+    async function fetchZoteroItems(apiKey, userId) {
+        if (!apiKey || !userId) {
+            showToast('Introduce tu API Key y User ID de Zotero', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch(
+                `https://api.zotero.org/users/${userId}/items?limit=50&format=json`,
+                { headers: { 'Zotero-API-Key': apiKey, 'Zotero-API-Version': '3' } }
+            );
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const items = await resp.json();
+
+            const tasks = items
+                .filter(item => item.data.itemType !== 'attachment' && item.data.itemType !== 'note')
+                .map((item, idx) => {
+                    const d = item.data;
+                    const authors = (d.creators || [])
+                        .map(c => c.lastName || c.name || '')
+                        .filter(Boolean)
+                        .join(', ');
+                    const year = d.date ? d.date.split('-')[0] : '';
+                    return {
+                        id: `zo-${item.key}-${idx}`,
+                        title: `${d.title || 'Sin título'}${authors ? ' — ' + authors : ''}${year ? ' (' + year + ')' : ''}`,
+                        description: d.abstractNote || '',
+                        status: 'Capturado',
+                        priority: 'media',
+                        type: 'task',
+                        createdAt: Date.now(),
+                        tags: ['zotero-import', d.itemType || 'referencia'],
+                        subtasks: [],
+                    };
+                });
+
+            if (tasks.length === 0) {
+                showToast('No se encontraron ítems en Zotero', 'info');
+                return;
+            }
+            await importTasks(tasks);
+        } catch (err) {
+            console.error('[Sync] Zotero fetch failed:', err);
+            showToast('Error al importar de Zotero. Verifica API Key y User ID', 'error');
+        }
+    }
+
     async function importTasks(tasks) {
         for (const task of tasks) {
             await store.dispatch('ADD_TASK', task);
@@ -457,10 +593,50 @@ const syncManager = (() => {
               <i data-feather="book-open" style="width:14px;height:14px;margin-right:4px;"></i> Obsidian MD
               <input type="file" id="obsidian-file" accept=".md" style="display:none;">
             </label>
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar export de Todoist">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar export CSV de Todoist">
               <i data-feather="check-circle" style="width:14px;height:14px;margin-right:4px;"></i> Todoist CSV
               <input type="file" id="todoist-file" accept=".csv" style="display:none;">
             </label>
+          </div>
+
+          <hr style="border:none;border-top:1px solid var(--border-color);margin:20px 0 16px;">
+          <p style="font-size:0.82rem;font-weight:600;color:var(--text-muted);margin:0 0 12px;text-transform:uppercase;letter-spacing:0.05em;">Integraciones en vivo (API)</p>
+
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+              <i data-feather="check-square" style="width:14px;height:14px;"></i> Google Tasks
+            </label>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 6px;">Usa tu cuenta Google ya conectada. Importa todas tus listas y tareas.</p>
+            <button class="btn btn-secondary btn-sm" id="btn-import-gtasks">
+              <i data-feather="download" style="width:13px;height:13px;margin-right:4px;"></i> Importar Google Tasks
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-bottom:10px;">
+            <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+              <i data-feather="check-circle" style="width:14px;height:14px;"></i> Todoist (API)
+            </label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input class="form-input" id="sync-todoist-token" type="password" placeholder="API Token de Todoist" value="${esc(cfg.todoistApiToken || '')}" style="flex:1;">
+              <button class="btn btn-secondary btn-sm" id="btn-import-todoist" style="white-space:nowrap;">
+                <i data-feather="download" style="width:13px;height:13px;margin-right:4px;"></i> Importar
+              </button>
+            </div>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:4px 0 0;">Obtén tu token en <strong>todoist.com/prefs/integrations</strong></p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:6px;">
+              <i data-feather="book" style="width:14px;height:14px;"></i> Zotero (API)
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+              <input class="form-input" id="sync-zotero-key" type="password" placeholder="API Key" value="${esc(cfg.zoteroApiKey || '')}">
+              <input class="form-input" id="sync-zotero-userid" placeholder="User ID (numérico)" value="${esc(cfg.zoteroUserId || '')}">
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-import-zotero">
+              <i data-feather="download" style="width:13px;height:13px;margin-right:4px;"></i> Importar biblioteca Zotero
+            </button>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:4px 0 0;">API Key en <strong>zotero.org/settings/keys</strong> · User ID en tu perfil de Zotero</p>
           </div>
         </div>
         <div class="modal-footer" style="justify-content:space-between;">
@@ -526,6 +702,25 @@ const syncManager = (() => {
             if (!file) return;
             const text = await file.text();
             await importTasks(parseObsidianMarkdown(text));
+        });
+
+        overlay.querySelector('#btn-import-gtasks').addEventListener('click', async () => {
+            await fetchGoogleTasks();
+        });
+
+        overlay.querySelector('#btn-import-todoist').addEventListener('click', async () => {
+            const token = overlay.querySelector('#sync-todoist-token').value.trim();
+            const currentCfg = getConfig();
+            saveConfig({ ...currentCfg, todoistApiToken: token });
+            await fetchTodoistTasks(token);
+        });
+
+        overlay.querySelector('#btn-import-zotero').addEventListener('click', async () => {
+            const apiKey = overlay.querySelector('#sync-zotero-key').value.trim();
+            const userId = overlay.querySelector('#sync-zotero-userid').value.trim();
+            const currentCfg = getConfig();
+            saveConfig({ ...currentCfg, zoteroApiKey: apiKey, zoteroUserId: userId });
+            await fetchZoteroItems(apiKey, userId);
         });
     }
 

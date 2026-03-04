@@ -15,6 +15,51 @@ function renderLibrary(root) {
 
       <div class="library-grid">
         
+        <!-- Section 0: Integraciones Activas -->
+        <div class="card glass-panel library-card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <div class="library-icon integ">
+              <i data-feather="zap"></i>
+            </div>
+            <h3>Integraciones en vivo <span style="font-size:0.75rem;font-weight:400;background:rgba(var(--accent-primary-rgb),0.15);color:var(--accent-primary);padding:2px 8px;border-radius:12px;margin-left:8px;">Conectadas vía API</span></h3>
+          </div>
+          <div class="card-body">
+            <p>Estas apps se sincronizan directamente desde el panel de <strong>Sync</strong> (ícono de nube en el sidebar). No requieren exportar archivos.</p>
+            <div class="integration-grid">
+              <div class="integration-item">
+                <div class="integration-badge badge-gtasks">
+                  <i data-feather="check-square" style="width:16px;height:16px;"></i>
+                </div>
+                <div>
+                  <strong>Google Tasks</strong>
+                  <p>Importa todas tus listas y tareas usando tu cuenta Google ya conectada. No requiere configuración adicional.</p>
+                </div>
+              </div>
+              <div class="integration-item">
+                <div class="integration-badge badge-todoist">
+                  <i data-feather="check-circle" style="width:16px;height:16px;"></i>
+                </div>
+                <div>
+                  <strong>Todoist (REST API)</strong>
+                  <p>Sincroniza tareas activas con tu API Token. Obtén tu token en <em>todoist.com/prefs/integrations</em>.</p>
+                </div>
+              </div>
+              <div class="integration-item">
+                <div class="integration-badge badge-zotero">
+                  <i data-feather="book" style="width:16px;height:16px;"></i>
+                </div>
+                <div>
+                  <strong>Zotero (REST API)</strong>
+                  <p>Importa hasta 50 referencias de tu biblioteca personal. Requiere API Key (zotero.org/settings/keys) y tu User ID numérico.</p>
+                </div>
+              </div>
+            </div>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color);">
+              <strong>Importación por archivo</strong> también disponible en Sync → Trello JSON, Notion CSV, Obsidian MD, Todoist CSV.
+            </p>
+          </div>
+        </div>
+
         <!-- Section 1: Gestión Bibliográfica -->
         <div class="card glass-panel library-card">
           <div class="card-header">
@@ -27,7 +72,7 @@ function renderLibrary(root) {
             <p>Herramientas para manejar literatura científica y estructurar protocolos de investigación.</p>
             <ul class="resource-list">
               <li>
-                <strong>Zotero Integration:</strong> El estándar de oro para importar referencias, etiquetas y notas desde PDFs directamente a Obsidian.
+                <strong>Zotero:</strong> Gestor de referencias con API REST integrada en este workspace. Importa artículos directamente desde tu biblioteca. Complementa con el plugin Better BibTeX para exportar a Obsidian.
               </li>
               <li>
                 <strong>Dataview:</strong> Motor de base de datos para crear tablas dinámicas que filtren artículos, seguimiento de pacientes o avances de tesis.
@@ -136,6 +181,46 @@ function renderLibrary(root) {
       .library-icon.teach { background: rgba(22, 160, 133, 0.15); color: #1abc9c; }
       .library-icon.proj { background: rgba(41, 128, 185, 0.15); color: #3498db; }
       .library-icon.eco { background: rgba(142, 68, 173, 0.15); color: #9b59b6; }
+      .library-icon.integ { background: rgba(230, 126, 34, 0.15); color: #e67e22; }
+
+      .integration-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+        margin-top: 12px;
+      }
+      .integration-item {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        background: rgba(var(--accent-primary-rgb), 0.04);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 12px;
+      }
+      .integration-item p {
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin: 2px 0 0;
+        line-height: 1.45;
+      }
+      .integration-item strong {
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        display: block;
+      }
+      .integration-badge {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .badge-gtasks { background: rgba(52, 168, 83, 0.15); color: #34a853; }
+      .badge-todoist { background: rgba(219, 68, 55, 0.15); color: #db4437; }
+      .badge-zotero { background: rgba(204, 0, 0, 0.15); color: #cc0000; }
       
       .resource-list {
         list-style: none;
