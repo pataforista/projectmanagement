@@ -16,7 +16,7 @@ function renderLibrary(root) {
           <h1>Biblioteca de Recursos</h1>
           <p class="view-subtitle">Gestión del conocimiento, investigación y docencia.</p>
         </div>
-        <div class="view-actions">
+        <div class="view-actions" style="position:relative;">
            <!-- View Mode Toggle -->
            <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
              <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
@@ -28,9 +28,25 @@ function renderLibrary(root) {
            </div>
            
            <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
-           <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()">
-             <i data-feather="upload-cloud"></i> Importar Zotero
-           </button>
+           <div class="dropdown-wrapper">
+             <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()" title="Importar CSL JSON manual">
+               <i data-feather="upload-cloud"></i> Archivo
+             </button>
+             <button class="btn btn-primary" id="btn-zotero-sync" title="Sincronizar en vivo con API" style="margin-left: 8px;">
+               <i data-feather="refresh-cw"></i> Sincronizar Zotero
+             </button>
+             <button class="btn btn-icon" id="btn-zotero-config" title="Configurar Zotero API" style="margin-left:8px;">
+               <i data-feather="settings"></i>
+             </button>
+             
+             <div class="popover-menu glass-panel" id="zotero-config-popover" style="display:none; position:absolute; right:0; top:40px; width:300px; padding:16px; border-radius:8px; z-index:100; text-align:left;">
+               <h4 style="margin:0 0 12px 0; font-size:0.9rem;">Configuración Zotero API</h4>
+               <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">Obtén tu UserID y Web API Key gratuitos desde las preferencias de tu cuenta en zotero.org.</p>
+               <input class="form-input" id="zot-user-id" placeholder="Zotero User ID (ej. 1234567)" style="margin-bottom:8px;" value="${esc(zoteroApi.getCredentials().userId)}">
+               <input class="form-input" id="zot-api-key" placeholder="API Key secreta" type="password" style="margin-bottom:12px;" value="${esc(zoteroApi.getCredentials().apiKey)}">
+               <button class="btn btn-primary btn-sm" id="btn-zot-save-cfg" style="width:100%;">Guardar credenciales</button>
+             </div>
+           </div>
         </div>
       </div>
 
@@ -43,19 +59,69 @@ function renderLibrary(root) {
 
       <div class="library-container" style="flex:1; display:flex; flex-direction:column;">
         ${libraryItems.length === 0
-      ? emptyState('book-open', 'Tu biblioteca está vacía. Exporta tu colección desde Zotero como CSL-JSON o JSON normal e impórtala aquí.')
+      ? emptyState('book-open', 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar, o sube manualmente un archivo CSL-JSON.')
       : (currentLibraryViewMode === 'table' ? renderLibraryTable(libraryItems) : renderLibraryGrid(libraryItems))}
       </div>
     </div>`;
 
   feather.replace();
 
-  // Attach File Upload Event
+  // Zotero API logic
   const fileInput = document.getElementById('zotero-import-file');
-  if (fileInput) {
-    fileInput.addEventListener('change', handleZoteroImport);
+  if (fileInput) fileInput.addEventListener('change', handleZoteroImport);
+
+  const btnSync = document.getElementById('btn-zotero-sync');
+  const btnConfig = document.getElementById('btn-zotero-config');
+  const popover = document.getElementById('zotero-config-popover');
+  const btnSaveCfg = document.getElementById('btn-zot-save-cfg');
+
+  if (btnConfig && popover) {
+    btnConfig.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popover.style.display = popover.style.display === 'none' ? 'block' : 'none';
+    });
+
+    // Close popover when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!popover.contains(e.target) && e.target !== btnConfig) {
+        popover.style.display = 'none';
+      }
+    });
+  }
+
+  if (btnSaveCfg) {
+    btnSaveCfg.addEventListener('click', () => {
+      const uid = document.getElementById('zot-user-id').value;
+      const key = document.getElementById('zot-api-key').value;
+      zoteroApi.setCredentials(uid, key);
+      popover.style.display = 'none';
+      showToast('Credenciales guardadas localmente', 'success');
+    });
+  }
+
+  if (btnSync) {
+    btnSync.addEventListener('click', async () => {
+      btnSync.innerHTML = '<i data-feather="loader" class="spin"></i> Sincronizando...';
+      feather.replace();
+
+      const success = await zoteroApi.syncLibrary();
+      if (success) {
+        renderLibrary(document.getElementById('app-root'));
+      } else {
+        btnSync.innerHTML = '<i data-feather="refresh-cw"></i> Sincronizar Zotero';
+        feather.replace();
+      }
+    });
   }
 }
+
+window.deleteLibraryItem = async function (id) {
+  if (confirm("¿Estás seguro de querer borrar esta referencia de tu biblioteca local?")) {
+    const lib = store.get.library().filter(i => i.id !== id);
+    await store.dispatch('CLEAR_LIBRARY_AND_SYNC', lib);
+    renderLibrary(document.getElementById('app-root'));
+  }
+};
 
 window.setLibraryViewMode = function (mode) {
   currentLibraryViewMode = mode;
@@ -82,10 +148,13 @@ function renderLibraryTable(items) {
                     <td style="padding: 12px; font-weight: 500;">${esc(item.title)}</td>
                     <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${esc(item.author || '---')}</td>
                     <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${item.date ? escaAño(item.date) : '---'}</td>
-                    <td style="padding: 12px;">
-                        <a href="${item.uri}" class="btn btn-sm btn-ghost" style="color:var(--accent-primary);">
+                    <td style="padding: 12px; display:flex; gap:8px;">
+                        <a href="${item.uri}" class="btn btn-sm btn-ghost" title="Abrir en Zotero" style="color:var(--accent-primary);">
                           <i data-feather="external-link" style="width: 14px; height: 14px;"></i>
                         </a>
+                        <button class="btn btn-sm btn-ghost" title="Eliminar referencia" style="color:var(--accent-danger);" onclick="deleteLibraryItem('${item.id}')">
+                          <i data-feather="trash-2" style="width: 14px; height: 14px;"></i>
+                        </button>
                     </td>
                 </tr>
                 `).join('')}

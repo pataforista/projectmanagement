@@ -46,9 +46,13 @@ function renderCycles(root) {
           ? filtered.map(c => cycleCard(c)).join('')
           : emptyState('refresh-cw', 'Sin ciclos para este proyecto.');
         feather.replace();
+        bindCycleCards(grid);
       }
     });
   }
+
+  const grid = root.querySelector('#cycles-grid');
+  if (grid) bindCycleCards(grid);
 }
 
 // Cycle card removed, now in components.js
@@ -60,5 +64,16 @@ store.subscribe('cycles', () => {
     const cycles = store.get.activeCycles();
     grid.innerHTML = cycles.length ? cycles.map(c => cycleCard(c)).join('') : emptyState('refresh-cw', 'No hay ciclos.');
     feather.replace();
+    bindCycleCards(grid);
   }
 });
+
+function bindCycleCards(grid) {
+  grid.querySelectorAll('.cycle-card').forEach(card => {
+    card.addEventListener('click', e => {
+      const cId = card.dataset.id;
+      const cycle = store.get.allCycles().find(c => c.id === cId);
+      if (cycle) openCycleModal(cycle);
+    });
+  });
+}

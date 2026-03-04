@@ -132,9 +132,24 @@ function backlogRow(t) {
 
 function bindInlineStatus(root) {
   root.querySelectorAll('.inline-status-select').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      const id = sel.dataset.taskId;
-      await store.dispatch('UPDATE_TASK', { id, status: sel.value });
+    sel.addEventListener('change', async e => {
+      // Prevent row click when changing status
+      e.stopPropagation();
+      const tr = sel.closest('tr');
+      const taskId = tr.dataset.taskId;
+      await store.dispatch('UPDATE_TASK', { id: taskId, status: e.target.value });
+      refreshBacklog(root);
+    });
+  });
+
+  // Open modal on row click (excluding the status dropdown and checkbox)
+  root.querySelectorAll('table.list-table tbody tr').forEach(row => {
+    row.addEventListener('click', e => {
+      if (e.target.closest('.task-checkbox') || e.target.closest('.inline-status-select')) return;
+
+      const taskId = row.dataset.taskId;
+      const task = store.get.allTasks().find(t => t.id === taskId);
+      if (task) openTaskModal(task);
     });
   });
 }

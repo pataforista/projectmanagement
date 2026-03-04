@@ -33,6 +33,23 @@
 </head>
 
 <body class="theme-dark">
+  <!-- ── Auth Overlay (Lock Screen) ─────────────────────────────────────────── -->
+  <div id="auth-overlay" class="auth-overlay">
+    <div class="auth-box">
+      <div style="margin-bottom:20px; color:var(--accent-primary);">
+        <i data-feather="lock" style="width:48px;height:48px;"></i>
+      </div>
+      <h2 style="margin-bottom:8px; font-weight:700;">Workspace Bloqueado</h2>
+      <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:24px;" id="auth-subtitle">Ingresa tu
+        contraseña para acceder.</p>
+
+      <form id="auth-form" style="display:flex; flex-direction:column; gap:16px;">
+        <input type="password" id="auth-password" class="form-input" placeholder="Contraseña" required autofocus>
+        <button type="submit" class="btn btn-primary" style="justify-content:center;">Desbloquear</button>
+      </form>
+    </div>
+  </div>
+
   <div class="app-container">
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
@@ -111,6 +128,9 @@
           <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)">
             <i data-feather="download"></i>
           </button>
+          <button class="btn btn-icon" id="btn-help" title="Guía de Uso">
+            <i data-feather="help-circle"></i>
+          </button>
         </div>
         <div class="user-profile" id="btn-user-profile" title="Configurar perfil">
           <div class="avatar" id="user-avatar">C</div>
@@ -181,9 +201,10 @@
   <!-- Load order matters: db → utils → store → router → views → modals → app -->
   <script src="js/db.js"></script>
   <script src="js/utils.js"></script>
-  <script src="js/components.js"></script>
   <script src="js/store.js"></script>
-  <script src="js/router.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/modals.js"></script>
+  <script src="js/api/zotero.js"></script>
 
   <!-- View modules -->
   <script src="js/views/dashboard.js"></script>

@@ -5,6 +5,56 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
 
+    // ── 0. App Lock (Auth) ─────────────────────────────────────────────────────
+    const authOverlay = document.getElementById('auth-overlay');
+    const authForm = document.getElementById('auth-form');
+    const authPassword = document.getElementById('auth-password');
+    const authSubtitle = document.getElementById('auth-subtitle');
+
+    const hashStr = str => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
+        return hash.toString();
+    };
+
+    let savedHash = localStorage.getItem('workspace_lock_hash');
+
+    await new Promise(resolve => {
+        if (!authOverlay) return resolve(); // Fallback if HTML is missing
+
+        if (!savedHash) {
+            authOverlay.classList.add('open');
+            authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
+            authForm.onsubmit = (e) => {
+                e.preventDefault();
+                const pwd = authPassword.value.trim();
+                if (pwd.length < 4) {
+                    authPassword.style.border = '1px solid var(--accent-warning)';
+                    setTimeout(() => authPassword.style.border = '', 1000);
+                    return;
+                }
+                localStorage.setItem('workspace_lock_hash', hashStr(pwd));
+                authOverlay.classList.remove('open');
+                resolve();
+            };
+        } else {
+            authOverlay.classList.add('open');
+            authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
+            authForm.onsubmit = (e) => {
+                e.preventDefault();
+                const pwd = authPassword.value.trim();
+                if (hashStr(pwd) === savedHash) {
+                    authOverlay.classList.remove('open');
+                    resolve();
+                } else {
+                    authPassword.style.border = '1px solid var(--accent-danger)';
+                    authPassword.value = '';
+                    setTimeout(() => authPassword.style.border = '', 1000);
+                }
+            };
+        }
+    });
+
     // ── 1. Initialize IndexedDB (fail-safe: routing still works without it) ────
     try {
         await initDB();
@@ -69,6 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ── 8. Wire search button ──────────────────────────────────────────────────
 document.getElementById('btn-search')?.addEventListener('click', openSearch);
 document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
+document.getElementById('btn-help')?.addEventListener('click', openHelpModal);
 document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
 document.getElementById('search-overlay')?.addEventListener('click', e => {
     if (e.target.id === 'search-overlay') closeSearch();
@@ -80,17 +131,63 @@ document.addEventListener('keydown', e => {
 
 feather.replace();
 
-// ── Refresh sidebar project list ─────────────────────────────────────────────
+// ── Refresh sidebar project list (Drag & Drop) ───────────────────────────────
+let dragSrcEl = null;
+
+function handleProjectDragStart(e) {
+    dragSrcEl = this;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+    this.style.opacity = '0.4';
+}
+function handleProjectDragOver(e) {
+    if (e.preventDefault) { e.preventDefault(); }
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+function handleProjectDragEnter(e) { this.classList.add('drag-over'); }
+function handleProjectDragLeave(e) { this.classList.remove('drag-over'); }
+function handleProjectDrop(e) {
+    if (e.stopPropagation) { e.stopPropagation(); }
+    if (dragSrcEl !== this) {
+        const srcId = dragSrcEl.dataset.id;
+        const tgtId = this.dataset.id;
+        const projects = store.get.projects().filter(p => p.status !== 'archivado');
+        const srcIdx = projects.findIndex(p => p.id === srcId);
+        const tgtIdx = projects.findIndex(p => p.id === tgtId);
+        if (srcIdx > -1 && tgtIdx > -1) {
+            const [moved] = projects.splice(srcIdx, 1);
+            projects.splice(tgtIdx, 0, moved);
+            const updates = projects.map((p, i) => ({ id: p.id, order: i }));
+            store.dispatch('UPDATE_PROJECT_ORDERS', updates);
+        }
+    }
+    return false;
+}
+function handleProjectDragEnd(e) {
+    this.style.opacity = '1';
+    document.querySelectorAll('.sidebar-project-item').forEach(item => item.classList.remove('drag-over'));
+}
+
 function refreshSidebarProjects() {
     const container = document.getElementById('sidebar-projects');
     if (!container) return;
     const projects = store.get.projects().filter(p => p.status !== 'archivado');
     container.innerHTML = projects.map(p => `
-    <a href="#/project/${p.id}" class="nav-item" data-view="project-${p.id}">
+    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true">
       <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
       ${esc(p.name)}
       <span class="nav-count">${store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length}</span>
     </a>`).join('');
+
+    container.querySelectorAll('.sidebar-project-item').forEach(item => {
+        item.addEventListener('dragstart', handleProjectDragStart);
+        item.addEventListener('dragenter', handleProjectDragEnter);
+        item.addEventListener('dragover', handleProjectDragOver);
+        item.addEventListener('dragleave', handleProjectDragLeave);
+        item.addEventListener('drop', handleProjectDrop);
+        item.addEventListener('dragend', handleProjectDragEnd);
+    });
 }
 
 // ── Refresh current view after mutations ─────────────────────────────────────

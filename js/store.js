@@ -101,6 +101,19 @@ const store = (() => {
                 }
                 break;
             }
+            case 'UPDATE_PROJECT_ORDERS': {
+                storeName = 'projects';
+                // payload: array of {id, order}
+                for (const update of payload) {
+                    const idx = _state.projects.findIndex(p => p.id === update.id);
+                    if (idx !== -1) {
+                        _state.projects[idx].order = update.order;
+                        await dbAPI.put(storeName, _state.projects[idx]);
+                    }
+                }
+                _notify(storeName);
+                break;
+            }
             case 'DELETE_PROJECT': {
                 storeName = 'projects';
                 await dbAPI.delete(storeName, payload.id);
@@ -167,6 +180,14 @@ const store = (() => {
                 }
                 break;
             }
+            case 'DELETE_CYCLE': {
+                storeName = 'cycles';
+                await dbAPI.delete(storeName, payload.id);
+                _state.cycles = _state.cycles.filter(c => c.id !== payload.id);
+                _notify(storeName);
+                if (window.showToast) showToast('Ciclo eliminado.', 'info');
+                break;
+            }
 
             // ── Decisions ──
             case 'ADD_DECISION': {
@@ -178,11 +199,23 @@ const store = (() => {
                 if (window.showToast) showToast(`Decisión "${record.title}" registrada.`, 'success');
                 return record;
             }
+            case 'UPDATE_DECISION': {
+                storeName = 'decisions';
+                const idx = _state.decisions.findIndex(d => d.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.decisions[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.decisions[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
             case 'DELETE_DECISION': {
                 storeName = 'decisions';
                 await dbAPI.delete(storeName, payload.id);
                 _state.decisions = _state.decisions.filter(d => d.id !== payload.id);
                 _notify(storeName);
+                if (window.showToast) showToast('Decisión eliminada.', 'info');
                 break;
             }
 
@@ -237,6 +270,19 @@ const store = (() => {
                 if (window.showToast) showToast(`${count} referencias importadas de Zotero.`, 'success');
                 break;
             }
+            case 'CLEAR_LIBRARY_AND_SYNC': {
+                storeName = 'library';
+                await dbAPI.clear(storeName); // wipe old state
+
+                const items = payload; // Array of mapped zotero items
+                for (const item of items) {
+                    await dbAPI.put(storeName, item);
+                }
+
+                _state.library = await dbAPI.getAll(storeName);
+                _notify(storeName);
+                break;
+            }
 
             // ── Sync ──
             case 'HYDRATE_STORE': {
@@ -266,7 +312,7 @@ const store = (() => {
 
     // ── Selectors ──
     const get = {
-        projects: () => _state.projects,
+        projects: () => [..._state.projects].sort((a, b) => (a.order || 0) - (b.order || 0)),
         activeTasks: () => _state.tasks.filter(t => t.status !== 'Archivado' && t.status !== 'Terminado'),
         tasksByProject: (id) => _state.tasks.filter(t => t.projectId === id),
         tasksByCycle: (id) => _state.tasks.filter(t => t.cycleId === id),

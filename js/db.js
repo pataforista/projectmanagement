@@ -136,15 +136,26 @@ const initDB = () => new Promise(async (resolve, reject) => {
 function tx(storeName, mode, fn) {
   return new Promise((resolve, reject) => {
     if (!db) return reject('DB not initialized');
-    const transaction = db.transaction([storeName], mode);
-    const store = transaction.objectStore(storeName);
-    const req = fn(store);
-    if (req) {
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    } else {
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+    try {
+      const transaction = db.transaction([storeName], mode);
+      const store = transaction.objectStore(storeName);
+      const req = fn(store);
+      if (req) {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => {
+          console.error(`[DB] Error in ${storeName}:`, req.error);
+          reject(req.error);
+        };
+      } else {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => {
+          console.error(`[DB] Tx error in ${storeName}:`, transaction.error);
+          reject(transaction.error);
+        };
+      }
+    } catch (e) {
+      console.error(`[DB] Exception in ${storeName} tx:`, e);
+      reject(e);
     }
   });
 }
@@ -156,8 +167,26 @@ const dbAPI = {
   },
 
   /** Put (upsert) a record. */
-  put(storeName, record) {
-    return tx(storeName, 'readwrite', s => s.put(record));
+  async put(storeName, record) {
+    try {
+      const res = await tx(storeName, 'readwrite', s => s.put(record));
+      if (storeName !== 'logs' && storeName !== 'syncQueue') {
+        // Subtle visual feedback that DB is saving
+        const ind = document.createElement('div');
+        ind.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--accent-success); color:#fff; padding:4px 10px; border-radius:12px; font-size:0.7rem; font-weight:600; opacity:0; transition:opacity 0.2s; z-index:999999; pointer-events:none; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:4px;';
+        ind.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Guardado local';
+        document.body.appendChild(ind);
+        requestAnimationFrame(() => ind.style.opacity = '1');
+        setTimeout(() => {
+          ind.style.opacity = '0';
+          setTimeout(() => ind.remove(), 200);
+        }, 1500);
+      }
+      return res;
+    } catch (e) {
+      if (window.showToast) window.showToast('Error crítico de guardado local.', 'error');
+      throw e;
+    }
   },
 
   /** Get a single record by primary key. */
@@ -176,8 +205,13 @@ const dbAPI = {
   },
 
   /** Delete a record by primary key. */
-  delete(storeName, id) {
-    return tx(storeName, 'readwrite', s => s.delete(id));
+  async delete(storeName, id) {
+    try {
+      return await tx(storeName, 'readwrite', s => s.delete(id));
+    } catch (e) {
+      if (window.showToast) window.showToast('Error al eliminar registro local.', 'error');
+      throw e;
+    }
   },
 
   /** Clear a store. */

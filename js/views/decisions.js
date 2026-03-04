@@ -56,6 +56,17 @@ function renderDecisionsList(decisions) {
 // decisionCard removed, now in components.js
 
 function bindDecisionCards(root) {
+  root.querySelectorAll('.dec-card').forEach(card => {
+    card.addEventListener('click', e => {
+      // Don't open modal if clicking the delete button
+      if (e.target.closest('.dec-del-btn')) return;
+
+      const dId = card.dataset.id;
+      const decision = store.get.allDecisions().find(d => d.id === dId);
+      if (decision) openDecisionModal(decision);
+    });
+  });
+
   root.querySelectorAll('.dec-del-btn').forEach(btn => {
     btn.addEventListener('click', async e => {
       e.stopPropagation();

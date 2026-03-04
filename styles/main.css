@@ -942,3 +942,53 @@ body::before {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
 }
+
+/* ── Auth Overlay ────────────────────────────────────────────────────────────── */
+.auth-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-base);
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease);
+}
+
+.auth-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.auth-box {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+    box-shadow: var(--shadow-xl);
+    backdrop-filter: var(--blur);
+    -webkit-backdrop-filter: var(--blur);
+}
+
+/* ── Drag & Drop ────────────────────────────────────────────────────────────── */
+.nav-item.drag-over {
+    background: rgba(var(--accent-primary-rgb), 0.1) !important;
+    border-top: 2px solid var(--accent-primary);
+}
+
+.sidebar-project-item {
+    cursor: grab;
+}
+
+.sidebar-project-item:active {
+    cursor: grabbing;
+}

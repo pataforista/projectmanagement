@@ -98,6 +98,15 @@ function kanbanCard(t) {
 
 function bindDragDrop(container) {
   container.querySelectorAll('.kanban-card').forEach(card => {
+    card.addEventListener('click', e => {
+      // Don't open if dragging
+      if (card.classList.contains('dragging')) return;
+
+      const tId = card.dataset.taskId;
+      const task = store.get.allTasks().find(t => t.id === tId);
+      if (task) openTaskModal(task);
+    });
+
     card.addEventListener('dragstart', e => {
       _dragTaskId = card.dataset.taskId;
       _dragSourceStatus = card.dataset.status;
