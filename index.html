@@ -90,7 +90,7 @@
             <i data-feather="sun" class="sun-icon"></i>
             <i data-feather="moon" class="moon-icon"></i>
           </button>
-          <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.authenticate()"
+          <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.openPanel()"
             title="Conectar Google Drive" style="position:relative;">
             <i data-feather="cloud"></i>
             <span class="status-indicator status-offline" id="sync-indicator"></span>
@@ -162,7 +162,6 @@
   <!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
   <!-- Load order matters: db → utils → store → router → views → modals → app -->
   <script src="js/db.js"></script>
-  <script src="js/utils.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/components.js"></script>
   <script src="js/store.js"></script>

@@ -208,6 +208,17 @@ const store = (() => {
                 return record;
             }
 
+
+            // ── Members ──
+            case 'ADD_MEMBER': {
+                storeName = 'members';
+                const record = { id: uid, createdAt: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.members.push(record);
+                _notify(storeName);
+                return record;
+            }
+
             // ── Sync ──
             case 'HYDRATE_STORE': {
                 // Key names should match _state keys
@@ -245,7 +256,9 @@ const store = (() => {
         activeCycles: () => _state.cycles.filter(c => c.status === 'activo'),
         decisionsByProject: (id) => _state.decisions.filter(d => d.projectId === id),
         allDecisions: () => _state.decisions,
+        decisions: () => _state.decisions,
         documentByProject: (id) => _state.documents.find(d => d.projectId === id) || null,
+        documents: () => _state.documents,
         members: () => _state.members,
         memberById: (id) => _state.members.find(m => m.id === id),
         projectById: (id) => _state.projects.find(p => p.id === id),
@@ -256,6 +269,7 @@ const store = (() => {
             return _state.tasks.filter(t => t.dueDate && new Date(t.dueDate).getTime() <= cutoff && t.status !== 'Terminado' && t.status !== 'Archivado');
         },
         allCycles: () => _state.cycles,
+        cycles: () => _state.cycles,
         cycleProgress: (cycleId) => {
             const tasks = _state.tasks.filter(t => t.cycleId === cycleId);
             if (!tasks.length) return 0;
