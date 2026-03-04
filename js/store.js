@@ -1,0 +1,271 @@
+/**
+ * store.js — Central reactive state
+ * Loads from IndexedDB, provides subscribe() and dispatch()
+ */
+
+const store = (() => {
+    // ──────────────────────────────────────────────────────────────────────────
+    // Internal State
+    // ──────────────────────────────────────────────────────────────────────────
+    let _state = {
+        projects: [],
+        tasks: [],
+        cycles: [],
+        decisions: [],
+        documents: [],
+        members: [],
+        logs: [],
+    };
+
+    const _subscribers = {};
+
+    function _notify(key) {
+        if (_subscribers['*']) _subscribers['*'].forEach(fn => fn(_state));
+        if (_subscribers[key]) _subscribers[key].forEach(fn => fn(_state[key]));
+    }
+
+    // ── Load from DB ──────────────────────────────────────────────────────────
+    async function load() {
+        _state.projects = await dbAPI.getAll('projects');
+        _state.tasks = await dbAPI.getAll('tasks');
+        _state.cycles = await dbAPI.getAll('cycles');
+        _state.decisions = await dbAPI.getAll('decisions');
+        _state.documents = await dbAPI.getAll('documents');
+        _state.members = await dbAPI.getAll('members');
+        _state.logs = await dbAPI.getAll('logs') || [];
+        _notify('*');
+    }
+
+    // ── Seed if empty ─────────────────────────────────────────────────────────
+    async function seedIfEmpty() {
+        if (_state.projects.length > 0) return;
+
+        console.log('Seeding initial data...');
+        const now = Date.now();
+        const p1 = { id: 'p1', name: 'Proyecto de Investigación A', description: 'Investigación sobre metodologías ágiles en educación.', type: 'Investigación', status: 'activo', createdAt: now };
+        const p2 = { id: 'p2', name: 'Artículo: Cognición y Lenguaje', description: 'Redacción de paper para revista indexada.', type: 'Artículo', status: 'activo', createdAt: now };
+        const p3 = { id: 'p3', name: 'Clase Semestre A — Metodología', description: 'Preparación de material y dictado de clases.', type: 'Clase', status: 'activo', createdAt: now };
+
+        const t1 = { id: 't1', projectId: 'p2', title: 'Redactar introducción del artículo', status: 'En elaboración', priority: 'alta', dueDate: '2026-03-04', subtasks: [], tags: ['Escritura'], createdAt: now };
+        const t2 = { id: 't2', projectId: 'p3', title: 'Definir pregunta de investigación central', status: 'Capturado', priority: 'media', dueDate: '2026-03-05', subtasks: [], tags: ['Planeación'], createdAt: now };
+
+        await dbAPI.put('projects', p1); await dbAPI.put('projects', p2); await dbAPI.put('projects', p3);
+        await dbAPI.put('tasks', t1); await dbAPI.put('tasks', t2);
+
+        _state.projects = [p1, p2, p3];
+        _state.tasks = [t1, t2];
+        _notify('*');
+    }
+
+    // ── Subscription ──────────────────────────────────────────────────────────
+    function subscribe(key, fn) {
+        if (!_subscribers[key]) _subscribers[key] = [];
+        _subscribers[key].push(fn);
+        // Initial call
+        if (key === '*') fn(_state);
+        else fn(_state[key]);
+        return () => {
+            _subscribers[key] = _subscribers[key].filter(x => x !== fn);
+        };
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Actions — each mutates DB + memory + notifies
+    // ──────────────────────────────────────────────────────────────────────────
+
+    async function dispatch(action, payload) {
+        const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        let storeName;
+
+        switch (action) {
+            // ── Projects ──
+            case 'ADD_PROJECT': {
+                storeName = 'projects';
+                const record = { id: uid, createdAt: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.projects.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`Proyecto "${record.name}" creado.`, 'success');
+                return record;
+            }
+            case 'UPDATE_PROJECT': {
+                storeName = 'projects';
+                const idx = _state.projects.findIndex(p => p.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.projects[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.projects[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'DELETE_PROJECT': {
+                storeName = 'projects';
+                await dbAPI.delete(storeName, payload.id);
+                _state.projects = _state.projects.filter(p => p.id !== payload.id);
+                _notify(storeName);
+                if (window.showToast) showToast('Proyecto eliminado.', 'info');
+                break;
+            }
+
+            // ── Tasks ──
+            case 'ADD_TASK': {
+                storeName = 'tasks';
+                const record = {
+                    id: uid,
+                    createdAt: Date.now(),
+                    cycleId: null,
+                    subtasks: [],
+                    tags: [],
+                    ...payload
+                };
+                await dbAPI.put(storeName, record);
+                _state.tasks.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`Tarea "${record.title}" creada.`, 'success');
+                return record;
+            }
+            case 'UPDATE_TASK': {
+                storeName = 'tasks';
+                const idx = _state.tasks.findIndex(t => t.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.tasks[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.tasks[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'DELETE_TASK': {
+                storeName = 'tasks';
+                await dbAPI.delete(storeName, payload.id);
+                _state.tasks = _state.tasks.filter(t => t.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Cycles ──
+            case 'ADD_CYCLE': {
+                storeName = 'cycles';
+                const record = { id: uid, createdAt: Date.now(), status: 'activo', ...payload };
+                await dbAPI.put(storeName, record);
+                _state.cycles.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`Ciclo "${record.name}" creado.`, 'success');
+                return record;
+            }
+            case 'UPDATE_CYCLE': {
+                storeName = 'cycles';
+                const idx = _state.cycles.findIndex(c => c.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.cycles[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.cycles[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+
+            // ── Decisions ──
+            case 'ADD_DECISION': {
+                storeName = 'decisions';
+                const record = { id: uid, createdAt: Date.now(), relatedTaskIds: [], ...payload };
+                await dbAPI.put(storeName, record);
+                _state.decisions.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`Decisión "${record.title}" registrada.`, 'success');
+                return record;
+            }
+            case 'DELETE_DECISION': {
+                storeName = 'decisions';
+                await dbAPI.delete(storeName, payload.id);
+                _state.decisions = _state.decisions.filter(d => d.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Documents ──
+            case 'SAVE_DOCUMENT': {
+                storeName = 'documents';
+                const existing = _state.documents.find(d => d.projectId === payload.projectId);
+                const record = { id: `doc-${payload.projectId}`, updatedAt: Date.now(), ...existing, ...payload };
+                await dbAPI.put(storeName, record);
+                const idx = _state.documents.findIndex(d => d.projectId === payload.projectId);
+                if (idx !== -1) _state.documents[idx] = record;
+                else _state.documents.push(record);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Activity Logs ──
+            case 'ADD_LOG': {
+                storeName = 'logs';
+                if (!_state.logs) _state.logs = [];
+                const record = { id: uid, timestamp: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.logs.push(record);
+                _notify(storeName);
+                return record;
+            }
+
+            // ── Sync ──
+            case 'HYDRATE_STORE': {
+                // Key names should match _state keys
+                for (const key in payload) {
+                    if (Array.isArray(payload[key]) && _state.hasOwnProperty(key)) {
+                        await dbAPI.clear(key);
+                        _state[key] = payload[key];
+                        for (const r of payload[key]) {
+                            await dbAPI.put(key, r);
+                        }
+                    }
+                }
+                _notify('*');
+                break;
+            }
+
+            default:
+                console.warn('Unknown action:', action);
+        }
+
+        // Trigger Google Drive sync push if connected
+        if (window.syncManager) {
+            syncManager.push();
+        }
+    }
+
+    // ── Selectors ──
+    const get = {
+        projects: () => _state.projects,
+        activeTasks: () => _state.tasks.filter(t => t.status !== 'Archivado' && t.status !== 'Terminado'),
+        tasksByProject: (id) => _state.tasks.filter(t => t.projectId === id),
+        tasksByCycle: (id) => _state.tasks.filter(t => t.cycleId === id),
+        tasksByStatus: (s) => _state.tasks.filter(t => t.status === s),
+        cyclesByProject: (id) => _state.cycles.filter(c => c.projectId === id),
+        activeCycles: () => _state.cycles.filter(c => c.status === 'activo'),
+        decisionsByProject: (id) => _state.decisions.filter(d => d.projectId === id),
+        allDecisions: () => _state.decisions,
+        documentByProject: (id) => _state.documents.find(d => d.projectId === id) || null,
+        members: () => _state.members,
+        memberById: (id) => _state.members.find(m => m.id === id),
+        projectById: (id) => _state.projects.find(p => p.id === id),
+        allTasks: () => _state.tasks,
+        blockedTasks: () => _state.tasks.filter(t => t.status === 'En espera'),
+        upcomingDeliverables: (days = 7) => {
+            const cutoff = Date.now() + days * 86400000;
+            return _state.tasks.filter(t => t.dueDate && new Date(t.dueDate).getTime() <= cutoff && t.status !== 'Terminado' && t.status !== 'Archivado');
+        },
+        allCycles: () => _state.cycles,
+        cycleProgress: (cycleId) => {
+            const tasks = _state.tasks.filter(t => t.cycleId === cycleId);
+            if (!tasks.length) return 0;
+            const done = tasks.filter(t => t.status === 'Terminado' || t.status === 'Archivado').length;
+            return Math.round((done / tasks.length) * 100);
+        },
+        logs: () => _state.logs,
+    };
+
+    return { load, seedIfEmpty, dispatch, subscribe, get };
+})();
+
+window.store = store;

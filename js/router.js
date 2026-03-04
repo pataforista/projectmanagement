@@ -1,0 +1,109 @@
+/**
+ * router.js — Hash-based SPA router
+ * Routes: #/dashboard  #/projects  #/backlog  #/cycles
+ *         #/board      #/calendar  #/decisions
+ *         #/project/:id/document   #/project/:id
+ */
+
+const ROUTES = {
+    '/dashboard': 'dashboard',
+    '/projects': 'projects',
+    '/backlog': 'backlog',
+    '/cycles': 'cycles',
+    '/board': 'board',
+    '/calendar': 'calendar',
+    '/decisions': 'decisions',
+};
+
+// Route meta for topbar breadcrumb + subtitle
+const ROUTE_META = {
+    dashboard: { label: 'Dashboard', subtitle: 'Resumen de actividad y próximos entregables.' },
+    projects: { label: 'Proyectos', subtitle: 'Gestión de proyectos activos y archivados.' },
+    backlog: { label: 'Backlog', subtitle: 'Captura y priorización de todo el trabajo pendiente.' },
+    cycles: { label: 'Ciclos', subtitle: 'Planificación temporal y timeboxing.' },
+    board: { label: 'Tablero', subtitle: 'Vista Kanban por estado del trabajo.' },
+    calendar: { label: 'Calendario', subtitle: 'Fechas límite, sesiones y entregas.' },
+    decisions: { label: 'Decisiones', subtitle: 'Registro de decisiones clave del workspace.' },
+    project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
+    document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
+};
+
+class Router {
+    constructor() {
+        this._current = null;
+        this._handlers = {};
+        window.addEventListener('hashchange', () => this._dispatch());
+    }
+
+    /** Register a view handler: router.on('dashboard', renderFn) */
+    on(viewName, handler) {
+        this._handlers[viewName] = handler;
+        return this;
+    }
+
+    get current() { return this._current; }
+
+    /** Navigate programmatically */
+    navigate(path) {
+        window.location.hash = path;
+    }
+
+    /** Parse current hash and dispatch to the right handler */
+    _dispatch() {
+        const hash = window.location.hash.replace('#', '') || '/dashboard';
+
+        let viewName = null;
+        let params = {};
+
+        // Parametric routes
+        if (hash.startsWith('/project/')) {
+            const parts = hash.split('/');
+            params.projectId = parts[2];
+            viewName = parts[3] === 'document' ? 'document' : 'project';
+        } else {
+            viewName = ROUTES[hash] || 'dashboard';
+        }
+
+        this._current = { viewName, params };
+        this._updateSidebar(viewName);
+        this._updateTopbar(viewName, params);
+        this._render(viewName, params);
+
+        window.dispatchEvent(new CustomEvent('route:change', { detail: { viewName, params } }));
+    }
+
+    _updateSidebar(viewName) {
+        document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(el => {
+            el.classList.toggle('active', el.dataset.view === viewName);
+        });
+    }
+
+    _updateTopbar(viewName, params) {
+        const meta = ROUTE_META[viewName] || ROUTE_META.dashboard;
+        const label = params.projectName || meta.label;
+        const el = document.querySelector('.breadcrumbs .current');
+        if (el) el.textContent = label;
+        const sub = document.querySelector('.view-subtitle');
+        if (sub) sub.textContent = meta.subtitle;
+    }
+
+    _render(viewName, params) {
+        const root = document.getElementById('app-root');
+        if (!root) return;
+        root.innerHTML = '';
+        const handler = this._handlers[viewName];
+        if (handler) {
+            handler(root, params);
+        } else {
+            root.innerHTML = `<div class="empty-state"><p>Vista no encontrada: ${viewName}</p></div>`;
+        }
+    }
+
+    /** Trigger initial render */
+    init() {
+        if (!window.location.hash) window.location.hash = '/dashboard';
+        else this._dispatch();
+    }
+}
+
+window.router = new Router();
