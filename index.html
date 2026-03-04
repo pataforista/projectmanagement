@@ -7,6 +7,17 @@
   <meta name="theme-color" content="#09090b">
   <meta name="description"
     content="Workspace de Producción — Gestión colaborativa de proyectos académicos y creativos.">
+  <!-- Content Security Policy: restricts resource origins to known trusted sources -->
+  <meta http-equiv="Content-Security-Policy" content="
+    default-src 'self';
+    script-src 'self' 'unsafe-inline' https://unpkg.com https://accounts.google.com;
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src https://fonts.gstatic.com;
+    img-src 'self' data: blob:;
+    connect-src 'self' https://www.googleapis.com https://accounts.google.com;
+    worker-src 'self';
+    manifest-src 'self';
+  ">
 
   <title>Workspace de Producción</title>
 
@@ -37,57 +48,57 @@
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
     <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
-    <aside class="sidebar glass-panel">
+    <aside class="sidebar glass-panel" aria-label="Navegación principal">
       <div class="sidebar-header">
-        <div class="workspace-brand">
-          <div class="brand-icon"><i data-feather="hexagon"></i></div>
+        <div class="workspace-brand" aria-label="Workspace de Producción">
+          <div class="brand-icon" aria-hidden="true"><i data-feather="hexagon"></i></div>
           <span class="brand-text">Workspace</span>
         </div>
-        <button class="btn-sidebar-toggle" id="btn-sidebar-toggle">
-          <i data-feather="chevron-left"></i>
+        <button class="btn-sidebar-toggle" id="btn-sidebar-toggle" aria-label="Colapsar barra lateral" aria-expanded="true">
+          <i data-feather="chevron-left" aria-hidden="true"></i>
         </button>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="Vistas de la aplicación">
 
-        <div class="nav-section">
-          <span class="nav-label">Global</span>
-          <a class="nav-item" data-view="dashboard" href="#/dashboard">
-            <i data-feather="home"></i> Dashboard
+        <div class="nav-section" role="group" aria-labelledby="nav-label-global">
+          <span class="nav-label" id="nav-label-global">Global</span>
+          <a class="nav-item" data-view="dashboard" href="#/dashboard" aria-label="Ir a Dashboard">
+            <i data-feather="home" aria-hidden="true"></i> Dashboard
           </a>
-          <a class="nav-item" data-view="board" href="#/board">
-            <i data-feather="layout"></i> Tablero
+          <a class="nav-item" data-view="board" href="#/board" aria-label="Ir a Tablero Kanban">
+            <i data-feather="layout" aria-hidden="true"></i> Tablero
           </a>
-          <a class="nav-item" data-view="backlog" href="#/backlog">
-            <i data-feather="inbox"></i> Backlog
+          <a class="nav-item" data-view="backlog" href="#/backlog" aria-label="Ir a Backlog">
+            <i data-feather="inbox" aria-hidden="true"></i> Backlog
           </a>
-          <a class="nav-item" data-view="calendar" href="#/calendar">
-            <i data-feather="calendar"></i> Calendario
+          <a class="nav-item" data-view="calendar" href="#/calendar" aria-label="Ir a Calendario">
+            <i data-feather="calendar" aria-hidden="true"></i> Calendario
           </a>
-          <a class="nav-item" data-view="library" href="#/library">
-            <i data-feather="book-open"></i> Biblioteca
+          <a class="nav-item" data-view="library" href="#/library" aria-label="Ir a Biblioteca">
+            <i data-feather="book-open" aria-hidden="true"></i> Biblioteca
           </a>
         </div>
 
-        <div class="nav-section">
-          <span class="nav-label">Producción</span>
-          <a class="nav-item" data-view="projects" href="#/projects">
-            <i data-feather="briefcase"></i> Proyectos
+        <div class="nav-section" role="group" aria-labelledby="nav-label-prod">
+          <span class="nav-label" id="nav-label-prod">Producción</span>
+          <a class="nav-item" data-view="projects" href="#/projects" aria-label="Ir a Proyectos">
+            <i data-feather="briefcase" aria-hidden="true"></i> Proyectos
           </a>
-          <a class="nav-item" data-view="cycles" href="#/cycles">
-            <i data-feather="refresh-cw"></i> Ciclos
+          <a class="nav-item" data-view="cycles" href="#/cycles" aria-label="Ir a Ciclos">
+            <i data-feather="refresh-cw" aria-hidden="true"></i> Ciclos
           </a>
-          <a class="nav-item" data-view="decisions" href="#/decisions">
-            <i data-feather="zap"></i> Decisiones
+          <a class="nav-item" data-view="decisions" href="#/decisions" aria-label="Ir a Decisiones">
+            <i data-feather="zap" aria-hidden="true"></i> Decisiones
           </a>
-          <a class="nav-item" data-view="logs" href="#/logs">
-            <i data-feather="activity"></i> Actividad
+          <a class="nav-item" data-view="logs" href="#/logs" aria-label="Ir a Actividad">
+            <i data-feather="activity" aria-hidden="true"></i> Actividad
           </a>
         </div>
 
-        <div class="nav-section">
-          <span class="nav-label">Proyectos</span>
-          <div id="sidebar-projects">
+        <div class="nav-section" role="group" aria-labelledby="nav-label-projects">
+          <span class="nav-label" id="nav-label-projects">Proyectos</span>
+          <div id="sidebar-projects" role="list" aria-label="Lista de proyectos">
             <!-- Injected by app.js -->
           </div>
         </div>
@@ -96,21 +107,24 @@
 
       <div class="sidebar-footer">
         <div class="footer-actions">
-          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema">
-            <i data-feather="sun" class="sun-icon"></i>
-            <i data-feather="moon" class="moon-icon"></i>
+          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema" aria-label="Cambiar entre tema oscuro y claro">
+            <i data-feather="sun" class="sun-icon" aria-hidden="true"></i>
+            <i data-feather="moon" class="moon-icon" aria-hidden="true"></i>
           </button>
           <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.openPanel()"
-            title="Conectar Google Drive" style="position:relative;">
-            <i data-feather="cloud"></i>
-            <span class="status-indicator status-offline" id="sync-indicator"></span>
+            title="Conectar Google Drive" aria-label="Configurar sincronización con Google Drive" style="position:relative;">
+            <i data-feather="cloud" aria-hidden="true"></i>
+            <span class="status-indicator status-offline" id="sync-indicator" aria-hidden="true"></span>
           </button>
-          <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)">
-            <i data-feather="download"></i>
+          <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)" aria-label="Exportar todos los datos como JSON">
+            <i data-feather="download" aria-hidden="true"></i>
+          </button>
+          <button class="btn btn-icon" id="btn-help" title="Atajos de teclado (?)" aria-label="Ver atajos de teclado">
+            <i data-feather="help-circle" aria-hidden="true"></i>
           </button>
         </div>
-        <div class="user-profile" id="btn-user-profile" title="Configurar perfil">
-          <div class="avatar" id="user-avatar">C</div>
+        <div class="user-profile" id="btn-user-profile" title="Configurar perfil" role="button" tabindex="0" aria-label="Abrir configuración de perfil">
+          <div class="avatar" id="user-avatar" aria-hidden="true">C</div>
           <div class="user-info">
             <span class="user-name" id="user-name">Carlos</span>
             <span class="user-role" id="user-role">Owner</span>
@@ -120,32 +134,32 @@
     </aside>
 
     <!-- ── Main Content ─────────────────────────────────────────────────────── -->
-    <main class="main-content">
+    <main class="main-content" id="main-content">
 
       <!-- Topbar -->
-      <header class="topbar glass-panel">
+      <header class="topbar glass-panel" role="banner">
         <div class="topbar-left" style="display:flex;align-items:center;gap:12px;min-width:0;flex:1;">
-          <button class="btn btn-icon d-mobile-only" id="btn-mobile-menu" title="Menú">
-            <i data-feather="menu"></i>
+          <button class="btn btn-icon d-mobile-only" id="btn-mobile-menu" title="Menú" aria-label="Abrir menú de navegación" aria-expanded="false">
+            <i data-feather="menu" aria-hidden="true"></i>
           </button>
-          <div class="breadcrumbs">
+          <nav class="breadcrumbs" aria-label="Ruta de navegación">
             <span>Workspace</span>
-            <i data-feather="chevron-right"></i>
-            <span class="current">Dashboard</span>
-          </div>
+            <i data-feather="chevron-right" aria-hidden="true"></i>
+            <span class="current" aria-current="page">Dashboard</span>
+          </nav>
         </div>
-        <div class="topbar-actions">
-          <button class="btn btn-icon" id="btn-search" title="Buscar (Ctrl+K)">
-            <i data-feather="search"></i>
+        <div class="topbar-actions" role="toolbar" aria-label="Acciones globales">
+          <button class="btn btn-icon" id="btn-search" title="Buscar (Ctrl+K)" aria-label="Abrir búsqueda global (Ctrl+K)" aria-keyshortcuts="Control+K">
+            <i data-feather="search" aria-hidden="true"></i>
           </button>
-          <button class="btn btn-primary" id="btn-new-global">
-            <i data-feather="plus"></i> Nuevo
+          <button class="btn btn-primary" id="btn-new-global" aria-label="Crear nuevo elemento">
+            <i data-feather="plus" aria-hidden="true"></i> Nuevo
           </button>
         </div>
       </header>
 
       <!-- Dynamic view content -->
-      <div class="content-view">
+      <div class="content-view" role="region" aria-label="Contenido principal" aria-live="polite">
         <div id="app-root">
           <!-- Rendered by router + view modules -->
         </div>
@@ -157,22 +171,23 @@
   <!-- ── Global UI overlays ──────────────────────────────────────────────────── -->
 
   <!-- Search overlay -->
-  <div id="search-overlay">
+  <div id="search-overlay" role="dialog" aria-modal="true" aria-label="Búsqueda global">
     <div class="search-box">
       <div class="search-input-wrap">
-        <i data-feather="search"></i>
-        <input id="search-input" type="text" placeholder="Buscar tareas, proyectos…" autocomplete="off">
-        <kbd
+        <i data-feather="search" aria-hidden="true"></i>
+        <input id="search-input" type="search" placeholder="Buscar tareas, proyectos…" autocomplete="off"
+          aria-label="Buscar tareas y proyectos" aria-controls="search-results" aria-autocomplete="list">
+        <kbd aria-label="Presiona Escape para cerrar"
           style="font-size:0.7rem;color:var(--text-muted);border:1px solid var(--border-color);border-radius:4px;padding:2px 5px;">ESC</kbd>
       </div>
-      <div class="search-results" id="search-results">
-        <div class="search-hint">Escribe para buscar tareas y proyectos…</div>
+      <div class="search-results" id="search-results" role="listbox" aria-label="Resultados de búsqueda">
+        <div class="search-hint" role="status">Escribe para buscar tareas y proyectos…</div>
       </div>
     </div>
   </div>
 
-  <!-- Toast container -->
-  <div id="toast-container"></div>
+  <!-- Toast container (live region for screen readers) -->
+  <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 
   <!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
   <!-- Load order matters: db → utils → store → router → views → modals → app -->

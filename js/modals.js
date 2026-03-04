@@ -6,20 +6,72 @@
 // Modal helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+// Track element focused before modal opened, to restore focus on close
+let _modalPreviousFocus = null;
+
+// Focusable elements selector for focus trap
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function trapFocus(modal) {
+  const focusables = Array.from(modal.querySelectorAll(FOCUSABLE));
+  if (!focusables.length) return;
+  const first = focusables[0];
+  const last = focusables[focusables.length - 1];
+
+  modal.addEventListener('keydown', function handler(e) {
+    if (e.key !== 'Tab') return;
+    if (focusables.length === 1) { e.preventDefault(); return; }
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+}
+
 function openModal(html) {
   closeModal();
+  _modalPreviousFocus = document.activeElement;
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.id = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal">${html}</div>`;
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+
+  const modalEl = document.createElement('div');
+  modalEl.className = 'modal';
+  modalEl.innerHTML = html;
+  overlay.appendChild(modalEl);
+
   overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
   document.body.appendChild(overlay);
   feather.replace();
-  return overlay.querySelector('.modal');
+
+  // Set aria-labelledby from modal header h2 if present
+  const heading = modalEl.querySelector('.modal-header h2');
+  if (heading) {
+    if (!heading.id) heading.id = 'modal-title-' + Date.now();
+    overlay.setAttribute('aria-labelledby', heading.id);
+  }
+
+  // Trap focus inside modal
+  trapFocus(overlay);
+
+  // Focus first focusable element
+  const firstFocusable = overlay.querySelector(FOCUSABLE);
+  if (firstFocusable) setTimeout(() => firstFocusable.focus(), 50);
+
+  return modalEl;
 }
 
 function closeModal() {
   document.getElementById('modal-overlay')?.remove();
+  // Restore focus to the element that was focused before modal opened
+  if (_modalPreviousFocus && _modalPreviousFocus.focus) {
+    try { _modalPreviousFocus.focus(); } catch {}
+  }
+  _modalPreviousFocus = null;
 }
 
 // Close on Escape

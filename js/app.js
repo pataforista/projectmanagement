@@ -66,15 +66,45 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-// ── 8. Wire search button ──────────────────────────────────────────────────
+// ── 8. Wire search + global action buttons ─────────────────────────────────
 document.getElementById('btn-search')?.addEventListener('click', openSearch);
+document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
+document.getElementById('btn-help')?.addEventListener('click', openKeyboardHelp);
 document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
 document.getElementById('search-overlay')?.addEventListener('click', e => {
     if (e.target.id === 'search-overlay') closeSearch();
 });
 
+let _gKeyPending = false;
+let _gKeyTimer = null;
+
 document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); return; }
+
+    const inInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+    if (!inInput) {
+        // '?' opens keyboard shortcuts help
+        if (e.key === '?') { e.preventDefault(); openKeyboardHelp(); return; }
+
+        // 'N' creates a new element
+        if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openQuickAdd(); return; }
+
+        // G + letter navigation shortcuts
+        if (_gKeyPending) {
+            clearTimeout(_gKeyTimer);
+            _gKeyPending = false;
+            const routes = { d: '/dashboard', b: '/backlog', p: '/projects', k: '/board', c: '/cycles', a: '/calendar', l: '/library' };
+            const route = routes[e.key.toLowerCase()];
+            if (route) { e.preventDefault(); router.navigate(route); }
+            return;
+        }
+        if (e.key === 'g' || e.key === 'G') {
+            _gKeyPending = true;
+            _gKeyTimer = setTimeout(() => { _gKeyPending = false; }, 1000);
+            return;
+        }
+    }
 });
 
 feather.replace();
@@ -217,28 +247,36 @@ function handleSearch(q) {
 }
 
 /**
- * Backup entire store as JSON
+ * Backup entire store as JSON — includes all entity types for a complete restore.
  */
 async function exportData() {
     try {
         const data = {
-            version: '1.0',
+            version: '1.1',
             exportedAt: new Date().toISOString(),
+            appName: 'Workspace de Producción',
             projects: store.get.projects(),
             tasks: store.get.allTasks(),
             cycles: store.get.cycles(),
-            decisions: store.get.decisions()
+            decisions: store.get.decisions(),
+            members: store.get.members ? store.get.members() : [],
+            documents: store.get.documents ? store.get.documents() : [],
+            logs: store.get.logs ? store.get.logs().slice(-500) : [], // last 500 log entries
         };
 
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `workspace-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showToast('Datos exportados con éxito');
+        const sizeKb = (blob.size / 1024).toFixed(1);
+        showToast(`Exportación completa (${sizeKb} KB)`, 'success');
     } catch (err) {
         console.error('Export failed:', err);
         showToast('Error al exportar datos', 'error');
@@ -302,6 +340,54 @@ function initUIToggles() {
     });
 }
 
+// ── Keyboard shortcuts help overlay ──────────────────────────────────────────
+function openKeyboardHelp() {
+    if (document.getElementById('kbd-help-overlay')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'kbd-help-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Atajos de teclado');
+    overlay.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <div class="modal-header">
+        <h2><i data-feather="command"></i> Atajos de teclado</h2>
+        <button class="btn btn-icon" id="kbd-close" aria-label="Cerrar"><i data-feather="x"></i></button>
+      </div>
+      <div class="modal-body" style="gap:0;">
+        <table style="width:100%;border-collapse:collapse;font-size:0.84rem;">
+          <tbody>
+            ${[
+              ['Ctrl + K', 'Abrir búsqueda global'],
+              ['?', 'Mostrar esta ayuda'],
+              ['Esc', 'Cerrar modal o búsqueda'],
+              ['G luego D', 'Ir a Dashboard'],
+              ['G luego B', 'Ir a Backlog'],
+              ['G luego P', 'Ir a Proyectos'],
+              ['G luego K', 'Ir a Tablero (Kanban)'],
+              ['G luego C', 'Ir a Ciclos'],
+              ['N', 'Crear nuevo elemento'],
+            ].map(([key, desc]) => `
+              <tr style="border-bottom:1px solid var(--border-color);">
+                <td style="padding:10px 8px;white-space:nowrap;">
+                  ${key.split(' ').map(k => `<kbd style="display:inline-block;background:var(--bg-surface-2);border:1px solid var(--border-highlight);border-radius:4px;padding:2px 6px;font-size:0.75rem;font-family:var(--font-mono);color:var(--text-primary);">${esc(k)}</kbd>`).join(' ')}
+                </td>
+                <td style="padding:10px 8px;color:var(--text-secondary);">${esc(desc)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove(); });
+    document.body.appendChild(overlay);
+    feather.replace();
+    overlay.querySelector('#kbd-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#kbd-close').focus();
+}
+
 window.refreshCurrentView = refreshCurrentView;
 window.refreshSidebarProjects = refreshSidebarProjects;
 window.openQuickAdd = openQuickAdd;
@@ -310,6 +396,7 @@ window.closeSearch = closeSearch;
 window.handleSearch = handleSearch;
 window.initUIToggles = initUIToggles;
 window.exportData = exportData;
+window.openKeyboardHelp = openKeyboardHelp;
 
 // ── Ripple Effect ──────────────────────────────────────────────────────────────
 document.addEventListener('click', (e) => {

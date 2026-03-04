@@ -399,11 +399,30 @@ const syncManager = (() => {
             });
     }
 
+    const MAX_IMPORT_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+    const MAX_IMPORT_TASKS = 2000;
+
+    function validateImportFile(file, allowedTypes) {
+        if (!file) return 'No se seleccionó ningún archivo.';
+        if (file.size > MAX_IMPORT_SIZE_BYTES) return `El archivo es demasiado grande (máx. 5 MB). Tamaño actual: ${(file.size / 1024 / 1024).toFixed(1)} MB.`;
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!allowedTypes.includes(ext)) return `Tipo de archivo no permitido. Se esperaba: ${allowedTypes.join(', ')}.`;
+        return null;
+    }
+
     async function importTasks(tasks) {
-        for (const task of tasks) {
+        if (!Array.isArray(tasks) || tasks.length === 0) {
+            showToast('No se encontraron tareas para importar.', 'info');
+            return;
+        }
+        const limited = tasks.slice(0, MAX_IMPORT_TASKS);
+        if (tasks.length > MAX_IMPORT_TASKS) {
+            showToast(`Se importarán solo las primeras ${MAX_IMPORT_TASKS} tareas.`, 'info');
+        }
+        for (const task of limited) {
             await store.dispatch('ADD_TASK', task);
         }
-        showToast(`Importadas ${tasks.length} tareas`, 'success');
+        showToast(`Importadas ${limited.length} tareas`, 'success');
     }
 
     function openPanel() {
@@ -502,28 +521,32 @@ const syncManager = (() => {
 
         overlay.querySelector('#trello-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
-            if (!file) return;
+            const err = validateImportFile(file, ['json']);
+            if (err) { showToast(err, 'error'); return; }
             const text = await file.text();
             await importTasks(parseTrelloJson(text));
         });
 
         overlay.querySelector('#todoist-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
-            if (!file) return;
+            const err = validateImportFile(file, ['csv']);
+            if (err) { showToast(err, 'error'); return; }
             const text = await file.text();
             await importTasks(parseTodoistCsv(text));
         });
 
         overlay.querySelector('#notion-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
-            if (!file) return;
+            const err = validateImportFile(file, ['csv']);
+            if (err) { showToast(err, 'error'); return; }
             const text = await file.text();
             await importTasks(parseNotionCsv(text));
         });
 
         overlay.querySelector('#obsidian-file').addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
-            if (!file) return;
+            const err = validateImportFile(file, ['md', 'txt']);
+            if (err) { showToast(err, 'error'); return; }
             const text = await file.text();
             await importTasks(parseObsidianMarkdown(text));
         });

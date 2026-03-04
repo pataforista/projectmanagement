@@ -86,15 +86,60 @@ function emptyState(icon, text) {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
+const TOAST_ICONS = { success: '✓', error: '✕', info: 'ℹ', warning: '⚠' };
+const TOAST_DURATION = 3200;
+
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
+
     const el = document.createElement('div');
     el.className = `toast toast-${type}`;
-    el.textContent = message;
+    el.setAttribute('role', 'alert');
+    el.setAttribute('aria-live', 'assertive');
+
+    // Icon
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = TOAST_ICONS[type] || TOAST_ICONS.info;
+
+    // Message
+    const msg = document.createElement('span');
+    msg.className = 'toast-msg';
+    msg.textContent = message;
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.setAttribute('aria-label', 'Cerrar notificación');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', () => dismiss());
+
+    // Progress bar
+    const progress = document.createElement('div');
+    progress.className = 'toast-progress';
+
+    el.appendChild(icon);
+    el.appendChild(msg);
+    el.appendChild(closeBtn);
+    el.appendChild(progress);
     container.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; el.style.transition = 'all 0.3s'; }, 2800);
-    setTimeout(() => el.remove(), 3200);
+
+    // Animate progress bar
+    progress.style.transition = `width ${TOAST_DURATION - 300}ms linear`;
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => { progress.style.width = '0%'; });
+    });
+
+    function dismiss() {
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(24px)';
+        el.style.transition = 'opacity 0.28s ease, transform 0.28s ease';
+        setTimeout(() => el.remove(), 300);
+    }
+
+    setTimeout(dismiss, TOAST_DURATION - 300);
 }
 
 // ── Task checkbox binding ─────────────────────────────────────────────────────
