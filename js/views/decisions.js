@@ -32,6 +32,7 @@ function renderDecisions(root) {
   feather.replace();
 
   root.querySelector('#new-dec-btn').addEventListener('click', () => openDecisionModal());
+
   ['dec-filter-proj', 'dec-filter-impact'].forEach(id => {
     root.querySelector(`#${id}`)?.addEventListener('change', () => {
       const pid = root.querySelector('#dec-filter-proj')?.value || '';
@@ -41,41 +42,11 @@ function renderDecisions(root) {
       if (impact) decs = decs.filter(d => d.impact === impact);
       root.querySelector('#decisions-list').innerHTML = renderDecisionsList(decs);
       feather.replace();
-      bindDecisionCards(root);
     });
   });
-
-  bindDecisionCards(root);
 }
 
 function renderDecisionsList(decisions) {
   if (!decisions.length) return emptyState('zap', 'Sin decisiones. Registra la primera.');
   return decisions.map(d => decisionCard(d)).join('');
-}
-
-// decisionCard removed, now in components.js
-
-function bindDecisionCards(root) {
-  root.querySelectorAll('.dec-card').forEach(card => {
-    card.addEventListener('click', e => {
-      // Don't open modal if clicking the delete button
-      if (e.target.closest('.dec-del-btn')) return;
-
-      const dId = card.dataset.id;
-      const decision = store.get.allDecisions().find(d => d.id === dId);
-      if (decision) openDecisionModal(decision);
-    });
-  });
-
-  root.querySelectorAll('.dec-del-btn').forEach(btn => {
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (confirm('¿Eliminar esta decisión?')) {
-        await store.dispatch('DELETE_DECISION', { id: btn.dataset.id });
-        root.querySelector('#decisions-list').innerHTML = renderDecisionsList(store.get.allDecisions());
-        feather.replace();
-        bindDecisionCards(root);
-      }
-    });
-  });
 }

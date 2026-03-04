@@ -126,18 +126,7 @@ function bindTaskCheckboxes(root) {
     });
 }
 
-// ── Cycle cards binding ───────────────────────────────────────────────────────
-document.addEventListener('click', async e => {
-    const closeBtn = e.target.closest('.cycle-close-btn');
-    if (closeBtn) {
-        const id = closeBtn.dataset.id;
-        if (id) {
-            await store.dispatch('UPDATE_CYCLE', { id, status: 'cerrado' });
-            closeBtn.textContent = 'Cerrado';
-            closeBtn.disabled = true;
-        }
-    }
-});
+// Cycle/decision card interactions are handled by global delegates in app.js
 
 // ── Obsidian Helper ──────────────────────────────────────────────────────────
 function getObsidianFileName(uri) {

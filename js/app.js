@@ -173,14 +173,40 @@ function refreshSidebarProjects() {
     const container = document.getElementById('sidebar-projects');
     if (!container) return;
     const projects = store.get.projects().filter(p => p.status !== 'archivado');
-    container.innerHTML = projects.map(p => `
-    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true">
-      <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
-      ${esc(p.name)}
-      <span class="nav-count">${store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length}</span>
-    </a>`).join('');
+    container.innerHTML = projects.map(p => {
+        const isRestricted = p.visibility === 'restricted';
+        const isUnlocked = store.isProjectUnlocked(p.id);
+        const taskCount = store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length;
+        return `
+        <a href="#/project/${p.id}" class="nav-item sidebar-project-item ${isRestricted && !isUnlocked ? 'project-locked-item' : ''}"
+          data-view="project-${p.id}" data-id="${p.id}" draggable="true"
+          data-restricted="${isRestricted}" data-unlocked="${isUnlocked}">
+          <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
+          ${esc(p.name)}
+          ${isRestricted && !isUnlocked ? `<i data-feather="lock" style="width:11px;height:11px;color:var(--accent-warning);margin-left:2px;flex-shrink:0;"></i>` : ''}
+          <span class="nav-count">${taskCount}</span>
+        </a>`;
+    }).join('');
 
+    feather.replace();
+
+    // Handle click on restricted projects — show unlock modal
     container.querySelectorAll('.sidebar-project-item').forEach(item => {
+        const isRestricted = item.dataset.restricted === 'true';
+        const isUnlocked = item.dataset.unlocked === 'true';
+        if (isRestricted && !isUnlocked) {
+            item.addEventListener('click', e => {
+                e.preventDefault();
+                const projectId = item.dataset.id;
+                const project = store.get.projectById(projectId);
+                if (project) {
+                    openProjectUnlockModal(project, () => {
+                        router.navigate(`/project/${projectId}`);
+                    });
+                }
+            });
+        }
+
         item.addEventListener('dragstart', handleProjectDragStart);
         item.addEventListener('dragenter', handleProjectDragEnter);
         item.addEventListener('dragover', handleProjectDragOver);
@@ -409,6 +435,129 @@ window.closeSearch = closeSearch;
 window.handleSearch = handleSearch;
 window.initUIToggles = initUIToggles;
 window.exportData = exportData;
+
+// ── Scroll to Top Button ────────────────────────────────────────────────────
+(function () {
+    const scrollBtn = document.createElement('button');
+    scrollBtn.id = 'scroll-to-top';
+    scrollBtn.className = 'btn';
+    scrollBtn.title = 'Volver arriba';
+    scrollBtn.innerHTML = '<i data-feather="arrow-up"></i>';
+    scrollBtn.style.cssText = `
+        position: fixed; bottom: 28px; right: 28px; z-index: 400;
+        width: 38px; height: 38px; border-radius: 50%;
+        background: var(--accent-primary); color: #fff;
+        border: none; cursor: pointer; padding: 0;
+        box-shadow: 0 4px 14px var(--accent-primary-glow);
+        opacity: 0; transform: translateY(8px) scale(0.85);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        pointer-events: none;
+        display: flex; align-items: center; justify-content: center;
+    `;
+    document.body.appendChild(scrollBtn);
+    feather.replace();
+
+    const contentView = document.querySelector('.content-view');
+    if (contentView) {
+        contentView.addEventListener('scroll', () => {
+            const show = contentView.scrollTop > 300;
+            scrollBtn.style.opacity = show ? '1' : '0';
+            scrollBtn.style.transform = show ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.85)';
+            scrollBtn.style.pointerEvents = show ? 'auto' : 'none';
+        });
+    }
+
+    scrollBtn.addEventListener('click', () => {
+        const contentView = document.querySelector('.content-view');
+        if (contentView) contentView.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // Scroll to top on route change
+    window.addEventListener('route:change', () => {
+        const contentView = document.querySelector('.content-view');
+        if (contentView) contentView.scrollTo({ top: 0, behavior: 'instant' });
+    });
+})();
+
+// ── Global cycle card close binding (for all views) ──────────────────────────
+document.addEventListener('click', async e => {
+    const closeBtn = e.target.closest('.cycle-close-btn');
+    if (closeBtn && !closeBtn.disabled) {
+        const id = closeBtn.dataset.id;
+        if (id) {
+            await store.dispatch('UPDATE_CYCLE', { id, status: 'cerrado' });
+            refreshCurrentView();
+        }
+    }
+
+    const editBtn = e.target.closest('.cycle-edit-btn');
+    if (editBtn) {
+        const id = editBtn.dataset.id;
+        const cycle = store.get.allCycles().find(c => c.id === id);
+        if (cycle) openCycleModal(cycle);
+    }
+
+    const deleteBtn = e.target.closest('.cycle-delete-btn');
+    if (deleteBtn) {
+        const id = deleteBtn.dataset.id;
+        const cycle = store.get.allCycles().find(c => c.id === id);
+        if (cycle) {
+            confirmDialog(`¿Eliminar el ciclo "${cycle.name}"? Las tareas no se eliminarán.`, async () => {
+                await store.dispatch('DELETE_CYCLE', { id });
+                refreshCurrentView();
+            });
+        }
+    }
+
+    const decDelBtn = e.target.closest('.dec-del-btn');
+    if (decDelBtn) {
+        const id = decDelBtn.dataset.id;
+        const decision = store.get.allDecisions().find(d => d.id === id);
+        if (decision) {
+            confirmDialog(`¿Eliminar la decisión "${decision.title}"?`, async () => {
+                await store.dispatch('DELETE_DECISION', { id });
+                refreshCurrentView();
+            });
+        }
+    }
+
+    const decEditBtn = e.target.closest('.dec-edit-btn');
+    if (decEditBtn) {
+        const id = decEditBtn.dataset.id;
+        const decision = store.get.allDecisions().find(d => d.id === id);
+        if (decision) openDecisionModal(decision);
+    }
+
+    // Task item hover delete button
+    const taskDelBtn = e.target.closest('.task-del-btn');
+    if (taskDelBtn) {
+        e.stopPropagation();
+        const taskId = taskDelBtn.dataset.taskId;
+        const task = store.get.allTasks().find(t => t.id === taskId);
+        if (task) {
+            confirmDialog(`¿Eliminar la tarea "${task.title}"?`, async () => {
+                await store.dispatch('DELETE_TASK', { id: taskId });
+                refreshCurrentView();
+            });
+        }
+    }
+});
+
+// Show task delete button on hover (for task-item elements)
+document.addEventListener('mouseover', e => {
+    const item = e.target.closest('.task-item');
+    if (item) {
+        const btn = item.querySelector('.task-del-btn');
+        if (btn) btn.style.opacity = '1';
+    }
+});
+document.addEventListener('mouseout', e => {
+    const item = e.target.closest('.task-item');
+    if (item && !item.contains(e.relatedTarget)) {
+        const btn = item.querySelector('.task-del-btn');
+        if (btn) btn.style.opacity = '0';
+    }
+});
 
 // ── Ripple Effect ──────────────────────────────────────────────────────────────
 document.addEventListener('click', (e) => {

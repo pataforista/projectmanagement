@@ -20,7 +20,6 @@ function taskItem(t) {
   today.setHours(0, 0, 0, 0);
   const dueDate = t.dueDate ? new Date(t.dueDate) : null;
   const isOverdue = dueDate && dueDate < today && !isDone;
-  // 7 days window for urgent
   const isUrgent = dueDate && !isOverdue && !isDone && (dueDate - today) <= (7 * 24 * 60 * 60 * 1000);
   const urgentClass = isOverdue ? 'task-overdue' : (isUrgent ? 'task-urgent' : '');
 
@@ -36,6 +35,10 @@ function taskItem(t) {
         </span>
       </div>
       <div class="priority-pip ${t.priority || 'baja'}"></div>
+      <button class="btn btn-icon task-del-btn" data-task-id="${t.id}" title="Eliminar tarea"
+        style="padding:4px;color:var(--text-muted);opacity:0;transition:opacity 0.15s;flex-shrink:0;">
+        <i data-feather="trash-2" style="width:12px;height:12px;"></i>
+      </button>
     </li>`;
 }
 
@@ -76,6 +79,7 @@ function cycleCard(c) {
   const proj = store.get.projectById(c.projectId);
   const pct = store.get.cycleProgress(c.id);
   const tasks = store.get.tasksByCycle(c.id);
+  const isClosed = c.status === 'cerrado';
 
   return `
     <div class="cycle-card">
@@ -116,10 +120,18 @@ function cycleCard(c) {
     }
       </div>
 
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <button class="btn btn-ghost btn-sm cycle-close-btn" data-id="${c.id}"
-          ${c.status === 'cerrado' ? 'disabled' : ''}>
-          <i data-feather="check"></i> ${c.status === 'cerrado' ? 'Cerrado' : 'Cerrar ciclo'}
+      <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm cycle-edit-btn" data-id="${c.id}" title="Editar ciclo">
+          <i data-feather="edit-2" style="width:13px;height:13px;"></i> Editar
+        </button>
+        <button class="btn btn-ghost btn-sm cycle-close-btn" data-id="${c.id}" data-status="${c.status || 'activo'}"
+          ${isClosed ? 'disabled style="opacity:0.5;"' : ''}>
+          <i data-feather="${isClosed ? 'check-circle' : 'check'}"></i>
+          ${isClosed ? 'Cerrado' : 'Cerrar ciclo'}
+        </button>
+        <button class="btn btn-ghost btn-sm cycle-delete-btn" data-id="${c.id}"
+          style="color:var(--accent-danger);margin-left:auto;" title="Eliminar ciclo">
+          <i data-feather="trash-2" style="width:13px;height:13px;"></i>
         </button>
       </div>
     </div>`;
@@ -142,7 +154,11 @@ function decisionCard(d) {
         </div>
         <div style="display:flex;gap:6px;align-items:flex-start;flex-shrink:0;">
           <span class="badge ${impactColor}">Impacto ${d.impact || '—'}</span>
-          <button class="btn btn-icon btn-sm dec-del-btn" data-id="${d.id}" style="padding:4px;">
+          <button class="btn btn-icon btn-sm dec-edit-btn" data-id="${d.id}" title="Editar decisión" style="padding:4px;">
+            <i data-feather="edit-2" style="width:12px;height:12px;"></i>
+          </button>
+          <button class="btn btn-icon btn-sm dec-del-btn" data-id="${d.id}" title="Eliminar decisión"
+            style="padding:4px;color:var(--accent-danger);">
             <i data-feather="trash-2" style="width:12px;height:12px;"></i>
           </button>
         </div>

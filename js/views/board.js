@@ -46,7 +46,8 @@ function renderBoard(root) {
 
 function renderBoardColumns(root, projectId) {
   const container = root.querySelector('#board-columns') || document.getElementById('board-columns');
-  let tasks = store.get.allTasks();
+  // Use visibleTasks to respect project access control
+  let tasks = store.get.visibleTasks();
   if (projectId) tasks = tasks.filter(t => t.projectId === projectId);
 
   container.innerHTML = BOARD_STATUSES.map(col => {

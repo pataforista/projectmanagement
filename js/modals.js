@@ -22,6 +22,32 @@ function closeModal() {
   document.getElementById('modal-overlay')?.remove();
 }
 
+// Confirmation dialog (styled, replaces browser confirm())
+function confirmDialog(message, onConfirm, dangerLabel = 'Eliminar') {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px;">
+      <div class="modal-header">
+        <h2 style="display:flex;align-items:center;gap:8px;"><i data-feather="alert-triangle" style="color:var(--accent-danger);width:18px;height:18px;"></i> Confirmar acción</h2>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);line-height:1.6;">${esc(message)}</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="conf-cancel">Cancelar</button>
+        <button class="btn btn-danger" id="conf-ok"><i data-feather="trash-2"></i> ${dangerLabel}</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  feather.replace();
+  overlay.querySelector('#conf-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#conf-ok').addEventListener('click', () => { overlay.remove(); onConfirm(); });
+}
+
 // Close on Escape
 window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
@@ -109,7 +135,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
     </div>
     <div class="modal-footer" style="display:flex; justify-content:space-between; width:100%;">
       <div>
-        ${isEdit ? `<button class="btn btn-sm btn-ghost" id="task-delete" style="color:var(--accent-danger);"><i data-feather="trash-2"></i> Eliminar Tarea</button>` : ''}
+        ${isEdit ? `<button class="btn btn-sm btn-ghost" id="task-delete" style="color:var(--accent-danger);"><i data-feather="trash-2"></i> Eliminar</button>` : ''}
       </div>
       <div style="display:flex; gap:8px;">
         <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
@@ -120,55 +146,55 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
   let subTasks = isEdit && task.subtasks ? JSON.parse(JSON.stringify(task.subtasks)) : [];
   const subList = modal.querySelector('#subtasks-list');
 
+  function renderSubtasks() {
+    subList.innerHTML = subTasks.map(st => `
+      <div class="subtask-row" data-id="${st.id}" style="display:flex; align-items:center; gap:8px; background:var(--bg-surface-2); padding:6px 10px; border-radius:4px;">
+        <input type="checkbox" class="st-check" data-sid="${st.id}" ${st.done ? 'checked' : ''}>
+        <span style="flex:1; font-size:0.84rem; ${st.done ? 'text-decoration:line-through;color:var(--text-muted);' : ''}">${esc(st.title)}</span>
+        <button class="btn btn-icon st-del" data-sid="${st.id}" style="padding:2px;"><i data-feather="x" style="width:13px;height:13px;"></i></button>
+      </div>`).join('');
+    feather.replace();
+  }
+
   modal.querySelector('#add-subtask').addEventListener('click', () => {
     const input = modal.querySelector('#new-subtask');
     const text = input.value.trim();
     if (!text) return;
-    const id = Date.now();
-    subTasks.push({ id, title: text, done: false });
+    subTasks.push({ id: Date.now(), title: text, done: false });
     input.value = '';
     renderSubtasks();
   });
 
-  function renderSubtasks() {
-    subList.innerHTML = subTasks.map(st => `
-            <div style="display:flex; align-items:center; gap:8px; background:var(--bg-surface-2); padding:6px 10px; border-radius:4px;">
-                <input type="checkbox" ${st.done ? 'checked' : ''} onchange="this.dataset.id = ${st.id}">
-                <span style="flex:1; font-size:0.84rem;">${esc(st.title)}</span>
-                <button class="btn btn-icon" style="padding:2px;" onclick="this.dataset.id = ${st.id}"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
-            </div>
-        `).join('');
-    feather.replace();
-  }
+  modal.querySelector('#new-subtask').addEventListener('keypress', e => {
+    if (e.key === 'Enter') modal.querySelector('#add-subtask').click();
+  });
+
+  subList.addEventListener('change', e => {
+    if (e.target.classList.contains('st-check')) {
+      const sid = parseInt(e.target.dataset.sid, 10);
+      const st = subTasks.find(x => x.id === sid);
+      if (st) st.done = e.target.checked;
+      renderSubtasks();
+    }
+  });
+
+  subList.addEventListener('click', e => {
+    const btn = e.target.closest('.st-del');
+    if (btn) {
+      const sid = parseInt(btn.dataset.sid, 10);
+      subTasks = subTasks.filter(x => x.id !== sid);
+      renderSubtasks();
+    }
+  });
 
   if (isEdit) {
-    modal.querySelector('#task-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de querer eliminar la tarea "${task.title}"?`)) {
+    renderSubtasks();
+    modal.querySelector('#task-delete').addEventListener('click', () => {
+      confirmDialog(`¿Eliminar la tarea "${task.title}"? Esta acción no se puede deshacer.`, async () => {
         await store.dispatch('DELETE_TASK', { id: task.id });
         closeModal();
         refreshCurrentView();
-      }
-    });
-
-    // Handle subtask checkbox events when editing
-    subList.addEventListener('change', e => {
-      if (e.target.type === 'checkbox') {
-        const sid = parseInt(e.target.dataset.id, 10);
-        const st = subTasks.find(x => x.id === sid);
-        if (st) st.done = e.target.checked;
-      }
-    });
-
-    subList.addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (btn && btn.dataset.id) {
-        const sid = parseInt(btn.dataset.id, 10);
-        const idx = subTasks.findIndex(x => x.id === sid);
-        if (idx !== -1) {
-          subTasks.splice(idx, 1);
-          renderSubtasks();
-        }
-      }
+      });
     });
   }
 
@@ -179,7 +205,6 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
     if (!title) { showToast('El título es obligatorio.', 'error'); return; }
 
     const tags = modal.querySelector('#task-tags').value.split(',').map(t => t.trim()).filter(t => t);
-
     const payload = {
       title,
       projectId: modal.querySelector('#task-project').value || null,
@@ -189,7 +214,6 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       type: modal.querySelector('#task-type').value,
       dueDate: modal.querySelector('#task-due').value || null,
       description: modal.querySelector('#task-desc').value,
-      assigneeId: 'u1',
       tags,
       subtasks: subTasks
     };
@@ -206,7 +230,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Project Modal
+// Project Modal (with access control)
 // ────────────────────────────────────────────────────────────────────────────
 
 function openProjectModal(p = null) {
@@ -265,6 +289,25 @@ function openProjectModal(p = null) {
         </div>
         <input type="hidden" id="proj-color" value="${isEdit && p?.color ? p.color : '#5e6ad2'}">
       </div>
+
+      <div class="divider" style="margin:4px 0;"></div>
+      <div class="section-label" style="display:flex;align-items:center;gap:6px;"><i data-feather="lock" style="width:12px;height:12px;color:var(--accent-warning);"></i> Control de Acceso</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Visibilidad</label>
+          <select class="form-select" id="proj-visibility">
+            <option value="public" ${!isEdit || p?.visibility !== 'restricted' ? 'selected' : ''}>Público (visible siempre)</option>
+            <option value="restricted" ${isEdit && p?.visibility === 'restricted' ? 'selected' : ''}>Restringido (requiere PIN)</option>
+          </select>
+        </div>
+        <div class="form-group" id="proj-pin-group" style="${isEdit && p?.visibility === 'restricted' ? '' : 'opacity:0.4;pointer-events:none;'}">
+          <label class="form-label">PIN (4 dígitos)</label>
+          <input class="form-input" type="password" id="proj-pin" maxlength="4" pattern="[0-9]*" inputmode="numeric"
+            placeholder="ej. 1234" value="${isEdit && p?.pin ? p.pin : ''}">
+        </div>
+      </div>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin-top:-8px;">Los proyectos restringidos se ocultan en el backlog y tablero global hasta desbloquearse con el PIN en cada sesión.</p>
     </div>
     <div class="modal-footer" style="${isEdit ? 'justify-content: space-between;' : ''}">
       ${isEdit ? `<button class="btn btn-ghost" id="proj-delete" style="color:var(--accent-danger);"><i data-feather="trash-2"></i> Eliminar</button>` : '<div></div>'}
@@ -274,6 +317,21 @@ function openProjectModal(p = null) {
       </div>
     </div>`);
 
+  feather.replace();
+
+  // Visibility toggle → enable/disable PIN field
+  modal.querySelector('#proj-visibility').addEventListener('change', e => {
+    const pinGroup = modal.querySelector('#proj-pin-group');
+    if (e.target.value === 'restricted') {
+      pinGroup.style.opacity = '1';
+      pinGroup.style.pointerEvents = 'auto';
+      modal.querySelector('#proj-pin').focus();
+    } else {
+      pinGroup.style.opacity = '0.4';
+      pinGroup.style.pointerEvents = 'none';
+    }
+  });
+
   // Color swatches
   modal.querySelectorAll('.color-swatch').forEach(sw => {
     sw.addEventListener('click', () => {
@@ -282,25 +340,32 @@ function openProjectModal(p = null) {
       modal.querySelector('#proj-color').value = sw.dataset.color;
     });
   });
-  if (!isEdit) modal.querySelector('.color-swatch').style.borderColor = '#fff'; // select first only if new
+  if (!isEdit) modal.querySelector('.color-swatch').style.borderColor = '#fff';
 
   modal.querySelector('#modal-close').addEventListener('click', closeModal);
   modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
 
   if (isEdit) {
-    modal.querySelector('#proj-delete').addEventListener('click', async () => {
-      const msg = '¿Estás seguro? Se borrarán también las tareas, ciclos y decisiones asociadas a este proyecto de forma permanente.';
-      if (confirm(msg)) {
+    modal.querySelector('#proj-delete').addEventListener('click', () => {
+      confirmDialog('¿Eliminar este proyecto? Se borrarán también sus tareas, ciclos y decisiones asociadas. Esta acción no se puede deshacer.', async () => {
         await store.dispatch('DELETE_PROJECT', { id: p.id });
         closeModal();
         refreshCurrentView();
-      }
+        refreshSidebarProjects();
+      });
     });
   }
 
   modal.querySelector('#proj-save').addEventListener('click', async () => {
     const name = modal.querySelector('#proj-name').value.trim();
     if (!name) { showToast('El nombre es obligatorio.', 'error'); return; }
+
+    const visibility = modal.querySelector('#proj-visibility').value;
+    const pin = modal.querySelector('#proj-pin').value.trim();
+    if (visibility === 'restricted' && pin && !/^\d{4}$/.test(pin)) {
+      showToast('El PIN debe ser de 4 dígitos numéricos.', 'error');
+      return;
+    }
 
     const data = {
       name,
@@ -311,6 +376,8 @@ function openProjectModal(p = null) {
       startDate: modal.querySelector('#proj-start').value || null,
       endDate: modal.querySelector('#proj-end').value || null,
       color: modal.querySelector('#proj-color').value,
+      visibility: visibility,
+      pin: visibility === 'restricted' ? pin : '',
     };
 
     if (isEdit) {
@@ -323,6 +390,75 @@ function openProjectModal(p = null) {
     refreshCurrentView();
     refreshSidebarProjects();
   });
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Project PIN Unlock Modal
+// ────────────────────────────────────────────────────────────────────────────
+
+function openProjectUnlockModal(project, onSuccess) {
+  const hasPin = !!project.pin;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:340px;">
+      <div class="modal-header">
+        <h2 style="display:flex;align-items:center;gap:8px;">
+          <i data-feather="lock" style="color:var(--accent-warning);width:16px;height:16px;"></i>
+          Proyecto Restringido
+        </h2>
+        <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);margin-bottom:16px;font-size:0.875rem;">
+          <strong>${esc(project.name)}</strong> está protegido.
+          ${hasPin ? 'Ingresa el PIN de 4 dígitos para acceder.' : 'Confirma que deseas acceder a este proyecto restringido.'}
+        </p>
+        ${hasPin ? `
+          <div class="form-group">
+            <label class="form-label">PIN de acceso</label>
+            <input class="form-input" type="password" id="unlock-pin" maxlength="4" pattern="[0-9]*" inputmode="numeric" placeholder="••••" autofocus style="text-align:center;letter-spacing:8px;font-size:1.4rem;">
+          </div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="unlock-confirm"><i data-feather="unlock"></i> Desbloquear</button>
+      </div>
+    </div>`;
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  feather.replace();
+
+  const confirm = () => {
+    if (hasPin) {
+      const pin = overlay.querySelector('#unlock-pin').value.trim();
+      if (pin !== project.pin) {
+        const input = overlay.querySelector('#unlock-pin');
+        input.style.borderColor = 'var(--accent-danger)';
+        input.value = '';
+        input.placeholder = 'PIN incorrecto';
+        setTimeout(() => { input.style.borderColor = ''; input.placeholder = '••••'; }, 1500);
+        return;
+      }
+    }
+    store.unlockProject(project.id);
+    overlay.remove();
+    showToast(`Proyecto "${project.name}" desbloqueado.`, 'success');
+    if (onSuccess) onSuccess();
+    refreshSidebarProjects();
+    refreshCurrentView();
+  };
+
+  overlay.querySelector('#modal-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#modal-cancel').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#unlock-confirm').addEventListener('click', confirm);
+  if (hasPin) {
+    overlay.querySelector('#unlock-pin').addEventListener('keypress', e => {
+      if (e.key === 'Enter') confirm();
+    });
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -378,12 +514,12 @@ function openCycleModal(defaultProjectIdOrCycle) {
     </div>`);
 
   if (isEdit) {
-    modal.querySelector('#cycle-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de wanting de eliminar el ciclo "${cycle.name}"?`)) {
-        await store.dispatch('DELETE_CYCLE', { id: cycle.id }); // WE WILL NEED TO CREATE THIS DISPATCH ACTION IF IT DOESNT EXIST
+    modal.querySelector('#cycle-delete').addEventListener('click', () => {
+      confirmDialog(`¿Eliminar el ciclo "${cycle.name}"? Las tareas del ciclo no se eliminarán.`, async () => {
+        await store.dispatch('DELETE_CYCLE', { id: cycle.id });
         closeModal();
         refreshCurrentView();
-      }
+      });
     });
   }
 
@@ -415,19 +551,18 @@ function openCycleModal(defaultProjectIdOrCycle) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Decision Modal
+// Decision Modal (fixed)
 // ────────────────────────────────────────────────────────────────────────────
 
-function openDecisionModal(defaultProjectId) {
-  function openDecisionModal(defaultProjectIdOrDecision) {
-    const isEdit = typeof defaultProjectIdOrDecision === 'object' && defaultProjectIdOrDecision !== null && !('clientX' in defaultProjectIdOrDecision);
-    const decision = isEdit ? defaultProjectIdOrDecision : null;
-    const defProjectId = isEdit ? decision.projectId : defaultProjectIdOrDecision;
-    const today = new Date().toISOString().slice(0, 10);
+function openDecisionModal(defaultProjectIdOrDecision) {
+  const isEdit = typeof defaultProjectIdOrDecision === 'object' && defaultProjectIdOrDecision !== null && !('clientX' in defaultProjectIdOrDecision);
+  const decision = isEdit ? defaultProjectIdOrDecision : null;
+  const defProjectId = isEdit ? decision.projectId : defaultProjectIdOrDecision;
+  const today = new Date().toISOString().slice(0, 10);
 
-    const projects = store.get.projects();
+  const projects = store.get.projects();
 
-    const modal = openModal(`
+  const modal = openModal(`
     <div class="modal-header">
       <h2><i data-feather="zap"></i> ${isEdit ? 'Editar Decisión' : 'Nueva Decisión'}</h2>
       <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
@@ -437,7 +572,6 @@ function openDecisionModal(defaultProjectId) {
         <label class="form-label">Título de la decisión *</label>
         <input class="form-input" id="dec-title" placeholder="ej. Enfocar artículo en adultos mayores" autofocus value="${isEdit ? esc(decision.title) : ''}">
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Proyecto</label>
@@ -478,55 +612,13 @@ function openDecisionModal(defaultProjectId) {
       </div>
     </div>`);
 
-    if (isEdit) {
-      modal.querySelector('#dec-delete').addEventListener('click', async () => {
-        if (confirm(`¿Estás seguro de eliminar la decisión "${decision.title}"?`)) {
-          await store.dispatch('DELETE_DECISION', { id: decision.id });
-          closeModal();
-          refreshCurrentView();
-        }
-      });
-    }
-
-    modal.querySelector('#modal-close').addEventListener('click', closeModal);
-    modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
-    modal.querySelector('#dec-save').addEventListener('click', async () => {
-      const title = modal.querySelector('#dec-title').value.trim();
-      const decText = modal.querySelector('#dec-decision').value.trim();
-      if (!title || !decText) { showToast('Título y decisión son obligatorios.', 'error'); return; }
-
-      const payload = {
-        title,
-        projectId: modal.querySelector('#dec-project').value || null,
-        context: modal.querySelector('#dec-context').value,
-        decision: decText,
-        impact: modal.querySelector('#dec-impact').value,
-        date: modal.querySelector('#dec-date').value,
-        ownerId: 'u1',
-      };
-
-      if (isEdit) {
-        payload.id = decision.id;
-        await store.dispatch('UPDATE_DECISION', payload);
-      } else {
-        await store.dispatch('ADD_DECISION', payload);
-      }
-      closeModal();
-      refreshCurrentView();
-    });
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Profile Modal
-  // ────────────────────────────────────────────────────────────────────────────
-
   if (isEdit) {
-    modal.querySelector('#dec-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de eliminar la decisión "${decision.title}"?`)) {
+    modal.querySelector('#dec-delete').addEventListener('click', () => {
+      confirmDialog(`¿Eliminar la decisión "${decision.title}"?`, async () => {
         await store.dispatch('DELETE_DECISION', { id: decision.id });
         closeModal();
         refreshCurrentView();
-      }
+      });
     });
   }
 
@@ -544,7 +636,7 @@ function openDecisionModal(defaultProjectId) {
       decision: decText,
       impact: modal.querySelector('#dec-impact').value,
       date: modal.querySelector('#dec-date').value,
-      ownerId: 'u1',
+      ownerId: localStorage.getItem('workspace_user_name') || 'u1',
     };
 
     if (isEdit) {
@@ -599,6 +691,11 @@ function openProfileModal() {
         <label class="form-label">Avatar (1 o 2 letras)</label>
         <input class="form-input" id="profile-avatar" value="${esc(currentAvatar)}" maxlength="2">
       </div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label class="form-label" style="color:var(--accent-danger);">Cambiar contraseña maestra</label>
+        <input class="form-input" type="password" id="profile-new-pwd" placeholder="Nueva contraseña (dejar vacío para no cambiar)" autocomplete="new-password">
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
@@ -611,10 +708,24 @@ function openProfileModal() {
     const name = modal.querySelector('#profile-name').value.trim() || 'Usuario';
     const role = modal.querySelector('#profile-role').value.trim();
     const avatar = modal.querySelector('#profile-avatar').value.trim().toUpperCase() || name.charAt(0);
+    const newPwd = modal.querySelector('#profile-new-pwd').value.trim();
 
     localStorage.setItem('workspace_user_name', name);
     localStorage.setItem('workspace_user_role', role);
     localStorage.setItem('workspace_user_avatar', avatar);
+
+    if (newPwd && newPwd.length >= 4) {
+      const hashStr = str => {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
+        return hash.toString();
+      };
+      localStorage.setItem('workspace_lock_hash', hashStr(newPwd));
+      showToast('Contraseña actualizada.', 'success');
+    } else if (newPwd && newPwd.length < 4) {
+      showToast('La contraseña debe tener al menos 4 caracteres.', 'error');
+      return;
+    }
 
     updateUserProfileUI();
     closeModal();
@@ -635,10 +746,10 @@ function openHelpModal() {
       <div class="tabs" id="help-tabs" style="padding: 16px 24px 0 24px;">
         <button class="tab-btn active" data-tab="conceptos">Conceptos Clave</button>
         <button class="tab-btn" data-tab="modulos">Módulos</button>
-        <button class="tab-btn" data-tab="integraciones">Integraciones (Zotero/Obsidian)</button>
+        <button class="tab-btn" data-tab="acceso">Control de Acceso</button>
+        <button class="tab-btn" data-tab="integraciones">Integraciones</button>
       </div>
       <div id="help-content" style="padding: 24px; max-height:60vh; overflow-y:auto; line-height:1.6;">
-        <!-- Content injected here -->
       </div>
     </div>
     <div class="modal-footer">
@@ -651,42 +762,50 @@ function openHelpModal() {
     'conceptos': `
       <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">1. Proyectos</h3>
       <p style="margin-bottom:16px; color:var(--text-secondary);">Un proyecto es el contenedor principal de tu trabajo. Puede ser una investigación, un artículo, una clase o un desarrollo. Los proyectos agrupan tareas, ciclos, decisiones y documentos.</p>
-      
       <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">2. Tareas (Backlog)</h3>
       <p style="margin-bottom:16px; color:var(--text-secondary);">La unidad atómica de trabajo. Las tareas viven en el Backlog del proyecto hasta que decides trabajarlas. Pueden tener subtareas, etiquetas, nivel de prioridad y fechas límite.</p>
-      
       <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">3. Ciclos (Sprints)</h3>
       <p style="margin-bottom:16px; color:var(--text-secondary);">Para no abrumarte con un backlog gigante, puedes agrupar un conjunto de tareas en un "Ciclo" (con fecha de inicio y fin). Esto te permite enfocarte solo en lo que importa esta semana o quincena.</p>
     `,
     'modulos': `
       <ul style="list-style:none; padding:0; display:flex; flex-direction:column; gap:16px;">
-        <li><strong><i data-feather="home" style="width:16px;height:16px;margin-right:8px;vertical-align:text-bottom;"></i> Dashboard:</strong> Tu vista matutina. Muestra qué ciclos están activos, tareas bloqueadas y las métricas generales de tu productividad.</li>
-        <li><strong><i data-feather="layout" style="width:16px;height:16px;margin-right:8px;vertical-align:text-bottom;"></i> Tablero (Kanban):</strong> Una vista visual para mover tareas por columnas (Capturado, En elaboración, En espera, Terminado).</li>
-        <li><strong><i data-feather="database" style="width:16px;height:16px;margin-right:8px;vertical-align:text-bottom;"></i> Biblioteca (Dataview):</strong> Tu base de datos de referencias bibliográficas (Papers, Libros). Puedes verlas en cuadrícula o en modo Tabla estilo Obsidian Dataview.</li>
-        <li><strong><i data-feather="edit-3" style="width:16px;height:16px;margin-right:8px;vertical-align:text-bottom;"></i> Canvas:</strong> Una pizarra blanca infinita nativa para que hagas esquemas mentales, dibujos y borradores sin salir de la app (autoguardado offline).</li>
+        <li><strong>Dashboard:</strong> Tu vista matutina. Muestra qué ciclos están activos, tareas bloqueadas y las métricas generales de tu productividad.</li>
+        <li><strong>Tablero (Kanban):</strong> Una vista visual para mover tareas por columnas (Capturado, En elaboración, En espera, Terminado).</li>
+        <li><strong>Backlog:</strong> Lista completa de todas las tareas. Puedes eliminar, filtrar y cambiar estado directamente. Usa los checkboxes para selección múltiple y eliminación en masa.</li>
+        <li><strong>Biblioteca:</strong> Tu base de datos de referencias bibliográficas (Papers, Libros). Puedes verlas en cuadrícula o en modo Tabla.</li>
+        <li><strong>Canvas:</strong> Una pizarra blanca infinita nativa para que hagas esquemas mentales y borradores sin salir de la app (autoguardado offline).</li>
       </ul>
     `,
+    'acceso': `
+      <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">Proyectos Restringidos</h3>
+      <p style="margin-bottom:12px; color:var(--text-secondary);">Puedes asignar visibilidad <strong>"Restringida"</strong> a un proyecto para protegerlo con un PIN de 4 dígitos.</p>
+      <ul style="color:var(--text-secondary); padding-left:20px; line-height:1.8; margin-bottom:16px;">
+        <li>Los proyectos restringidos aparecen con un ícono 🔒 en el sidebar y la lista de proyectos.</li>
+        <li>Sus tareas se ocultan del backlog global, tablero Kanban y calendario hasta que desbloquees el proyecto.</li>
+        <li>El desbloqueo dura toda la sesión del navegador (se restablece al cerrar la pestaña).</li>
+        <li>Para desbloquear: haz clic en el nombre del proyecto en el sidebar o en la lista, e ingresa el PIN.</li>
+        <li>Para re-bloquear: haz clic en "🔒 Bloquear proyecto" en la cabecera del proyecto.</li>
+      </ul>
+      <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">Contraseña Maestra</h3>
+      <p style="color:var(--text-secondary);">Puedes cambiar tu contraseña maestra del workspace desde el perfil de usuario (ícono de usuario en la esquina inferior izquierda).</p>
+    `,
     'integraciones': `
-      <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">1. Sincronizar con Google Drive en la Nube</h3>
+      <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">1. Sincronizar con Google Drive</h3>
       <ol style="margin-bottom:20px; color:var(--text-secondary); padding-left:20px; line-height:1.5;">
-        <li style="margin-bottom:8px;">Ve a <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--accent-primary);">Consola de Google Cloud</a>, crea un <strong>Nuevo Proyecto</strong> y ve a "API y Servicios".</li>
-        <li style="margin-bottom:8px;">Busca y habilita la <strong>Google Drive API</strong>.</li>
-        <li style="margin-bottom:8px;">Ve a <strong>Credenciales</strong> -> Crear Credenciales -> <strong>ID de cliente de OAuth</strong>. Elige "Aplicación Web". Añade el origen autorizado (como <code>https://proyectosesquizo.netlify.app</code>). Copia el "Client ID".</li>
-        <li style="margin-bottom:8px;">En la Consola de Google, ve a <strong>Pantalla de consentimiento de OAuth</strong> y añade tu correo electrónico en la sección de <strong>Usuarios de prueba (Test users)</strong>, o publica la app.</li>
-        <li style="margin-bottom:8px;">En el Workspace, dale clic al ícono de la nube ☁️ abajo a la izquierda, pega el <strong>Client ID</strong> y haz clic en Conectar.</li>
+        <li style="margin-bottom:8px;">Ve a la Consola de Google Cloud, crea un Nuevo Proyecto y ve a "API y Servicios".</li>
+        <li style="margin-bottom:8px;">Habilita la Google Drive API.</li>
+        <li style="margin-bottom:8px;">Crea credenciales OAuth y copia el "Client ID".</li>
+        <li style="margin-bottom:8px;">En el Workspace, dale clic al ícono de la nube ☁️ abajo a la izquierda, pega el Client ID y conecta.</li>
       </ol>
-
       <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">2. Conectar Notas de Obsidian</h3>
       <ol style="margin-bottom:20px; color:var(--text-secondary); padding-left:20px;">
         <li style="margin-bottom:8px;">En Obsidian, haz clic derecho en una nota y selecciona <strong>Copy Obsidian URL</strong>.</li>
-        <li style="margin-bottom:8px;">En el Workspace, edita tu proyecto y pega ese link (<code>obsidian://open?...</code>) en el campo "Nota de Obsidian/URI".</li>
-        <li style="margin-bottom:8px;">Aparecerá un botón inteligente en tu proyecto que abrirá esa nota directa e instantáneamente.</li>
+        <li style="margin-bottom:8px;">En el Workspace, edita tu proyecto y pega el link en el campo "Nota de Obsidian/URI".</li>
       </ol>
-
       <h3 style="margin-bottom:12px; font-weight:600; color:var(--accent-primary);">3. Importar de Zotero</h3>
-      <ul style="margin-bottom:16px; color:var(--text-secondary); padding-left:20px;">
-        <li style="margin-bottom:8px;">En Zotero, selecciona tus referencias, haz clic derecho -> Exportar. En el formato, elige <strong>CSL JSON</strong>.</li>
-        <li style="margin-bottom:8px;">Ve a la "Biblioteca" del Workspace y haz clic en <strong>Importar desde Zotero (JSON)</strong>. Sube tu archivo.</li>
+      <ul style="color:var(--text-secondary); padding-left:20px;">
+        <li style="margin-bottom:8px;">En Zotero, exporta en formato <strong>CSL JSON</strong>.</li>
+        <li style="margin-bottom:8px;">Ve a la "Biblioteca" del Workspace y sube tu archivo.</li>
       </ul>
     `
   };
@@ -704,17 +823,17 @@ function openHelpModal() {
     });
   });
 
-  // Setup initial
   renderHelpTab('conceptos');
-
   modal.querySelector('#modal-close').addEventListener('click', closeModal);
   modal.querySelector('#help-close').addEventListener('click', closeModal);
 }
 
 window.openModal = openModal;
 window.closeModal = closeModal;
+window.confirmDialog = confirmDialog;
 window.openTaskModal = openTaskModal;
 window.openProjectModal = openProjectModal;
+window.openProjectUnlockModal = openProjectUnlockModal;
 window.openCycleModal = openCycleModal;
 window.openDecisionModal = openDecisionModal;
 window.openProfileModal = openProfileModal;

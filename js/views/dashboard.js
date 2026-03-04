@@ -3,7 +3,8 @@
  */
 
 function renderDashboard(root) {
-  const tasks = store.get.activeTasks();
+  // Use visibleTasks to respect project access control
+  const tasks = store.get.visibleTasks().filter(t => t.status !== 'Archivado' && t.status !== 'Terminado');
   const cycles = store.get.activeCycles();
   const blocked = store.get.blockedTasks();
   const upcoming = store.get.upcomingDeliverables(7);

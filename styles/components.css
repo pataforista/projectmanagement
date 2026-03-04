@@ -1405,3 +1405,145 @@
     background: var(--border-highlight);
     border-radius: 3px;
 }
+
+/* ── Backlog: filter toggle label ───────────────────────────────────────────── */
+.filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    user-select: none;
+    transition: all var(--dur-fast);
+}
+
+.filter-toggle:hover {
+    border-color: var(--border-highlight);
+    color: var(--text-primary);
+}
+
+.filter-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+    margin: 0;
+}
+
+/* ── Backlog: restricted row ────────────────────────────────────────────────── */
+.list-table tr.row-restricted td {
+    opacity: 0.6;
+}
+
+/* ── Project card: locked state ─────────────────────────────────────────────── */
+.project-card-locked {
+    opacity: 0.85;
+    filter: saturate(0.5);
+}
+
+.project-card-locked:hover {
+    filter: saturate(1);
+    opacity: 1;
+}
+
+/* ── Sidebar: locked project item ───────────────────────────────────────────── */
+.sidebar-project-item.project-locked-item {
+    color: var(--text-muted);
+}
+
+.sidebar-project-item.project-locked-item:hover {
+    color: var(--accent-warning);
+}
+
+/* ── Backlog: btn-xs ────────────────────────────────────────────────────────── */
+.btn-xs {
+    padding: 2px 7px;
+    font-size: 0.72rem;
+}
+
+/* ── Cycle card: improved footer ────────────────────────────────────────────── */
+.cycle-card .cycle-delete-btn {
+    opacity: 0;
+    transition: opacity var(--dur-fast);
+}
+
+.cycle-card:hover .cycle-delete-btn {
+    opacity: 1;
+}
+
+/* ── Scroll to top button ───────────────────────────────────────────────────── */
+#scroll-to-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#scroll-to-top i {
+    width: 16px;
+    height: 16px;
+}
+
+#scroll-to-top:hover {
+    background: var(--accent-primary-hover) !important;
+    transform: translateY(-2px) scale(1.05) !important;
+}
+
+/* ── Sticky table header in backlog ─────────────────────────────────────────── */
+.list-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-base);
+    z-index: 2;
+    box-shadow: 0 1px 0 var(--border-color);
+}
+
+/* ── Task item: delete button reveal ────────────────────────────────────────── */
+.task-item:hover .task-del-btn {
+    opacity: 1 !important;
+}
+
+/* ── Decision card: edit/delete button reveal ───────────────────────────────── */
+.decision-card .dec-edit-btn {
+    opacity: 0;
+    transition: opacity var(--dur-fast);
+}
+
+.decision-card:hover .dec-edit-btn {
+    opacity: 1;
+}
+
+/* ── Improved scroll containers ─────────────────────────────────────────────── */
+.content-view {
+    scroll-behavior: smooth;
+}
+
+/* Highlight scroll position indicator for sidebar */
+.sidebar-nav {
+    scroll-behavior: smooth;
+}
+
+/* ── Better mobile table scroll ─────────────────────────────────────────────── */
+#backlog-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-highlight) transparent;
+}
+
+/* ── Confirmation dialog danger button ──────────────────────────────────────── */
+.btn-danger {
+    background: var(--accent-danger-bg);
+    color: var(--accent-danger);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.btn-danger:hover {
+    background: var(--accent-danger);
+    color: #fff;
+    transform: translateY(-1px);
+}

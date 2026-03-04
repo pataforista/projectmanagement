@@ -2,7 +2,6 @@
  * views/projects.js — Projects list + detail view
  */
 
-
 function renderProjects(root, params) {
   const projects = store.get.projects();
 
@@ -30,6 +29,11 @@ function renderProjects(root, params) {
           <option value="">Todos los tipos</option>
           ${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
         </select>
+        <select class="filter-select" id="proj-filter-visibility">
+          <option value="">Todos</option>
+          <option value="public">Públicos</option>
+          <option value="restricted">Restringidos</option>
+        </select>
       </div>
 
       <div class="projects-grid" id="projects-grid">
@@ -38,16 +42,17 @@ function renderProjects(root, params) {
     </div>`;
 
   feather.replace();
-
   root.querySelector('#new-project-btn').addEventListener('click', () => openProjectModal());
 
-  ['proj-filter-status', 'proj-filter-type'].forEach(id => {
+  ['proj-filter-status', 'proj-filter-type', 'proj-filter-visibility'].forEach(id => {
     root.querySelector(`#${id}`).addEventListener('change', () => {
       const status = root.querySelector('#proj-filter-status').value;
       const type = root.querySelector('#proj-filter-type').value;
+      const visibility = root.querySelector('#proj-filter-visibility').value;
       let filtered = store.get.projects();
       if (status) filtered = filtered.filter(p => p.status === status);
       if (type) filtered = filtered.filter(p => p.type === type);
+      if (visibility) filtered = filtered.filter(p => (p.visibility || 'public') === visibility);
       root.querySelector('#projects-grid').innerHTML = renderProjectCards(filtered);
       feather.replace();
       bindProjectCards(root);
@@ -65,18 +70,32 @@ function renderProjectCards(projects) {
     const done = tasks.filter(t => t.status === 'Terminado').length;
     const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
     const cycle = store.get.activeCycles().find(c => c.projectId === p.id);
+    const isRestricted = p.visibility === 'restricted';
+    const isUnlocked = store.isProjectUnlocked(p.id);
+
     return `
-      <div class="project-card" style="--project-color:${p.color || meta.color};" data-project-id="${p.id}">
+      <div class="project-card ${isRestricted && !isUnlocked ? 'project-card-locked' : ''}"
+        style="--project-color:${p.color || meta.color};" data-project-id="${p.id}">
         <div class="project-card-top">
           <div class="project-icon" style="--project-color:${p.color || meta.color};">
             <i data-feather="${meta.icon}"></i>
           </div>
-          <span class="badge badge-neutral">${meta.label}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            ${isRestricted ? `<span class="badge ${isUnlocked ? 'badge-success' : 'badge-warning'}" style="font-size:0.62rem;padding:2px 6px;">
+              ${isUnlocked ? '🔓 Activo' : '🔒 Restringido'}
+            </span>` : ''}
+            <span class="badge badge-neutral">${meta.label}</span>
+          </div>
         </div>
         <div>
           <div class="project-card-name">${esc(p.name)}</div>
           ${p.goal ? `<div class="project-card-goal" style="margin-top:6px;">${esc(p.goal)}</div>` : ''}
         </div>
+        ${isRestricted && !isUnlocked ? `
+          <div style="text-align:center;padding:12px 0;color:var(--text-muted);font-size:0.8rem;">
+            <i data-feather="lock" style="width:20px;height:20px;margin-bottom:4px;display:block;margin-left:auto;margin-right:auto;opacity:0.5;"></i>
+            Haz clic para desbloquear
+          </div>` : `
         <div>
           <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:5px;">
             <span>${done}/${tasks.length} tareas</span><span>${pct}%</span>
@@ -87,7 +106,7 @@ function renderProjectCards(projects) {
           ${cycle ? `<span><i data-feather="refresh-cw" style="width:10px;height:10px;"></i> ${esc(cycle.name)}</span>` : ''}
           ${p.endDate ? `<span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(p.endDate)}</span>` : ''}
           ${statusBadge(p.status)}
-        </div>
+        </div>`}
       </div>`;
   }).join('');
 }
@@ -95,7 +114,17 @@ function renderProjectCards(projects) {
 function bindProjectCards(root) {
   root.querySelectorAll('.project-card[data-project-id]').forEach(card => {
     card.addEventListener('click', () => {
-      router.navigate(`/project/${card.dataset.projectId}`);
+      const projectId = card.dataset.projectId;
+      const project = store.get.projectById(projectId);
+      if (!project) return;
+
+      if (project.visibility === 'restricted' && !store.isProjectUnlocked(projectId)) {
+        openProjectUnlockModal(project, () => {
+          router.navigate(`/project/${projectId}`);
+        });
+        return;
+      }
+      router.navigate(`/project/${projectId}`);
     });
   });
 }
@@ -109,17 +138,42 @@ function renderProjectDetail(root, params) {
   const p = store.get.projectById(projectId);
   if (!p) { root.innerHTML = `<div class="view-inner">${emptyState('briefcase', 'Proyecto no encontrado.')}</div>`; return; }
 
+  // Gate restricted project
+  if (p.visibility === 'restricted' && !store.isProjectUnlocked(projectId)) {
+    root.innerHTML = `
+      <div class="view-inner">
+        <div style="margin-bottom:16px;">
+          <a href="#/projects" class="btn btn-ghost btn-sm" style="gap:4px;"><i data-feather="arrow-left"></i> Proyectos</a>
+        </div>
+        <div class="empty-state" style="padding:60px 24px;">
+          <i data-feather="lock" style="width:48px;height:48px;opacity:0.5;color:var(--accent-warning);"></i>
+          <p>Este proyecto está restringido.</p>
+          <button class="btn btn-primary" id="unlock-from-detail"><i data-feather="unlock"></i> Ingresar PIN</button>
+        </div>
+      </div>`;
+    feather.replace();
+    root.querySelector('#unlock-from-detail').addEventListener('click', () => {
+      openProjectUnlockModal(p, () => renderProjectDetail(root, params));
+    });
+    return;
+  }
+
   const meta = PROJECT_TYPES[p.type] || PROJECT_TYPES.libre;
   const tasks = store.get.tasksByProject(p.id);
   const done = tasks.filter(t => t.status === 'Terminado').length;
   const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
   const cycles = store.get.cyclesByProject(p.id);
   const decisions = store.get.decisionsByProject(p.id);
+  const isRestricted = p.visibility === 'restricted';
 
   root.innerHTML = `
     <div class="view-inner">
-      <div style="margin-bottom:16px;">
+      <div style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
         <a href="#/projects" class="btn btn-ghost btn-sm" style="gap:4px;"><i data-feather="arrow-left"></i> Proyectos</a>
+        ${isRestricted ? `
+          <button class="btn btn-ghost btn-sm" id="lock-project-btn" style="color:var(--accent-warning);gap:4px;">
+            <i data-feather="lock" style="width:13px;height:13px;"></i> Bloquear proyecto
+          </button>` : ''}
       </div>
 
       <div style="display:flex; align-items:center; gap:14px; margin-bottom:24px;">
@@ -130,6 +184,7 @@ function renderProjectDetail(root, params) {
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
             <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.02em;">${esc(p.name)}</h1>
             ${statusBadge(p.status)}
+            ${isRestricted ? `<span class="badge badge-warning" style="font-size:0.65rem;">🔓 Desbloqueado</span>` : ''}
             <button class="btn btn-ghost btn-xs" id="edit-project-btn" style="margin-left:auto; padding:2px 8px; font-size:0.7rem;">
                <i data-feather="edit-2" style="width:11px;height:11px;"></i> Editar
             </button>
@@ -159,6 +214,15 @@ function renderProjectDetail(root, params) {
 
   root.querySelector('#edit-project-btn')?.addEventListener('click', () => openProjectModal(p));
 
+  if (isRestricted) {
+    root.querySelector('#lock-project-btn')?.addEventListener('click', () => {
+      store.lockProject(p.id);
+      showToast(`Proyecto "${p.name}" bloqueado.`, 'info');
+      refreshSidebarProjects();
+      router.navigate('/projects');
+    });
+  }
+
   root.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       root.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -170,6 +234,8 @@ function renderProjectDetail(root, params) {
 
 function showProjectTab(root, p, tab) {
   const content = root.querySelector('#proj-tab-content');
+  // Re-read project state in case it was updated
+  p = store.get.projectById(p.id) || p;
   const tasks = store.get.tasksByProject(p.id);
   const cycles = store.get.cyclesByProject(p.id);
   const decisions = store.get.decisionsByProject(p.id);
@@ -181,7 +247,6 @@ function showProjectTab(root, p, tab) {
       const icon = isZotero ? 'book' : 'external-link';
       const title = isZotero ? 'Conexión con Zotero' : 'Conexión Ext (Obsidian/Local)';
       const btnText = isZotero ? 'Abrir en Zotero' : `Abrir: ${esc(getObsidianFileName(p.obsidianUri))}`;
-
       extCard = `
       <div class="card glass-panel" style="margin-top:20px; grid-column: span 2;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -204,6 +269,9 @@ function showProjectTab(root, p, tab) {
             ${detailRow('Estado', statusBadge(p.status))}
             ${p.startDate ? detailRow('Inicio', fmtDate(p.startDate)) : ''}
             ${p.endDate ? detailRow('Fin', fmtDate(p.endDate)) : ''}
+            ${detailRow('Visibilidad', p.visibility === 'restricted'
+              ? '<span class="badge badge-warning" style="font-size:0.7rem;">🔒 Restringido</span>'
+              : '<span class="badge badge-neutral" style="font-size:0.7rem;">🌐 Público</span>')}
           </div>
         </div>
         <div class="card glass-panel">
@@ -232,7 +300,7 @@ function showProjectTab(root, p, tab) {
                   <div style="font-size:0.86rem; line-height:1.4;">${esc(t.text)}</div>
                   <div style="font-size:0.68rem; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between;">
                     <span>${new Date(t.ts).toLocaleString()}</span>
-                    <button class="btn-text del-thought-btn" data-ts="${t.ts}" style="color:var(--accent-danger); font-size:0.65rem;">Eliminar</button>
+                    <button class="btn-text del-thought-btn" data-ts="${t.ts}" style="color:var(--accent-danger); font-size:0.65rem; cursor:pointer;">Eliminar</button>
                   </div>
                 </div>
               `).join('') : '<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:20px;">No has capturado pensamientos aún.</div>'}
@@ -268,15 +336,27 @@ function showProjectTab(root, p, tab) {
         showProjectTab(root, p, 'overview');
       });
     });
+
   } else if (tab === 'tasks') {
     content.innerHTML = `
-      <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
+      <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span style="font-size:0.8rem;color:var(--text-muted);">${tasks.length} tarea${tasks.length !== 1 ? 's' : ''}</span>
         <button class="btn btn-primary btn-sm" id="proj-new-task-btn"><i data-feather="plus"></i> Nueva tarea</button>
       </div>
       <ul class="task-list">${tasks.length ? tasks.map(t => taskItem(t)).join('') : emptyState('check-square', 'Sin tareas aún.')}</ul>`;
     feather.replace();
     bindTaskCheckboxes(content);
     content.querySelector('#proj-new-task-btn')?.addEventListener('click', () => openTaskModal(p.id));
+
+    // Click on task item body opens edit modal
+    content.querySelectorAll('.task-item[data-task-id]').forEach(item => {
+      item.addEventListener('click', e => {
+        if (e.target.closest('.task-checkbox') || e.target.closest('.task-del-btn')) return;
+        const task = store.get.allTasks().find(t => t.id === item.dataset.taskId);
+        if (task) openTaskModal(task);
+      });
+    });
+
   } else if (tab === 'cycles') {
     content.innerHTML = `
       <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
@@ -284,10 +364,13 @@ function showProjectTab(root, p, tab) {
       </div>
       <div class="cycles-grid">${cycles.length ? cycles.map(c => cycleCard(c)).join('') : emptyState('refresh-cw', 'Sin ciclos.')}</div>`;
     feather.replace();
+    // Cycle card buttons (edit, close, delete) handled by global delegate in app.js
     content.querySelector('#proj-new-cycle-btn')?.addEventListener('click', () => openCycleModal(p.id));
+
   } else if (tab === 'document') {
     renderDocumentView(content, { projectId: p.id });
     return;
+
   } else if (tab === 'decisions') {
     content.innerHTML = `
       <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
@@ -295,12 +378,15 @@ function showProjectTab(root, p, tab) {
       </div>
       <div class="decisions-list">${decisions.length ? decisions.map(d => decisionCard(d)).join('') : emptyState('zap', 'Sin decisiones.')}</div>`;
     feather.replace();
+    // Decision card buttons (edit, delete) handled by global delegate in app.js
     content.querySelector('#proj-new-dec-btn')?.addEventListener('click', () => openDecisionModal(p.id));
   }
 
   feather.replace();
   bindTaskCheckboxes(content);
 }
+
+// Card button interactions are handled by the global delegate in app.js
 
 function detailRow(label, value) {
   return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.84rem;border-bottom:1px solid var(--border-color);padding-bottom:8px;">

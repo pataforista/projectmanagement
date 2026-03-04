@@ -18,6 +18,11 @@ const store = (() => {
         library: [],
     };
 
+    // In-memory unlock session (keyed by projectId, cleared on page reload)
+    const _unlockedProjects = new Set(
+        JSON.parse(sessionStorage.getItem('_unlocked_projects') || '[]')
+    );
+
     const _subscribers = {};
 
     function _notify(key) {
@@ -310,6 +315,24 @@ const store = (() => {
         }
     }
 
+    // ── Project unlock helpers ─────────────────────────────────────────────────
+    function unlockProject(id) {
+        _unlockedProjects.add(id);
+        sessionStorage.setItem('_unlocked_projects', JSON.stringify([..._unlockedProjects]));
+    }
+
+    function lockProject(id) {
+        _unlockedProjects.delete(id);
+        sessionStorage.setItem('_unlocked_projects', JSON.stringify([..._unlockedProjects]));
+    }
+
+    function isProjectUnlocked(id) {
+        const proj = _state.projects.find(p => p.id === id);
+        if (!proj) return false;
+        if (proj.visibility !== 'restricted') return true; // public projects are always accessible
+        return _unlockedProjects.has(id);
+    }
+
     // ── Selectors ──
     const get = {
         projects: () => [..._state.projects].sort((a, b) => (a.order || 0) - (b.order || 0)),
@@ -328,10 +351,21 @@ const store = (() => {
         memberById: (id) => _state.members.find(m => m.id === id),
         projectById: (id) => _state.projects.find(p => p.id === id),
         allTasks: () => _state.tasks,
-        blockedTasks: () => _state.tasks.filter(t => t.status === 'En espera'),
+        // Tasks visible in global views (excludes tasks from locked restricted projects)
+        visibleTasks: () => _state.tasks.filter(t => {
+            if (!t.projectId) return true;
+            return isProjectUnlocked(t.projectId);
+        }),
+        blockedTasks: () => _state.tasks.filter(t => t.status === 'En espera' && isProjectUnlocked(t.projectId)),
         upcomingDeliverables: (days = 7) => {
             const cutoff = Date.now() + days * 86400000;
-            return _state.tasks.filter(t => t.dueDate && new Date(t.dueDate).getTime() <= cutoff && t.status !== 'Terminado' && t.status !== 'Archivado');
+            return _state.tasks.filter(t =>
+                t.dueDate &&
+                new Date(t.dueDate).getTime() <= cutoff &&
+                t.status !== 'Terminado' &&
+                t.status !== 'Archivado' &&
+                isProjectUnlocked(t.projectId)
+            );
         },
         allCycles: () => _state.cycles,
         cycles: () => _state.cycles,
@@ -343,9 +377,10 @@ const store = (() => {
         },
         logs: () => _state.logs,
         library: () => _state.library,
+        isProjectUnlocked,
     };
 
-    return { load, seedIfEmpty, dispatch, subscribe, get };
+    return { load, seedIfEmpty, dispatch, subscribe, get, unlockProject, lockProject, isProjectUnlocked };
 })();
 
 window.store = store;
