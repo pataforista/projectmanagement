@@ -64,7 +64,7 @@ function miniProjectCard(p) {
   const pct = pTasks.length ? Math.round(done / pTasks.length * 100) : 0;
   return `
     <div class="project-card" style="--project-color:${p.color || 'var(--accent-primary)'}; cursor:pointer;"
-         onclick="router.navigate('/project/${p.id}')">
+         data-action="navigate-project" data-project-id="${esc(p.id)}">
       <div class="project-card-name" style="font-size:0.82rem;">${esc(p.name)}</div>
       <div class="progress-bar" style="margin-top:4px;"><div class="progress-fill" style="width:${pct}%"></div></div>
       <div style="font-size:0.7rem;color:var(--text-muted);">${done}/${pTasks.length} tareas · ${pct}%</div>

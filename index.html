@@ -8,6 +8,23 @@
   <meta name="description"
     content="Workspace de Producción — Gestión colaborativa de proyectos académicos y creativos.">
 
+  <!-- Security headers (meta-level; supplement with HTTP headers from _headers file) -->
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <!-- CSP: no unsafe-inline for scripts; style unsafe-inline required for dynamic inline styles -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self';
+             script-src 'self' https://unpkg.com https://accounts.google.com;
+             style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
+             font-src https://fonts.gstatic.com;
+             img-src 'self' data: blob:;
+             connect-src 'self' https://www.googleapis.com https://accounts.google.com;
+             worker-src 'self';
+             manifest-src 'self';
+             object-src 'none';
+             base-uri 'self';
+             form-action 'self';
+             upgrade-insecure-requests">
+
   <title>Workspace de Producción</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,8 +45,10 @@
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/animations.css">
 
-  <!-- Feather Icons -->
-  <script src="https://unpkg.com/feather-icons/dist/feather.min.js"></script>
+  <!-- Feather Icons — pinned version with SRI -->
+  <script src="https://unpkg.com/feather-icons@4.29.2/dist/feather.min.js"
+    integrity="sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb"
+    crossorigin="anonymous"></script>
 </head>
 
 <body class="theme-dark">
@@ -100,12 +119,12 @@
             <i data-feather="sun" class="sun-icon"></i>
             <i data-feather="moon" class="moon-icon"></i>
           </button>
-          <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.openPanel()"
+          <button class="btn btn-icon" id="btn-sync-toggle"
             title="Conectar Google Drive" style="position:relative;">
             <i data-feather="cloud"></i>
             <span class="status-indicator status-offline" id="sync-indicator"></span>
           </button>
-          <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)">
+          <button class="btn btn-icon" id="btn-export" title="Exportar datos (JSON)">
             <i data-feather="download"></i>
           </button>
         </div>

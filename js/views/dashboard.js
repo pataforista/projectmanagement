@@ -102,4 +102,9 @@ function renderDashboard(root) {
   feather.replace();
   bindTaskCheckboxes(root);
   root.querySelector('#dash-new-task')?.addEventListener('click', () => openTaskModal());
+
+  // Event delegation for mini project card navigation (avoids inline onclick with project id)
+  root.querySelectorAll('[data-action="navigate-project"][data-project-id]').forEach(el => {
+    el.addEventListener('click', () => router.navigate('/project/' + el.dataset.projectId));
+  });
 }

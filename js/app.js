@@ -73,6 +73,10 @@ document.getElementById('search-overlay')?.addEventListener('click', e => {
     if (e.target.id === 'search-overlay') closeSearch();
 });
 
+// ── Wire sidebar action buttons (replacing removed inline onclick handlers) ─
+document.getElementById('btn-sync-toggle')?.addEventListener('click', () => syncManager.openPanel());
+document.getElementById('btn-export')?.addEventListener('click', () => exportData());
+
 document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
 });
@@ -193,7 +197,7 @@ function handleSearch(q) {
 
     results.innerHTML = [
         ...matchedProjs.map(p => `
-      <div class="search-result-item" onclick="router.navigate('/project/${p.id}'); closeSearch();">
+      <div class="search-result-item" data-action="navigate-project" data-id="${esc(p.id)}" style="cursor:pointer;">
         <i data-feather="briefcase" style="width:14px;height:14px;color:${p.color || 'var(--accent-primary)'};flex-shrink:0;"></i>
         <div class="res-info">
           <span class="res-title">${esc(p.name)}</span>
@@ -203,7 +207,7 @@ function handleSearch(q) {
         ...matchedTasks.map(t => {
             const proj = store.get.projectById(t.projectId);
             return `
-      <div class="search-result-item" onclick="router.navigate('/backlog'); closeSearch();">
+      <div class="search-result-item" data-action="navigate-backlog" style="cursor:pointer;">
         <i data-feather="check-square" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0;"></i>
         <div class="res-info">
           <span class="res-title">${esc(t.title)}</span>
@@ -212,6 +216,19 @@ function handleSearch(q) {
       </div>`;
         }),
     ].join('');
+
+    // Event delegation for search result clicks (avoids inline onclick with user data)
+    results.querySelectorAll('.search-result-item[data-action]').forEach(el => {
+        el.addEventListener('click', () => {
+            const action = el.dataset.action;
+            if (action === 'navigate-project') {
+                router.navigate('/project/' + el.dataset.id);
+            } else if (action === 'navigate-backlog') {
+                router.navigate('/backlog');
+            }
+            closeSearch();
+        });
+    });
 
     feather.replace();
 }

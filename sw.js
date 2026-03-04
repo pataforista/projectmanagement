@@ -3,7 +3,7 @@
  * Cache-first strategy for shell assets + offline fallback + sync queue flush stub.
  */
 
-const CACHE_NAME = 'workspace-v4';
+const CACHE_NAME = 'workspace-v5';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
@@ -31,7 +31,7 @@ const SHELL_ASSETS = [
     '/js/sync.js',
     '/js/app.js',
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
-    'https://unpkg.com/feather-icons/dist/feather.min.js',
+    'https://unpkg.com/feather-icons@4.29.2/dist/feather.min.js',
 ];
 
 // ── Install: cache shell ──────────────────────────────────────────────────────

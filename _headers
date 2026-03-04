@@ -1,0 +1,24 @@
+/*
+  # Strict Transport Security — 2 years, include subdomains, preload
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+
+  # Prevent MIME-type sniffing
+  X-Content-Type-Options: nosniff
+
+  # Deny embedding in iframes
+  X-Frame-Options: DENY
+
+  # Referrer policy
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Restrict access to browser features
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+  # Full CSP — includes frame-ancestors (only effective as HTTP header, not meta tag)
+  # script-src: self + feather-icons CDN (pinned) + Google Identity Services
+  # style-src: unsafe-inline required due to dynamic inline styles in templates
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://unpkg.com https://accounts.google.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://www.googleapis.com https://accounts.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+
+  # Cross-Origin policies for SharedArrayBuffer / isolation (optional, enable if needed)
+  # Cross-Origin-Opener-Policy: same-origin
+  # Cross-Origin-Embedder-Policy: require-corp

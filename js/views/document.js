@@ -27,12 +27,17 @@ function renderDocumentView(root, params) {
           <div class="projects-grid">
             ${projects.map(p => `
               <div class="project-card" style="--project-color:${p.color || 'var(--accent-primary)'}; cursor:pointer;"
-                onclick="router.navigate('/project/${p.id}/document')">
+                data-action="navigate-document" data-project-id="${esc(p.id)}">
                 <div class="project-card-name">${esc(p.name)}</div>
                 <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Abrir documento vivo</div>
               </div>`).join('')}
           </div>
         </div>`;
+
+            // Event delegation for document navigation
+            root.querySelectorAll('[data-action="navigate-document"][data-project-id]').forEach(el => {
+                el.addEventListener('click', () => router.navigate('/project/' + el.dataset.projectId + '/document'));
+            });
             return;
         }
     }

@@ -99,7 +99,12 @@ class Router {
         if (handler) {
             handler(root, params);
         } else {
-            root.innerHTML = `<div class="empty-state"><p>Vista no encontrada: ${viewName}</p></div>`;
+            const wrap = document.createElement('div');
+            wrap.className = 'empty-state';
+            const p = document.createElement('p');
+            p.textContent = 'Vista no encontrada: ' + viewName;
+            wrap.appendChild(p);
+            root.appendChild(wrap);
         }
     }
 
