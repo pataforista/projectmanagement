@@ -286,14 +286,25 @@ const store = (() => {
 
             // ── Sync ──
             case 'HYDRATE_STORE': {
-                // Key names should match _state keys
+                // Validate: only allow known store keys and array values
+                const ALLOWED_KEYS = new Set(['projects', 'tasks', 'cycles', 'decisions', 'documents', 'members', 'logs', 'library']);
                 for (const key in payload) {
-                    if (Array.isArray(payload[key]) && _state.hasOwnProperty(key)) {
-                        await dbAPI.clear(key);
-                        _state[key] = payload[key];
-                        for (const r of payload[key]) {
-                            await dbAPI.put(key, r);
-                        }
+                    if (!ALLOWED_KEYS.has(key)) {
+                        console.warn(`[Store] HYDRATE_STORE: unknown key "${key}" rejected`);
+                        continue;
+                    }
+                    if (!Array.isArray(payload[key])) {
+                        console.warn(`[Store] HYDRATE_STORE: non-array value for "${key}" rejected`);
+                        continue;
+                    }
+                    // Validate each record has at minimum an id string
+                    const sanitized = payload[key].filter(r =>
+                        r && typeof r === 'object' && typeof r.id === 'string' && r.id.length > 0
+                    );
+                    await dbAPI.clear(key);
+                    _state[key] = sanitized;
+                    for (const r of sanitized) {
+                        await dbAPI.put(key, r);
                     }
                 }
                 _notify('*');

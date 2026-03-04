@@ -1405,3 +1405,117 @@
     background: var(--border-highlight);
     border-radius: 3px;
 }
+/* ── Pomodoro Widget ─────────────────────────────────────────────────────────── */
+#pomodoro-widget {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 1200;
+}
+
+.pomodoro-panel {
+    width: 220px;
+    border-radius: var(--radius-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+}
+
+.pomodoro-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+}
+
+.pomodoro-mode-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.pomodoro-task {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    max-width: 90px;
+}
+
+.pomodoro-ring-wrap {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+}
+
+.pomodoro-ring {
+    width: 80px;
+    height: 80px;
+}
+
+.pomodoro-time {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.pomodoro-mode-btns {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+}
+
+.pomo-mode-btn {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-surface-hover);
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+}
+
+.pomo-mode-btn.active,
+.pomo-mode-btn:hover {
+    background: var(--accent-primary);
+    color: #fff;
+}
+
+.pomodoro-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.pomodoro-rounds {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    justify-content: center;
+}
+
+.pomo-round-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-color);
+    transition: background var(--dur-fast) var(--ease);
+}
+
+.pomo-round-dot.done {
+    background: var(--accent-primary);
+}

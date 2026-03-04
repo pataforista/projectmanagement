@@ -11,45 +11,128 @@ document.addEventListener('DOMContentLoaded', async () => {
     const authPassword = document.getElementById('auth-password');
     const authSubtitle = document.getElementById('auth-subtitle');
 
-    const hashStr = str => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-        return hash.toString();
-    };
+    // ── Secure PBKDF2 password hashing via Web Crypto API ──────────────────────
+    const HASH_KEY = 'workspace_lock_hash_v2';
+    const SALT_KEY = 'workspace_lock_salt_v2';
+    const MAX_AUTH_ATTEMPTS = 5;
+    const LOCKOUT_MS = 30000; // 30 seconds
 
-    let savedHash = localStorage.getItem('workspace_lock_hash');
+    async function deriveKey(password, saltHex) {
+        const enc = new TextEncoder();
+        const keyMaterial = await crypto.subtle.importKey(
+            'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
+        );
+        const saltBytes = new Uint8Array(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+        const bits = await crypto.subtle.deriveBits(
+            { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
+            keyMaterial, 256
+        );
+        return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function generateSalt() {
+        const arr = new Uint8Array(16);
+        crypto.getRandomValues(arr);
+        return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // ── Brute-force protection ──────────────────────────────────────────────────
+    function getAuthState() {
+        try {
+            return JSON.parse(sessionStorage.getItem('auth_state') || '{}');
+        } catch { return {}; }
+    }
+    function saveAuthState(s) { sessionStorage.setItem('auth_state', JSON.stringify(s)); }
+
+    function isLockedOut() {
+        const s = getAuthState();
+        if (!s.lockUntil) return false;
+        return Date.now() < s.lockUntil;
+    }
+
+    function registerFailedAttempt() {
+        const s = getAuthState();
+        s.attempts = (s.attempts || 0) + 1;
+        if (s.attempts >= MAX_AUTH_ATTEMPTS) {
+            s.lockUntil = Date.now() + LOCKOUT_MS;
+            s.attempts = 0;
+        }
+        saveAuthState(s);
+    }
+
+    function clearAuthState() { sessionStorage.removeItem('auth_state'); }
+
+    // ── Migration: detect old weak hash and force re-creation ──────────────────
+    const hasOldHash = !!localStorage.getItem('workspace_lock_hash');
+    const savedHashV2 = localStorage.getItem(HASH_KEY);
+    let savedSalt = localStorage.getItem(SALT_KEY);
+
+    if (hasOldHash && !savedHashV2) {
+        // Old insecure hash detected — force password re-creation
+        localStorage.removeItem('workspace_lock_hash');
+        authSubtitle && (authSubtitle.dataset.migration = 'true');
+    }
 
     await new Promise(resolve => {
-        if (!authOverlay) return resolve(); // Fallback if HTML is missing
+        if (!authOverlay) return resolve();
 
-        if (!savedHash) {
+        if (!savedHashV2) {
             authOverlay.classList.add('open');
-            authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-            authForm.onsubmit = (e) => {
+            if (authSubtitle) {
+                authSubtitle.textContent = authSubtitle.dataset.migration
+                    ? "Actualización de seguridad: crea una nueva contraseña maestra."
+                    : "Crea una contraseña maestra para bloquear tu Workspace.";
+            }
+            authForm.onsubmit = async (e) => {
                 e.preventDefault();
-                const pwd = authPassword.value.trim();
-                if (pwd.length < 4) {
+                const pwd = authPassword.value;
+                if (pwd.length < 6) {
                     authPassword.style.border = '1px solid var(--accent-warning)';
-                    setTimeout(() => authPassword.style.border = '', 1000);
+                    if (authSubtitle) authSubtitle.textContent = "La contraseña debe tener al menos 6 caracteres.";
+                    setTimeout(() => { authPassword.style.border = ''; }, 1200);
                     return;
                 }
-                localStorage.setItem('workspace_lock_hash', hashStr(pwd));
+                const salt = generateSalt();
+                const hash = await deriveKey(pwd, salt);
+                localStorage.setItem(HASH_KEY, hash);
+                localStorage.setItem(SALT_KEY, salt);
+                authPassword.value = '';
                 authOverlay.classList.remove('open');
                 resolve();
             };
         } else {
             authOverlay.classList.add('open');
-            authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
-            authForm.onsubmit = (e) => {
+            if (authSubtitle) authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
+
+            authForm.onsubmit = async (e) => {
                 e.preventDefault();
-                const pwd = authPassword.value.trim();
-                if (hashStr(pwd) === savedHash) {
+
+                if (isLockedOut()) {
+                    const s = getAuthState();
+                    const remaining = Math.ceil((s.lockUntil - Date.now()) / 1000);
+                    if (authSubtitle) authSubtitle.textContent = `Demasiados intentos. Espera ${remaining}s.`;
+                    return;
+                }
+
+                const pwd = authPassword.value;
+                const hash = await deriveKey(pwd, savedSalt);
+                authPassword.value = '';
+
+                if (hash === savedHashV2) {
+                    clearAuthState();
                     authOverlay.classList.remove('open');
                     resolve();
                 } else {
+                    registerFailedAttempt();
                     authPassword.style.border = '1px solid var(--accent-danger)';
-                    authPassword.value = '';
-                    setTimeout(() => authPassword.style.border = '', 1000);
+                    const s = getAuthState();
+                    const attemptsLeft = MAX_AUTH_ATTEMPTS - (s.attempts || 0);
+                    if (authSubtitle && attemptsLeft > 0) {
+                        authSubtitle.textContent = `Contraseña incorrecta. Intentos restantes: ${attemptsLeft}.`;
+                    } else if (authSubtitle) {
+                        authSubtitle.textContent = `Cuenta bloqueada por ${LOCKOUT_MS / 1000}s por seguridad.`;
+                    }
+                    setTimeout(() => { authPassword.style.border = ''; }, 1200);
                 }
             };
         }
@@ -316,6 +399,73 @@ function handleSearch(q) {
 }
 
 /**
+ * Export a project (or all projects) as a Markdown report
+ */
+function exportMarkdown(projectId = null) {
+    const projects = projectId
+        ? store.get.projects().filter(p => p.id === projectId)
+        : store.get.projects();
+
+    if (!projects.length) { showToast('No hay proyectos para exportar.', 'info'); return; }
+
+    const today = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+    const lines = [`# Workspace de Producción — Reporte`, `_Generado el ${today}_`, ``];
+
+    for (const p of projects) {
+        lines.push(`## ${p.name}`);
+        if (p.description) lines.push(`> ${p.description}`, ``);
+        lines.push(`**Estado:** ${p.status || '—'}  |  **Tipo:** ${p.type || '—'}`, ``);
+
+        const tasks = store.get.tasksByProject(p.id);
+        if (tasks.length) {
+            lines.push(`### Tareas`);
+            for (const t of tasks) {
+                const done = t.status === 'Terminado' || t.status === 'Archivado';
+                const check = done ? '[x]' : '[ ]';
+                const due = t.dueDate ? ` _(límite: ${t.dueDate})_` : '';
+                const tags = t.tags && t.tags.length ? ` \`${t.tags.join('` `')}\`` : '';
+                lines.push(`- ${check} **${t.title}**${due}${tags}`);
+                if (t.description) lines.push(`  - ${t.description}`);
+                if (t.subtasks && t.subtasks.length) {
+                    for (const st of t.subtasks) {
+                        lines.push(`  - [${st.done ? 'x' : ' '}] ${st.title}`);
+                    }
+                }
+            }
+            lines.push(``);
+        }
+
+        const cycles = store.get.cyclesByProject(p.id);
+        if (cycles.length) {
+            lines.push(`### Ciclos`);
+            for (const c of cycles) {
+                const pct = store.get.cycleProgress(c.id);
+                lines.push(`- **${c.name}** — ${pct}% completado (${c.status})`);
+            }
+            lines.push(``);
+        }
+
+        const decisions = store.get.decisionsByProject(p.id);
+        if (decisions.length) {
+            lines.push(`### Decisiones`);
+            for (const d of decisions) {
+                lines.push(`- **${d.title}**: ${d.rationale || d.description || '—'}`);
+            }
+            lines.push(``);
+        }
+
+        lines.push(`---`, ``);
+    }
+
+    const filename = projectId
+        ? `${(projects[0].name || 'proyecto').slugify()}-reporte.md`
+        : `workspace-reporte-completo.md`;
+
+    downloadFile(filename, lines.join('\n'));
+    showToast('Reporte Markdown exportado.', 'success');
+}
+
+/**
  * Backup entire store as JSON
  */
 async function exportData() {
@@ -409,6 +559,7 @@ window.closeSearch = closeSearch;
 window.handleSearch = handleSearch;
 window.initUIToggles = initUIToggles;
 window.exportData = exportData;
+window.exportMarkdown = exportMarkdown;
 
 // ── Ripple Effect ──────────────────────────────────────────────────────────────
 document.addEventListener('click', (e) => {
