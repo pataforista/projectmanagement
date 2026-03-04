@@ -132,7 +132,7 @@ function renderLibrary(root) {
         margin-right: 12px;
         flex-shrink: 0;
       }
-      .library-icon.biol { background: rgba(var(--accent-primary-rgb), 0.15); color: var(--accent-primary); }
+      .library-icon.biol { background: var(--accent-primary-glow); color: var(--accent-primary); }
       .library-icon.teach { background: rgba(22, 160, 133, 0.15); color: #1abc9c; }
       .library-icon.proj { background: rgba(41, 128, 185, 0.15); color: #3498db; }
       .library-icon.eco { background: rgba(142, 68, 173, 0.15); color: #9b59b6; }

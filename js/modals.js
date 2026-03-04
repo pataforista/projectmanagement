@@ -121,14 +121,29 @@ function openTaskModal(defaultProjectId, defaultStatus) {
   });
 
   function renderSubtasks() {
-    subList.innerHTML = subTasks.map(st => `
+    subList.innerHTML = subTasks.map((st, idx) => `
             <div style="display:flex; align-items:center; gap:8px; background:var(--bg-surface-2); padding:6px 10px; border-radius:4px;">
-                <input type="checkbox" ${st.done ? 'checked' : ''} onchange="this.dataset.id = ${st.id}">
+                <input type="checkbox" ${st.done ? 'checked' : ''} class="st-check" data-idx="${idx}">
                 <span style="flex:1; font-size:0.84rem;">${esc(st.title)}</span>
-                <button class="btn btn-icon" style="padding:2px;" onclick="this.dataset.id = ${st.id}"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
+                <button class="btn btn-icon st-del-btn" style="padding:2px;" data-idx="${idx}"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
             </div>
         `).join('');
     feather.replace();
+
+    subList.querySelectorAll('.st-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = parseInt(cb.dataset.idx);
+        if (subTasks[idx]) subTasks[idx].done = cb.checked;
+      });
+    });
+
+    subList.querySelectorAll('.st-del-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        subTasks.splice(idx, 1);
+        renderSubtasks();
+      });
+    });
   }
 
   modal.querySelector('#modal-close').addEventListener('click', closeModal);

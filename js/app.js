@@ -295,6 +295,9 @@ function initUIToggles() {
         });
     });
 
+    // Botón "Nuevo" global (topbar)
+    document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
+
     // Profile Click
     const profileBtn = document.getElementById('btn-user-profile');
     profileBtn?.addEventListener('click', () => {
