@@ -120,10 +120,10 @@ function backlogRow(t) {
       <td>
         <span style="display:inline-flex;align-items:center;gap:5px;">
           <span class="priority-pip ${t.priority || 'baja'}"></span>
-          <span style="font-size:0.78rem;text-transform:capitalize;">${t.priority || 'baja'}</span>
+          <span style="font-size:0.78rem;text-transform:capitalize;">${esc(t.priority || 'baja')}</span>
         </span>
       </td>
-      <td><span class="badge badge-neutral" style="font-size:0.68rem;">${t.type || 'tarea'}</span></td>
+      <td><span class="badge badge-neutral" style="font-size:0.68rem;">${esc(t.type || 'tarea')}</span></td>
       <td style="font-size:0.78rem; ${isOverdue ? 'color:var(--accent-danger);font-weight:600;' : 'color:var(--text-muted);'}">
         ${t.dueDate ? fmtDate(t.dueDate) : '—'}
       </td>

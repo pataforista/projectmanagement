@@ -253,6 +253,21 @@
     padding-right: 28px;
 }
 
+/* Touch Targets on Mobile */
+@media (max-width: 768px) {
+    .btn {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+
+    .form-input,
+    .form-select {
+        padding: 10px 14px;
+        font-size: 1rem;
+        /* Prevents iOS auto-zoom */
+    }
+}
+
 /* ── Progress Bar ───────────────────────────────────────────────────────────── */
 .progress-bar {
     width: 100%;
@@ -434,7 +449,7 @@
     }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 850px) {
     .dashboard-grid {
         grid-template-columns: 1fr;
     }
@@ -442,6 +457,18 @@
     .col-span-2,
     .col-span-3 {
         grid-column: span 1;
+    }
+}
+
+.two-col-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+@media (max-width: 650px) {
+    .two-col-grid {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -530,6 +557,10 @@
     border-radius: var(--radius-xl);
     width: 100%;
     max-width: 520px;
+    max-height: 90vh;
+    /* Prevent modal from overflowing screen height on mobile */
+    display: flex;
+    flex-direction: column;
     box-shadow: var(--shadow-xl);
     animation: modalSlide var(--dur-med) var(--ease-out);
     overflow: hidden;
@@ -553,6 +584,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
 }
 
 .modal-header h2 {
@@ -566,6 +598,10 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    overflow-y: auto;
+    /* Allow scrolling inside the modal if content is too long */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-highlight) transparent;
 }
 
 .modal-footer {

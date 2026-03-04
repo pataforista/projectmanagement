@@ -3,169 +3,163 @@
  * Resources for Biomedical Research, Teaching, and Project Management
  */
 
+// Local state for library view
+let currentLibraryViewMode = 'grid'; // 'grid' | 'table'
+
 function renderLibrary(root) {
-    root.innerHTML = `
+  const libraryItems = store.get.library() || [];
+
+  root.innerHTML = `
     <div class="view-inner">
       <div class="view-header">
         <div class="view-header-text">
           <h1>Biblioteca de Recursos</h1>
           <p class="view-subtitle">Gestión del conocimiento, investigación y docencia.</p>
         </div>
+        <div class="view-actions">
+           <!-- View Mode Toggle -->
+           <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
+             <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
+               <i data-feather="grid" style="width: 14px; height: 14px;"></i>
+             </button>
+             <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'table' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('table')" title="Vista Tabla (Dataview)">
+               <i data-feather="list" style="width: 14px; height: 14px;"></i>
+             </button>
+           </div>
+           
+           <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
+           <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()">
+             <i data-feather="upload-cloud"></i> Importar Zotero
+           </button>
+        </div>
       </div>
 
-      <div class="library-grid">
-        
-        <!-- Section 1: Gestión Bibliográfica -->
-        <div class="card glass-panel library-card">
-          <div class="card-header">
-            <div class="library-icon biol">
-              <i data-feather="book"></i>
-            </div>
-            <h3>Gestión Bibliográfica e Investigación Biomédica</h3>
-          </div>
-          <div class="card-body">
-            <p>Herramientas para manejar literatura científica y estructurar protocolos de investigación.</p>
-            <ul class="resource-list">
-              <li>
-                <strong>Zotero Integration:</strong> El estándar de oro para importar referencias, etiquetas y notas desde PDFs directamente a Obsidian.
-              </li>
-              <li>
-                <strong>Dataview:</strong> Motor de base de datos para crear tablas dinámicas que filtren artículos, seguimiento de pacientes o avances de tesis.
-              </li>
-              <li>
-                <strong>Omnivore:</strong> Plataforma de lectura diferida (read-it-later) para guardar artículos científicos y sincronizar resaltados.
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Section 2: Docencia y Preparación -->
-        <div class="card glass-panel library-card">
-          <div class="card-header">
-            <div class="library-icon teach">
-              <i data-feather="users"></i>
-            </div>
-            <h3>Docencia y Preparación de Clases</h3>
-          </div>
-          <div class="card-body">
-            <p>Traslada tus apuntes de investigación directamente al aula y facilita la enseñanza.</p>
-            <ul class="resource-list">
-              <li>
-                <strong>Advanced Slides:</strong> Crea presentaciones profesionales (Reveal.js) directamente desde tus archivos Markdown.
-              </li>
-              <li>
-                <strong>Excalidraw:</strong> Pizarra virtual para diagramar flujos de diagnóstico y esquemas conceptuales compartibles.
-              </li>
-              <li>
-                <strong>Spaced Repetition:</strong> Sistema de flashcards gamificado para repasar dosis, diagnósticos y clasificaciones de forma interactiva.
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Section 3: Organización de Proyectos -->
-        <div class="card glass-panel library-card">
-          <div class="card-header">
-            <div class="library-icon proj">
-              <i data-feather="layout"></i>
-            </div>
-            <h3>Organización de Proyectos y Equipos</h3>
-          </div>
-          <div class="card-body">
-            <p>Alternativas open-source para gestionar tareas y coordinar equipos con privacidad total.</p>
-            <ul class="resource-list">
-              <li>
-                <strong>Kanban (Plugin):</strong> Tableros visuales locales para visualizar el avance de PWAs o distribución de tareas entre residentes.
-              </li>
-              <li>
-                <strong>AppFlowy:</strong> Alternativa self-hosted a Notion para bases de datos, wikis y gestión de proyectos colaborativos.
-              </li>
-              <li>
-                <strong>Focalboard:</strong> Orientado a la gestión de proyectos y asignación de tareas en entornos académicos o institucionales.
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Section 4: Ecosistemas de Conocimiento -->
-        <div class="card glass-panel library-card">
-          <div class="card-header">
-            <div class="library-icon eco">
-              <i data-feather="share-2"></i>
-            </div>
-            <h3>Ecosistemas de Conocimiento Completos</h3>
-          </div>
-          <div class="card-body">
-            <p>Estructuras alternativas para la captura y organización del conocimiento personal.</p>
-            <ul class="resource-list">
-              <li>
-                <strong>Logseq:</strong> Outliner enfocado en privacidad y diarios, ideal para vincular conceptos complejos sin jerarquías rígidas.
-              </li>
-              <li>
-                <strong>Joplin:</strong> Alternativa sólida y cifrada a Evernote para capturar información rápida y organizar clases con sincronización flexible.
-              </li>
-            </ul>
-          </div>
-        </div>
-
+      <!-- Library Stats -->
+      <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+        ${statPill(libraryItems.length, 'Referencias Totales', 'book')}
+        ${statPill(libraryItems.filter(i => i.itemType === 'article-journal').length, 'Artículos', 'file-text')}
+        ${statPill(libraryItems.filter(i => i.itemType === 'book').length, 'Libros', 'bookmark')}
       </div>
-    </div>
 
-    <style>
-      .library-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-        gap: 20px;
-        margin-top: 20px;
-      }
-      .library-card {
-        display: flex;
-        flex-direction: column;
-      }
-      .library-icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 12px;
-        flex-shrink: 0;
-      }
-      .library-icon.biol { background: rgba(var(--accent-primary-rgb), 0.15); color: var(--accent-primary); }
-      .library-icon.teach { background: rgba(22, 160, 133, 0.15); color: #1abc9c; }
-      .library-icon.proj { background: rgba(41, 128, 185, 0.15); color: #3498db; }
-      .library-icon.eco { background: rgba(142, 68, 173, 0.15); color: #9b59b6; }
-      
-      .resource-list {
-        list-style: none;
-        padding: 0;
-        margin: 12px 0 0 0;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-      .resource-list li {
-        font-size: 0.88rem;
-        line-height: 1.5;
-        color: var(--text-muted);
-        position: relative;
-        padding-left: 14px;
-      }
-      .resource-list li::before {
-        content: "•";
-        position: absolute;
-        left: 0;
-        color: var(--accent-primary);
-      }
-      .resource-list li strong {
-        color: var(--text-primary);
-        font-weight: 600;
-        display: block;
-        margin-bottom: 2px;
-      }
-    </style>
-  `;
+      <div class="library-container" style="flex:1; display:flex; flex-direction:column;">
+        ${libraryItems.length === 0
+      ? emptyState('book-open', 'Tu biblioteca está vacía. Exporta tu colección desde Zotero como CSL-JSON o JSON normal e impórtala aquí.')
+      : (currentLibraryViewMode === 'table' ? renderLibraryTable(libraryItems) : renderLibraryGrid(libraryItems))}
+      </div>
+    </div>`;
 
-    feather.replace();
+  feather.replace();
+
+  // Attach File Upload Event
+  const fileInput = document.getElementById('zotero-import-file');
+  if (fileInput) {
+    fileInput.addEventListener('change', handleZoteroImport);
+  }
+}
+
+window.setLibraryViewMode = function (mode) {
+  currentLibraryViewMode = mode;
+  renderLibrary(document.getElementById('app-root'));
+};
+
+function renderLibraryTable(items) {
+  return `
+    <div class="card glass-panel" style="overflow: auto;">
+        <table class="list-table" style="width: 100%; text-align: left; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Tipo</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Título</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Autores</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Año</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${items.sort((a, b) => b.importedAt - a.importedAt).map(item => `
+                <tr style="border-bottom: 1px solid var(--border-highlight); transition: background 0.2s;">
+                    <td style="padding: 12px;"><span class="badge badge-neutral">${item.itemType}</span></td>
+                    <td style="padding: 12px; font-weight: 500;">${esc(item.title)}</td>
+                    <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${esc(item.author || '---')}</td>
+                    <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${item.date ? escaAño(item.date) : '---'}</td>
+                    <td style="padding: 12px;">
+                        <a href="${item.uri}" class="btn btn-sm btn-ghost" style="color:var(--accent-primary);">
+                          <i data-feather="external-link" style="width: 14px; height: 14px;"></i>
+                        </a>
+                    </td>
+                </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    </div>`;
+}
+
+function escaAño(dateString) {
+  // Attempt to extract just the year from ISO strings or generic dates
+  if (!dateString) return '';
+  const m = String(dateString).match(/\d{4}/);
+  return m ? m[0] : String(dateString);
+}
+
+async function handleZoteroImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    // Zotero exports can be an array (CSL JSON) or an object with 'items' array
+    const items = Array.isArray(data) ? data : (data.items || []);
+
+    if (!items || items.length === 0) {
+      showToast('El archivo JSON no contiene referencias válidas.', 'error');
+      return;
+    }
+
+    const parsedItems = items.map(processZoteroItem).filter(i => i !== null);
+
+    if (parsedItems.length === 0) {
+      showToast('No se pudieron procesar las referencias.', 'error');
+      return;
+    }
+
+    await store.dispatch('IMPORT_LIBRARY', { items: parsedItems });
+    renderLibrary(document.getElementById('app-root'));
+
+  } catch (err) {
+    console.error('Error parsing Zotero JSON:', err);
+    showToast('Error al leer el archivo JSON.', 'error');
+  }
+}
+
+function processZoteroItem(raw) {
+  // Basic validation
+  if (!raw.title) return null;
+
+  // Handle CSL-JSON author format
+  let authorString = '';
+  if (raw.author && Array.isArray(raw.author)) {
+    authorString = raw.author.map(a => `${a.given || ''} ${a.family || ''}`.trim()).join(', ');
+  } else if (raw.creators && Array.isArray(raw.creators)) {
+    authorString = raw.creators.map(c => `${c.firstName || ''} ${c.lastName || ''}`.trim()).join(', ');
+  }
+
+  // Build the select URI
+  // If it's pure Zotero JSON, it has a key. If it's CSL, it has an 'id' that might look like a URL or string.
+  const itemKey = raw.key || raw.id;
+  // We try to make a generic select link. Usually zotero://select/items/[key]
+  const zoteroUri = `zotero://select/items/${itemKey}`;
+
+  return {
+    id: `lib-${Date.now()}-${itemKey || Math.random().toString(36).slice(2)}`,
+    originalKey: itemKey,
+    title: raw.title,
+    author: authorString,
+    abstract: raw.abstract || raw.abstractNote || '',
+    date: raw.issued && raw.issued['date-parts'] ? raw.issued['date-parts'][0][0] : (raw.date || ''),
+    itemType: raw.type || raw.itemType || 'document',
+    uri: zoteroUri,
+    importedAt: Date.now()
+  };
 }

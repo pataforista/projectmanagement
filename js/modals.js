@@ -161,60 +161,66 @@ function openTaskModal(defaultProjectId, defaultStatus) {
 // Project Modal
 // ────────────────────────────────────────────────────────────────────────────
 
-function openProjectModal() {
+function openProjectModal(p = null) {
+  const isEdit = !!p && typeof p === 'object' && !('clientX' in p);
   const modal = openModal(`
     <div class="modal-header">
-      <h2><i data-feather="briefcase"></i> Nuevo Proyecto</h2>
+      <h2><i data-feather="briefcase"></i> ${isEdit ? 'Editar Proyecto' : 'Nuevo Proyecto'}</h2>
       <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
     </div>
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">Nombre *</label>
-        <input class="form-input" id="proj-name" placeholder="ej. Artículo: Cognición y Memoria" autofocus>
+        <input class="form-input" id="proj-name" placeholder="ej. Artículo: Cognición y Memoria" value="${isEdit ? esc(p.name) : ''}" autofocus>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Tipo</label>
           <select class="form-select" id="proj-type">
-            ${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
+            ${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}" ${isEdit && p?.type === k ? 'selected' : ''}>${v.label}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Estado</label>
           <select class="form-select" id="proj-status">
-            <option value="activo">Activo</option>
-            <option value="planificado">Planificado</option>
-            <option value="pausado">Pausado</option>
+            <option value="activo" ${isEdit && p?.status === 'activo' ? 'selected' : ''}>Activo</option>
+            <option value="planificado" ${isEdit && p?.status === 'planificado' ? 'selected' : ''}>Planificado</option>
+            <option value="pausado" ${isEdit && p?.status === 'pausado' ? 'selected' : ''}>Pausado</option>
+            <option value="archivado" ${isEdit && p?.status === 'archivado' ? 'selected' : ''}>Archivado</option>
           </select>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Objetivo</label>
-        <textarea class="form-textarea" id="proj-goal" placeholder="¿Qué resultado específico buscas?" rows="2"></textarea>
+        <textarea class="form-textarea" id="proj-goal" placeholder="¿Qué resultado específico buscas?" rows="2">${isEdit ? esc(p?.goal || '') : ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nota de Obsidian (URI)</label>
+        <input class="form-input" id="proj-obsidian" placeholder="obsidian://open?vault=..." value="${isEdit ? esc(p?.obsidianUri || '') : ''}">
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Fecha de inicio</label>
-          <input class="form-input" type="date" id="proj-start">
+          <input class="form-input" type="date" id="proj-start" value="${isEdit ? p?.startDate || '' : ''}">
         </div>
         <div class="form-group">
           <label class="form-label">Fecha de cierre</label>
-          <input class="form-input" type="date" id="proj-end">
+          <input class="form-input" type="date" id="proj-end" value="${isEdit ? p?.endDate || '' : ''}">
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Color del proyecto</label>
         <div style="display:flex; gap:10px; flex-wrap:wrap;" id="proj-colors">
           ${['#5e6ad2', '#16a085', '#8e44ad', '#c0392b', '#d35400', '#2980b9', '#f39c12', '#7f8c8d'].map(c =>
-    `<div class="color-swatch" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid transparent;transition:all 0.15s;" title="${c}"></div>`
+    `<div class="color-swatch" data-color="${c}" style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${isEdit && p?.color === c ? '#fff' : 'transparent'};transition:all 0.15s;" title="${c}"></div>`
   ).join('')}
         </div>
-        <input type="hidden" id="proj-color" value="#5e6ad2">
+        <input type="hidden" id="proj-color" value="${isEdit && p?.color ? p.color : '#5e6ad2'}">
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
-      <button class="btn btn-primary" id="proj-save"><i data-feather="check"></i> Crear proyecto</button>
+      <button class="btn btn-primary" id="proj-save"><i data-feather="check"></i> ${isEdit ? 'Guardar cambios' : 'Crear proyecto'}</button>
     </div>`);
 
   // Color swatches
@@ -225,23 +231,31 @@ function openProjectModal() {
       modal.querySelector('#proj-color').value = sw.dataset.color;
     });
   });
-  modal.querySelector('.color-swatch').style.borderColor = '#fff'; // select first
+  if (!isEdit) modal.querySelector('.color-swatch').style.borderColor = '#fff'; // select first only if new
 
   modal.querySelector('#modal-close').addEventListener('click', closeModal);
   modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
   modal.querySelector('#proj-save').addEventListener('click', async () => {
     const name = modal.querySelector('#proj-name').value.trim();
     if (!name) { showToast('El nombre es obligatorio.', 'error'); return; }
-    const project = await store.dispatch('ADD_PROJECT', {
+
+    const data = {
       name,
       type: modal.querySelector('#proj-type').value,
       status: modal.querySelector('#proj-status').value,
       goal: modal.querySelector('#proj-goal').value,
+      obsidianUri: modal.querySelector('#proj-obsidian').value.trim(),
       startDate: modal.querySelector('#proj-start').value || null,
       endDate: modal.querySelector('#proj-end').value || null,
       color: modal.querySelector('#proj-color').value,
-      ownerId: 'u1',
-    });
+    };
+
+    if (isEdit) {
+      await store.dispatch('UPDATE_PROJECT', { id: p.id, ...data });
+    } else {
+      await store.dispatch('ADD_PROJECT', { ...data, ownerId: 'u1' });
+    }
+
     closeModal();
     refreshCurrentView();
     refreshSidebarProjects();

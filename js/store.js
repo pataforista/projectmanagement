@@ -15,6 +15,7 @@ const store = (() => {
         documents: [],
         members: [],
         logs: [],
+        library: [],
     };
 
     const _subscribers = {};
@@ -33,6 +34,7 @@ const store = (() => {
         _state.documents = await dbAPI.getAll('documents');
         _state.members = await dbAPI.getAll('members');
         _state.logs = await dbAPI.getAll('logs') || [];
+        _state.library = await dbAPI.getAll('library') || [];
         _notify('*');
     }
 
@@ -219,6 +221,23 @@ const store = (() => {
                 return record;
             }
 
+            // ── Library / Zotero ──
+            case 'IMPORT_LIBRARY': {
+                storeName = 'library';
+                const items = payload.items; // Array of items from Zotero
+                let count = 0;
+
+                for (const item of items) {
+                    await dbAPI.put(storeName, item);
+                    count++;
+                }
+
+                _state.library = await dbAPI.getAll(storeName);
+                _notify(storeName);
+                if (window.showToast) showToast(`${count} referencias importadas de Zotero.`, 'success');
+                break;
+            }
+
             // ── Sync ──
             case 'HYDRATE_STORE': {
                 // Key names should match _state keys
@@ -277,6 +296,7 @@ const store = (() => {
             return Math.round((done / tasks.length) * 100);
         },
         logs: () => _state.logs,
+        library: () => _state.library,
     };
 
     return { load, seedIfEmpty, dispatch, subscribe, get };

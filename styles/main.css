@@ -166,6 +166,10 @@ body::before {
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
+.sidebar-overlay {
+    display: none;
+}
+
 .sidebar {
     width: var(--sidebar-width);
     flex-shrink: 0;
@@ -783,7 +787,13 @@ body::before {
     display: none !important;
 }
 
-/* Mobile overlay */
+/* Mobile responsive layout */
+@media (max-width: 850px) {
+    .view-inner {
+        padding: 20px 24px;
+    }
+}
+
 @media (max-width: 768px) {
     .d-mobile-only {
         display: flex !important;
@@ -812,6 +822,7 @@ body::before {
     }
 
     .sidebar-overlay {
+        display: block;
         position: fixed;
         inset: 0;
         background: var(--bg-overlay);
@@ -837,8 +848,10 @@ body::before {
     }
 
 }
+
 /* -- Mobile: Additional responsive breakpoints ----------------------- */
 @media (max-width: 768px) {
+
     /* Backlog table: hide lower-priority columns */
     .list-table th:nth-child(5),
     .list-table th:nth-child(6),
@@ -904,16 +917,21 @@ body::before {
         align-items: flex-start;
         gap: 12px;
     }
+
     .view-actions {
         width: 100%;
         justify-content: flex-start;
     }
+
     .view-actions .btn {
         flex: 1;
         justify-content: center;
     }
+
     /* Hide pagination/filter label text on mobile */
-    .btn-sm span.label { display: none; }
+    .btn-sm span.label {
+        display: none;
+    }
 }
 
 /* -- Better focus visible ring (keyboard nav) --------------------------------- */

@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let db;
 
@@ -17,6 +17,7 @@ const STORES = {
   members: 'members',
   syncQueue: 'syncQueue',
   logs: 'logs',
+  library: 'library',
 };
 
 const initDB = () => new Promise(async (resolve, reject) => {
@@ -97,6 +98,13 @@ const initDB = () => new Promise(async (resolve, reject) => {
         const s = d.createObjectStore('logs', { keyPath: 'id' });
         s.createIndex('type', 'type', { unique: false });
         s.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+
+      // Library (Zotero)
+      if (!d.objectStoreNames.contains('library')) {
+        const s = d.createObjectStore('library', { keyPath: 'id' });
+        s.createIndex('itemType', 'itemType', { unique: false });
+        s.createIndex('author', 'author', { unique: false });
       }
     };
   });

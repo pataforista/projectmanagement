@@ -2,16 +2,6 @@
  * views/projects.js — Projects list + detail view
  */
 
-const PROJECT_TYPES = {
-  clase: { label: 'Clase', icon: 'book-open', color: '#16a085' },
-  presentacion: { label: 'Presentación', icon: 'monitor', color: '#2980b9' },
-  articulo: { label: 'Artículo', icon: 'file-text', color: '#5e6ad2' },
-  capitulo: { label: 'Capítulo', icon: 'bookmark', color: '#8e44ad' },
-  libro: { label: 'Libro', icon: 'book', color: '#c0392b' },
-  curso: { label: 'Curso', icon: 'layers', color: '#d35400' },
-  admin: { label: 'Administrativo', icon: 'briefcase', color: '#7f8c8d' },
-  libre: { label: 'Libre', icon: 'star', color: '#f39c12' },
-};
 
 function renderProjects(root, params) {
   const projects = store.get.projects();
@@ -140,6 +130,9 @@ function renderProjectDetail(root, params) {
           <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
             <h1 style="font-size:1.4rem;font-weight:700;letter-spacing:-0.02em;">${esc(p.name)}</h1>
             ${statusBadge(p.status)}
+            <button class="btn btn-ghost btn-xs" id="edit-project-btn" style="margin-left:auto; padding:2px 8px; font-size:0.7rem;">
+               <i data-feather="edit-2" style="width:11px;height:11px;"></i> Editar
+            </button>
           </div>
           ${p.goal ? `<p style="color:var(--text-secondary);font-size:0.85rem;margin-top:3px;">${esc(p.goal)}</p>` : ''}
         </div>
@@ -164,6 +157,8 @@ function renderProjectDetail(root, params) {
   feather.replace();
   showProjectTab(root, p, 'overview');
 
+  root.querySelector('#edit-project-btn')?.addEventListener('click', () => openProjectModal(p));
+
   root.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       root.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -180,12 +175,32 @@ function showProjectTab(root, p, tab) {
   const decisions = store.get.decisionsByProject(p.id);
 
   if (tab === 'overview') {
+    let extCard = '';
+    if (p.obsidianUri) {
+      const isZotero = p.obsidianUri.startsWith('zotero://');
+      const icon = isZotero ? 'book' : 'external-link';
+      const title = isZotero ? 'Conexión con Zotero' : 'Conexión Ext (Obsidian/Local)';
+      const btnText = isZotero ? 'Abrir en Zotero' : `Abrir: ${esc(getObsidianFileName(p.obsidianUri))}`;
+
+      extCard = `
+      <div class="card glass-panel" style="margin-top:20px; grid-column: span 2;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+          <h3>${title}</h3>
+          <a href="${p.obsidianUri}" class="btn btn-secondary btn-sm" style="gap:6px;">
+            <i data-feather="${icon}"></i> ${btnText}
+          </a>
+        </div>
+      </div>`;
+    }
+
+    const thoughts = p.thoughts || [];
+
     content.innerHTML = `
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+      <div class="two-col-grid">
         <div class="card glass-panel">
           <div class="card-header"><h3>Detalles</h3></div>
           <div class="card-body" style="display:flex;flex-direction:column;gap:10px;">
-            ${detailRow('Tipo', PROJECT_TYPES[p.type]?.label || p.type)}
+            ${detailRow('Tipo', esc(PROJECT_TYPES[p.type]?.label || p.type))}
             ${detailRow('Estado', statusBadge(p.status))}
             ${p.startDate ? detailRow('Inicio', fmtDate(p.startDate)) : ''}
             ${p.endDate ? detailRow('Fin', fmtDate(p.endDate)) : ''}
@@ -200,7 +215,59 @@ function showProjectTab(root, p, tab) {
             ${detailRow('Bloqueadas', tasks.filter(t => t.status === 'En espera').length)}
           </div>
         </div>
+
+        <div class="card glass-panel" style="grid-column: span 2;">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <h3>Pensamientos y Notas Rápidas</h3>
+            <span style="font-size:0.7rem; color:var(--text-muted);">${thoughts.length} pensamientos</span>
+          </div>
+          <div class="card-body">
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+              <input type="text" class="form-input" id="new-thought-input" placeholder="¿Qué estás pensando sobre este proyecto?">
+              <button class="btn btn-primary" id="add-thought-btn"><i data-feather="plus"></i></button>
+            </div>
+            <div id="thoughts-list" style="display:flex; flex-direction:column; gap:12px;">
+              ${thoughts.length ? thoughts.sort((a, b) => b.ts - a.ts).map(t => `
+                <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border-left:3px solid var(--accent-primary);">
+                  <div style="font-size:0.86rem; line-height:1.4;">${esc(t.text)}</div>
+                  <div style="font-size:0.68rem; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between;">
+                    <span>${new Date(t.ts).toLocaleString()}</span>
+                    <button class="btn-text del-thought-btn" data-ts="${t.ts}" style="color:var(--accent-danger); font-size:0.65rem;">Eliminar</button>
+                  </div>
+                </div>
+              `).join('') : '<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:20px;">No has capturado pensamientos aún.</div>'}
+            </div>
+          </div>
+        </div>
+
+        ${extCard}
       </div>`;
+
+    feather.replace();
+
+    const thoughtBtn = content.querySelector('#add-thought-btn');
+    const thoughtInput = content.querySelector('#new-thought-input');
+
+    const addThoughtFn = async () => {
+      const text = thoughtInput.value.trim();
+      if (!text) return;
+      const newThought = { text, ts: Date.now() };
+      const updatedThoughts = [newThought, ...(p.thoughts || [])];
+      await store.dispatch('UPDATE_PROJECT', { id: p.id, thoughts: updatedThoughts });
+      showProjectTab(root, p, 'overview');
+    };
+
+    thoughtBtn?.addEventListener('click', addThoughtFn);
+    thoughtInput?.addEventListener('keypress', e => { if (e.key === 'Enter') addThoughtFn(); });
+
+    content.querySelectorAll('.del-thought-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ts = parseInt(btn.dataset.ts);
+        const updatedThoughts = (p.thoughts || []).filter(t => t.ts !== ts);
+        await store.dispatch('UPDATE_PROJECT', { id: p.id, thoughts: updatedThoughts });
+        showProjectTab(root, p, 'overview');
+      });
+    });
   } else if (tab === 'tasks') {
     content.innerHTML = `
       <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">

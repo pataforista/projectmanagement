@@ -6,7 +6,7 @@
 function statPill(count, label, icon, color) {
   return `<div class="stat-pill" style="${color ? `color:${color};` : ''}">
     <i data-feather="${icon}" style="width:13px;height:13px;"></i>
-    <strong>${count}</strong> ${label}
+    <strong>${count}</strong> ${esc(label)}
   </div>`;
 }
 

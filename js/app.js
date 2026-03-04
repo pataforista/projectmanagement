@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── 8. Wire search button ──────────────────────────────────────────────────
 document.getElementById('btn-search')?.addEventListener('click', openSearch);
+document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
 document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
 document.getElementById('search-overlay')?.addEventListener('click', e => {
     if (e.target.id === 'search-overlay') closeSearch();
@@ -109,6 +110,7 @@ function refreshCurrentView() {
         calendar: root => renderCalendar(root),
         decisions: root => renderDecisions(root),
         library: root => renderLibrary(root),
+        canvas: root => renderCanvas(root),
         document: root => renderDocumentView(root, params),
         project: root => renderProjectDetail(root, params),
     };

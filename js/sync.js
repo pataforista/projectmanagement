@@ -302,11 +302,10 @@ const syncManager = (() => {
     }
 
     function parseNotionCsv(text) {
-        const rows = text.split(/\r?\n/).filter(Boolean);
+        const rows = parseCsv(text);
         if (rows.length < 2) return [];
-        const headers = rows[0].split(',').map(h => h.trim().toLowerCase());
-        return rows.slice(1).map((line, idx) => {
-            const cols = line.split(',');
+        const headers = rows[0].map(h => h.toLowerCase());
+        return rows.slice(1).map((cols, idx) => {
             const titleIdx = headers.findIndex(h => h.includes('name') || h.includes('tarea') || h.includes('title'));
             const statusIdx = headers.findIndex(h => h.includes('status') || h.includes('estado'));
             const dueIdx = headers.findIndex(h => h.includes('due') || h.includes('fecha'));

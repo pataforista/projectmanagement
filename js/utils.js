@@ -1,3 +1,14 @@
+const PROJECT_TYPES = {
+    clase: { label: 'Clase', icon: 'book-open', color: '#16a085' },
+    presentacion: { label: 'Presentación', icon: 'monitor', color: '#2980b9' },
+    articulo: { label: 'Artículo', icon: 'file-text', color: '#5e6ad2' },
+    capitulo: { label: 'Capítulo', icon: 'bookmark', color: '#8e44ad' },
+    libro: { label: 'Libro', icon: 'book', color: '#c0392b' },
+    curso: { label: 'Curso', icon: 'layers', color: '#d35400' },
+    admin: { label: 'Administrativo', icon: 'briefcase', color: '#7f8c8d' },
+    libre: { label: 'Libre', icon: 'star', color: '#f39c12' },
+};
+
 /**
  * utils.js — Shared helpers used across all views
  */
@@ -82,7 +93,7 @@ function statusBadge(status) {
 
 // ── Empty state helper ────────────────────────────────────────────────────────
 function emptyState(icon, text) {
-    return `<div class="empty-state"><i data-feather="${icon}"></i><p>${text}</p></div>`;
+    return `<div class="empty-state"><i data-feather="${icon}"></i><p>${esc(text)}</p></div>`;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -128,6 +139,20 @@ document.addEventListener('click', async e => {
     }
 });
 
+// ── Obsidian Helper ──────────────────────────────────────────────────────────
+function getObsidianFileName(uri) {
+    if (!uri) return '';
+    try {
+        const url = new URL(uri);
+        const file = url.searchParams.get('file');
+        if (file) return file.split('/').pop() || file;
+        return uri;
+    } catch (e) {
+        return uri;
+    }
+}
+
+// Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
 window.fmtDate = fmtDate;
@@ -135,4 +160,6 @@ window.statusBadge = statusBadge;
 window.emptyState = emptyState;
 window.showToast = showToast;
 window.bindTaskCheckboxes = bindTaskCheckboxes;
+window.getObsidianFileName = getObsidianFileName;
 window.downloadFile = downloadFile;
+window.PROJECT_TYPES = PROJECT_TYPES;
