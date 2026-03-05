@@ -4,7 +4,7 @@
  */
 
 const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let db;
 
@@ -18,6 +18,9 @@ const STORES = {
   syncQueue: 'syncQueue',
   logs: 'logs',
   library: 'library',
+  interconsultations: 'interconsultations',
+  sessions: 'sessions',
+  timeLogs: 'timeLogs',
 };
 
 const initDB = () => new Promise(async (resolve, reject) => {
@@ -105,6 +108,28 @@ const initDB = () => new Promise(async (resolve, reject) => {
         const s = d.createObjectStore('library', { keyPath: 'id' });
         s.createIndex('itemType', 'itemType', { unique: false });
         s.createIndex('author', 'author', { unique: false });
+      }
+
+      // Interconsultations (Medical Referrals)
+      if (!d.objectStoreNames.contains('interconsultations')) {
+        const s = d.createObjectStore('interconsultations', { keyPath: 'id' });
+        s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('status', 'status', { unique: false });
+      }
+
+      // Sessions (Classes, Medical Appointments, Meetings)
+      if (!d.objectStoreNames.contains('sessions')) {
+        const s = d.createObjectStore('sessions', { keyPath: 'id' });
+        s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('type', 'type', { unique: false });
+        s.createIndex('date', 'date', { unique: false });
+      }
+
+      // Time Logs (Task tracking)
+      if (!d.objectStoreNames.contains('timeLogs')) {
+        const s = d.createObjectStore('timeLogs', { keyPath: 'id' });
+        s.createIndex('taskId', 'taskId', { unique: false });
+        s.createIndex('projectId', 'projectId', { unique: false });
       }
     };
   });

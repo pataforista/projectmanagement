@@ -16,6 +16,9 @@ const store = (() => {
         members: [],
         logs: [],
         library: [],
+        interconsultations: [],
+        sessions: [],
+        timeLogs: [],
     };
 
     const _subscribers = {};
@@ -35,6 +38,9 @@ const store = (() => {
         _state.members = await dbAPI.getAll('members');
         _state.logs = await dbAPI.getAll('logs') || [];
         _state.library = await dbAPI.getAll('library') || [];
+        _state.interconsultations = await dbAPI.getAll('interconsultations') || [];
+        _state.sessions = await dbAPI.getAll('sessions') || [];
+        _state.timeLogs = await dbAPI.getAll('timeLogs') || [];
         _notify('*');
     }
 
@@ -144,7 +150,11 @@ const store = (() => {
                 storeName = 'tasks';
                 const idx = _state.tasks.findIndex(t => t.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.tasks[idx], ...payload };
+                    const updated = {
+                        ..._state.tasks[idx],
+                        ...payload,
+                        dependencies: payload.dependencies || _state.tasks[idx].dependencies || []
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.tasks[idx] = updated;
                     _notify(storeName);
@@ -284,6 +294,81 @@ const store = (() => {
                 break;
             }
 
+            // ── Interconsultations ──
+            case 'ADD_INTERCONSULTATION': {
+                storeName = 'interconsultations';
+                const record = { id: uid, createdAt: Date.now(), status: 'Solicitada', ...payload };
+                await dbAPI.put(storeName, record);
+                _state.interconsultations.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`Interconsulta creada.`, 'success');
+                return record;
+            }
+            case 'UPDATE_INTERCONSULTATION': {
+                storeName = 'interconsultations';
+                const idx = _state.interconsultations.findIndex(i => i.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.interconsultations[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.interconsultations[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'DELETE_INTERCONSULTATION': {
+                storeName = 'interconsultations';
+                await dbAPI.delete(storeName, payload.id);
+                _state.interconsultations = _state.interconsultations.filter(i => i.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Sessions ──
+            case 'ADD_SESSION': {
+                storeName = 'sessions';
+                const record = { id: uid, createdAt: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.sessions.push(record);
+                _notify(storeName);
+                if (window.showToast) showToast(`${payload.type} registrada.`, 'success');
+                return record;
+            }
+            case 'UPDATE_SESSION': {
+                storeName = 'sessions';
+                const idx = _state.sessions.findIndex(s => s.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.sessions[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.sessions[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'DELETE_SESSION': {
+                storeName = 'sessions';
+                await dbAPI.delete(storeName, payload.id);
+                _state.sessions = _state.sessions.filter(s => s.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Time Logs ──
+            case 'ADD_TIME_LOG': {
+                storeName = 'timeLogs';
+                const record = { id: uid, createdAt: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.timeLogs.push(record);
+                _notify(storeName);
+                return record;
+            }
+            case 'DELETE_TIME_LOG': {
+                storeName = 'timeLogs';
+                await dbAPI.delete(storeName, payload.id);
+                _state.timeLogs = _state.timeLogs.filter(t => t.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
             // ── Sync ──
             case 'HYDRATE_STORE': {
                 // Key names should match _state keys
@@ -343,6 +428,16 @@ const store = (() => {
         },
         logs: () => _state.logs,
         library: () => _state.library,
+        interconsultations: () => _state.interconsultations,
+        interconsultationsByProject: (id) => _state.interconsultations.filter(i => i.projectId === id),
+        sessions: () => _state.sessions,
+        sessionsByProject: (id) => _state.sessions.filter(s => s.projectId === id),
+        sessionsByDate: (date) => _state.sessions.filter(s => s.date === date),
+        timeLogs: () => _state.timeLogs,
+        timeLogsByTask: (taskId) => _state.timeLogs.filter(t => t.taskId === taskId),
+        totalTimeByTask: (taskId) => _state.timeLogs
+            .filter(t => t.taskId === taskId)
+            .reduce((sum, log) => sum + (log.minutes || 0), 0),
     };
 
     return { load, seedIfEmpty, dispatch, subscribe, get };

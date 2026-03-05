@@ -3,7 +3,7 @@
  */
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
 
@@ -539,7 +539,80 @@ const syncManager = (() => {
         }
     }
 
-    return { init, authenticate, disconnect, push, pull, openPanel };
+    async function syncCalendar() {
+        if (!accessToken || localStorage.getItem('sync_gcal') !== 'true') return;
+        console.log('[Sync] Syncing Google Calendar...');
+        // Logic to push/pull events would go here. 
+        // For now, we'll implement a simple push of "Sessions" as events.
+        const sessions = store.get.sessions();
+        for (const s of sessions) {
+            if (s.gcalId) continue; // Skip already synced
+            try {
+                const event = {
+                    summary: s.title,
+                    description: s.description || '',
+                    start: { dateTime: new Date(`${s.date}T${s.startTime || '09:00'}:00`).toISOString() },
+                    end: { dateTime: new Date(`${s.date}T${s.endTime || '10:00'}:00`).toISOString() },
+                };
+                const resp = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(event)
+                });
+                const result = await resp.json();
+                if (result.id) {
+                    store.dispatch('UPDATE_SESSION', { id: s.id, gcalId: result.id });
+                }
+            } catch (e) {
+                console.error('[Sync] GCal error:', e);
+            }
+        }
+    }
+
+    async function syncGoogleTasks() {
+        if (!accessToken || localStorage.getItem('sync_gtasks') !== 'true') return;
+        console.log('[Sync] Syncing Google Tasks...');
+        const tasks = store.get.activeTasks();
+        for (const t of tasks) {
+            if (t.gtaskId) continue;
+            try {
+                const task = { title: t.title, notes: t.description || '' };
+                const resp = await fetch('https://www.googleapis.com/tasks/v1/lists/@default/tasks', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(task)
+                });
+                const result = await resp.json();
+                if (result.id) {
+                    store.dispatch('UPDATE_TASK', { id: t.id, gtaskId: result.id });
+                }
+            } catch (e) {
+                console.error('[Sync] GTasks error:', e);
+            }
+        }
+    }
+
+    async function syncTodoist() {
+        const token = localStorage.getItem('todoist_token');
+        if (!token || localStorage.getItem('sync_todoist') !== 'true') return;
+        console.log('[Sync] Syncing with Todoist (Push only)...');
+        const tasks = store.get.activeTasks().filter(t => !t.todoistId);
+        for (const t of tasks) {
+            try {
+                const resp = await fetch('https://api.todoist.com/rest/v2/tasks', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: t.title, description: t.description || '' })
+                });
+                const result = await resp.json();
+                if (result.id) store.dispatch('UPDATE_TASK', { id: t.id, todoistId: result.id });
+            } catch (e) {
+                console.error('[Sync] Todoist error:', e);
+            }
+        }
+    }
+
+    return { init, authenticate, disconnect, push, pull, openPanel, getConfig, syncCalendar, syncGoogleTasks, syncTodoist };
 })();
 
 window.syncManager = syncManager;

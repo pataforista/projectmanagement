@@ -1,4 +1,4 @@
-/**
+﻿/**
  * app.js — Bootstrap: init DB → load store → register SW → init router + search
  * All view modules must be loaded before this file.
  */
@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let savedHash = localStorage.getItem('workspace_lock_hash');
 
     await new Promise(resolve => {
-        if (!authOverlay) return resolve(); // Fallback if HTML is missing
+        if (!authOverlay) return resolve();
 
         if (!savedHash) {
             authOverlay.classList.add('open');
@@ -55,13 +55,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // ── 1. Initialize IndexedDB (fail-safe: routing still works without it) ────
+    // ── 0.1. Auto-Lock & Global Lock ───────────────────────────────────────────
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && localStorage.getItem('autolock_enabled') === 'true') {
+            if (localStorage.getItem('workspace_lock_hash')) {
+                location.reload();
+            }
+        }
+    });
+
+    window.lockWorkspace = () => {
+        if (localStorage.getItem('workspace_lock_hash')) {
+            location.reload();
+        } else {
+            if (window.showToast) showToast('Primero configura una contraseña en Perfil.', 'info');
+        }
+    };
+
+    // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
     try {
         await initDB();
     } catch (e) {
-        console.warn('[Boot] IndexedDB init failed — continuing without persistence:', e);
-        // IndexedDB failed (e.g. VersionError from stale cache). App runs in-memory until
-        // user clears site data. Instruct user on next build if this happens repeatedly.
+        console.warn('[Boot] IndexedDB init failed:', e);
     }
 
     // ── 2. Load & seed store ───────────────────────────────────────────────────
@@ -69,13 +84,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         await store.load();
         await store.seedIfEmpty();
     } catch (e) {
-        console.warn('[Boot] Store load failed — running with empty state:', e);
+        console.warn('[Boot] Store load failed:', e);
     }
 
     // ── 3. Register service worker ─────────────────────────────────────────────
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').catch(() => { });
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+            reg.onupdatefound = () => {
+                const newSW = reg.installing;
+                newSW.onstatechange = () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        if (window.showToast) showToast('Actualización lista. Reiniciando...', 'info');
+                    }
+                };
+            };
+        }).catch(() => { });
+
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.location.reload();
+        });
     }
+
+    // Global reset utility for stuck caches
+    window.resetAppCache = async () => {
+        if (!confirm('¿Seguro que quieres restablecer la App? Se borrará el caché y la configuración local.')) return;
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for (let reg of regs) await reg.unregister();
+        }
+        const cacheNames = await caches.keys();
+        for (let name of cacheNames) await caches.delete(name);
+        localStorage.clear();
+        sessionStorage.clear();
+        window.location.href = '/';
+    };
 
     // ── 4. Register all views with router ──────────────────────────────────────
     router
@@ -87,6 +129,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('calendar', (root) => renderCalendar(root))
         .on('decisions', (root) => renderDecisions(root))
         .on('library', (root) => renderLibrary(root))
+        .on('matrix', (root) => renderMatrix(root))
+        .on('writing', (root) => renderWriting(root))
+        .on('medical', (root) => renderMedical(root))
+        .on('integrations', (root) => renderIntegrations(root))
+        .on('canvas', (root) => renderCanvas && renderCanvas(root))
         .on('logs', (root) => renderLogs(root))
         .on('document', (root, params) => renderDocumentView(root, params))
         .on('project', (root, params) => renderProjectDetail(root, params));
@@ -105,244 +152,66 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
 
-    // ── 9. Try sync (non-blocking, safe to fail without credentials) ───────────
+    // ── 9. Try sync ────────────────────────────────────────────────────────────
     try {
         await syncManager.init();
         await syncManager.pull();
     } catch (e) {
-        console.warn('[Sync] Could not connect on boot (no credentials?):', e);
+        console.warn('[Sync] Could not connect on boot:', e);
     }
-});
 
+    // ── 10. Global Action Listeners ────────────────────────────────────────────
+    document.getElementById('btn-integrations')?.addEventListener('click', () => router.navigate('/integrations'));
+    document.getElementById('btn-search')?.addEventListener('click', openSearch);
+    document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
+    document.getElementById('btn-help')?.addEventListener('click', openHelpModal);
+    document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
 
-
-// ── 8. Wire search button ──────────────────────────────────────────────────
-document.getElementById('btn-search')?.addEventListener('click', openSearch);
-document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
-document.getElementById('btn-help')?.addEventListener('click', openHelpModal);
-document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
-document.getElementById('search-overlay')?.addEventListener('click', e => {
-    if (e.target.id === 'search-overlay') closeSearch();
-});
-
-document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
-});
-
-feather.replace();
-
-// ── Refresh sidebar project list (Drag & Drop) ───────────────────────────────
-let dragSrcEl = null;
-
-function handleProjectDragStart(e) {
-    dragSrcEl = this;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.innerHTML);
-    this.style.opacity = '0.4';
-}
-function handleProjectDragOver(e) {
-    if (e.preventDefault) { e.preventDefault(); }
-    e.dataTransfer.dropEffect = 'move';
-    return false;
-}
-function handleProjectDragEnter(e) { this.classList.add('drag-over'); }
-function handleProjectDragLeave(e) { this.classList.remove('drag-over'); }
-function handleProjectDrop(e) {
-    if (e.stopPropagation) { e.stopPropagation(); }
-    if (dragSrcEl !== this) {
-        const srcId = dragSrcEl.dataset.id;
-        const tgtId = this.dataset.id;
-        const projects = store.get.projects().filter(p => p.status !== 'archivado');
-        const srcIdx = projects.findIndex(p => p.id === srcId);
-        const tgtIdx = projects.findIndex(p => p.id === tgtId);
-        if (srcIdx > -1 && tgtIdx > -1) {
-            const [moved] = projects.splice(srcIdx, 1);
-            projects.splice(tgtIdx, 0, moved);
-            const updates = projects.map((p, i) => ({ id: p.id, order: i }));
-            store.dispatch('UPDATE_PROJECT_ORDERS', updates);
-        }
-    }
-    return false;
-}
-function handleProjectDragEnd(e) {
-    this.style.opacity = '1';
-    document.querySelectorAll('.sidebar-project-item').forEach(item => item.classList.remove('drag-over'));
-}
-
-function refreshSidebarProjects() {
-    const container = document.getElementById('sidebar-projects');
-    if (!container) return;
-    const projects = store.get.projects().filter(p => p.status !== 'archivado');
-    container.innerHTML = projects.map(p => `
-    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true">
-      <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
-      ${esc(p.name)}
-      <span class="nav-count">${store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length}</span>
-    </a>`).join('');
-
-    container.querySelectorAll('.sidebar-project-item').forEach(item => {
-        item.addEventListener('dragstart', handleProjectDragStart);
-        item.addEventListener('dragenter', handleProjectDragEnter);
-        item.addEventListener('dragover', handleProjectDragOver);
-        item.addEventListener('dragleave', handleProjectDragLeave);
-        item.addEventListener('drop', handleProjectDrop);
-        item.addEventListener('dragend', handleProjectDragEnd);
+    document.getElementById('search-overlay')?.addEventListener('click', e => {
+        if (e.target.id === 'search-overlay') closeSearch();
     });
-}
 
-// ── Refresh current view after mutations ─────────────────────────────────────
-function refreshCurrentView() {
-    const route = router.current;
-    if (!route) return;
-    const root = document.getElementById('app-root');
-    if (!root) return;
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+    });
 
-    const { viewName, params } = route;
-    const handlers = {
-        dashboard: root => renderDashboard(root),
-        projects: root => renderProjects(root, params),
-        backlog: root => renderBacklog(root),
-        cycles: root => renderCycles(root),
-        board: root => renderBoard(root),
-        calendar: root => renderCalendar(root),
-        decisions: root => renderDecisions(root),
-        library: root => renderLibrary(root),
-        canvas: root => renderCanvas(root),
-        document: root => renderDocumentView(root, params),
-        project: root => renderProjectDetail(root, params),
-    };
-
-    root.innerHTML = '';
-    if (handlers[viewName]) handlers[viewName](root);
-}
-
-// ── Quick Add (global + button) ───────────────────────────────────────────────
-function openQuickAdd() {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.id = 'quick-overlay';
-
-    overlay.innerHTML = `
-    <div class="modal" style="max-width:340px;">
-      <div class="modal-header">
-        <h2>Crear nuevo…</h2>
-        <button class="btn btn-icon" id="qa-close"><i data-feather="x"></i></button>
-      </div>
-      <div class="modal-body" style="gap:8px;">
-        <button class="btn btn-secondary" id="qa-task"    style="justify-content:flex-start;gap:12px;padding:12px 16px;"><i data-feather="check-square"></i> Tarea</button>
-        <button class="btn btn-secondary" id="qa-project" style="justify-content:flex-start;gap:12px;padding:12px 16px;"><i data-feather="briefcase"></i> Proyecto</button>
-        <button class="btn btn-secondary" id="qa-cycle"   style="justify-content:flex-start;gap:12px;padding:12px 16px;"><i data-feather="refresh-cw"></i> Ciclo</button>
-        <button class="btn btn-secondary" id="qa-decision"style="justify-content:flex-start;gap:12px;padding:12px 16px;"><i data-feather="zap"></i> Decisión</button>
-      </div>
-    </div>`;
-
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    document.body.appendChild(overlay);
-    feather.replace();
-
-    overlay.querySelector('#qa-close').addEventListener('click', () => overlay.remove());
-    overlay.querySelector('#qa-task').addEventListener('click', () => { overlay.remove(); openTaskModal(); });
-    overlay.querySelector('#qa-project').addEventListener('click', () => { overlay.remove(); openProjectModal(); });
-    overlay.querySelector('#qa-cycle').addEventListener('click', () => { overlay.remove(); openCycleModal(); });
-    overlay.querySelector('#qa-decision').addEventListener('click', () => { overlay.remove(); openDecisionModal(); });
-}
-
-// ── Search ────────────────────────────────────────────────────────────────────
-function openSearch() {
-    document.getElementById('search-overlay').classList.add('open');
-    document.getElementById('search-input')?.focus();
-    handleSearch('');
-}
-
-function closeSearch() {
-    document.getElementById('search-overlay').classList.remove('open');
-    if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
-}
-
-function handleSearch(q) {
-    const results = document.getElementById('search-results');
-    if (!results) return;
-
-    if (!q.trim()) {
-        results.innerHTML = `<div class="search-hint">Escribe para buscar tareas y proyectos…</div>`;
-        return;
+    // ── 11. Remove page shimmer once app is ready ──────────────────────────────
+    const shimmer = document.getElementById('page-shimmer');
+    if (shimmer) {
+        setTimeout(() => {
+            shimmer.classList.add('hidden');
+            setTimeout(() => shimmer.remove(), 400);
+        }, 300);
     }
 
-    const ql = q.toLowerCase();
+    // ── 12. Set tooltips & breadcrumbs ─────────────────────────────────────────
+    document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+        const text = el.textContent.trim();
+        if (text) el.setAttribute('data-tooltip', text);
+    });
 
-    // Search in Projects
-    const matchedProjs = store.get.projects().filter(p =>
-        p.name.toLowerCase().includes(ql) ||
-        (p.description && p.description.toLowerCase().includes(ql))
-    ).slice(0, 4);
-
-    // Search in Tasks (including subtasks)
-    const allTasks = store.get.allTasks();
-    const matchedTasks = allTasks.filter(t =>
-        t.title.toLowerCase().includes(ql) ||
-        (t.description && t.description.toLowerCase().includes(ql)) ||
-        (t.subtasks && t.subtasks.some(st => st.title.toLowerCase().includes(ql))) ||
-        (t.tags && t.tags.some(tag => tag.toLowerCase().includes(ql)))
-    ).slice(0, 8);
-
-    if (!matchedTasks.length && !matchedProjs.length) {
-        results.innerHTML = `<div class="search-hint">Sin resultados para "${esc(q)}".</div>`;
-        return;
-    }
-
-    results.innerHTML = [
-        ...matchedProjs.map(p => `
-      <div class="search-result-item" onclick="router.navigate('/project/${p.id}'); closeSearch();">
-        <i data-feather="briefcase" style="width:14px;height:14px;color:${p.color || 'var(--accent-primary)'};flex-shrink:0;"></i>
-        <div class="res-info">
-          <span class="res-title">${esc(p.name)}</span>
-          <span class="res-meta">Proyecto</span>
-        </div>
-      </div>`),
-        ...matchedTasks.map(t => {
-            const proj = store.get.projectById(t.projectId);
-            return `
-      <div class="search-result-item" onclick="router.navigate('/backlog'); closeSearch();">
-        <i data-feather="check-square" style="width:14px;height:14px;color:var(--text-muted);flex-shrink:0;"></i>
-        <div class="res-info">
-          <span class="res-title">${esc(t.title)}</span>
-          ${proj ? `<span class="res-meta">en ${esc(proj.name)}</span>` : ''}
-        </div>
-      </div>`;
-        }),
-    ].join('');
-
-    feather.replace();
-}
-
-/**
- * Backup entire store as JSON
- */
-async function exportData() {
-    try {
-        const data = {
-            version: '1.0',
-            exportedAt: new Date().toISOString(),
-            projects: store.get.projects(),
-            tasks: store.get.allTasks(),
-            cycles: store.get.cycles(),
-            decisions: store.get.decisions()
+    const breadcrumbEl = document.getElementById('breadcrumb-current');
+    if (breadcrumbEl) {
+        const viewLabels = {
+            dashboard: 'Dashboard', projects: 'Proyectos', backlog: 'Backlog',
+            cycles: 'Ciclos', board: 'Tablero', calendar: 'Calendario',
+            decisions: 'Decisiones', library: 'Biblioteca', matrix: 'Matriz',
+            writing: 'Escritura', medical: 'Médico', integrations: 'Integraciones',
+            logs: 'Actividad', canvas: 'Canvas', document: 'Documento',
         };
-
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `workspace-backup-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        showToast('Datos exportados con éxito');
-    } catch (err) {
-        console.error('Export failed:', err);
-        showToast('Error al exportar datos', 'error');
+        const updateBreadcrumb = () => {
+            const view = location.hash.replace('#/', '').split('/')[0] || 'dashboard';
+            breadcrumbEl.textContent = viewLabels[view] || view;
+        };
+        window.addEventListener('hashchange', updateBreadcrumb);
+        updateBreadcrumb();
     }
-}
+
+    if (window.feather) feather.replace();
+
+});
+
+// ── Global Helper Functions ──────────────────────────────────────────────────
 
 function initUIToggles() {
     const container = document.querySelector('.app-container');
@@ -350,14 +219,13 @@ function initUIToggles() {
     const themeBtn = document.getElementById('btn-theme-toggle');
 
     // Sidebar Toggle
-    const savedSidebar = localStorage.getItem('sidebar-collapsed');
-    if (savedSidebar === 'true') {
-        container.classList.add('collapsed-sidebar');
+    if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        container?.classList.add('collapsed-sidebar');
     }
 
     sidebarBtn?.addEventListener('click', () => {
-        const isCollapsed = container.classList.toggle('collapsed-sidebar');
-        localStorage.setItem('sidebar-collapsed', isCollapsed);
+        const isCollapsed = container?.classList.toggle('collapsed-sidebar');
+        localStorage.setItem('sidebar-collapsed', !!isCollapsed);
     });
 
     // Theme Toggle
@@ -371,20 +239,19 @@ function initUIToggles() {
         localStorage.setItem('app-theme', newTheme);
     });
 
-    // Mobile Menu Toggle
+    // Mobile Menu
     const mobileMenuBtn = document.getElementById('btn-mobile-menu');
     const sidebarOverlay = document.getElementById('sidebar-overlay');
     const sidebar = document.querySelector('.sidebar');
 
-    function toggleMobileMenu() {
+    const toggleMobileMenu = () => {
         sidebar?.classList.toggle('open');
         sidebarOverlay?.classList.toggle('open');
-    }
+    };
 
     mobileMenuBtn?.addEventListener('click', toggleMobileMenu);
     sidebarOverlay?.addEventListener('click', toggleMobileMenu);
 
-    // Close mobile menu on navigation
     document.querySelectorAll('.nav-item').forEach(el => {
         el.addEventListener('click', () => {
             if (window.innerWidth <= 768) {
@@ -394,85 +261,177 @@ function initUIToggles() {
         });
     });
 
-    // Profile Click
-    const profileBtn = document.getElementById('btn-user-profile');
-    profileBtn?.addEventListener('click', () => {
+    document.getElementById('btn-user-profile')?.addEventListener('click', () => {
         if (window.openProfileModal) openProfileModal();
     });
 }
 
-window.refreshCurrentView = refreshCurrentView;
-window.refreshSidebarProjects = refreshSidebarProjects;
-window.openQuickAdd = openQuickAdd;
-window.openSearch = openSearch;
-window.closeSearch = closeSearch;
-window.handleSearch = handleSearch;
-window.initUIToggles = initUIToggles;
-window.exportData = exportData;
+function refreshSidebarProjects() {
+    const container = document.getElementById('sidebar-projects');
+    if (!container) return;
+    const projects = store.get.projects().filter(p => p.status !== 'archivado');
+    container.innerHTML = projects.map(p => `
+    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true">
+      <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
+      <span class="nav-item-text">${esc(p.name)}</span>
+      <span class="nav-count">${store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length}</span>
+    </a>`).join('');
 
-// ── Ripple Effect ──────────────────────────────────────────────────────────────
+    container.querySelectorAll('.sidebar-project-item').forEach(item => {
+        item.addEventListener('dragstart', handleProjectDragStart);
+        item.addEventListener('dragenter', handleProjectDragEnter);
+        item.addEventListener('dragover', handleProjectDragOver);
+        item.addEventListener('dragleave', handleProjectDragLeave);
+        item.addEventListener('drop', handleProjectDrop);
+        item.addEventListener('dragend', handleProjectDragEnd);
+    });
+}
+
+// Drag & Drop Helpers
+let dragSrcEl = null;
+function handleProjectDragStart(e) {
+    dragSrcEl = this;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+    this.style.opacity = '0.4';
+}
+function handleProjectDragOver(e) { if (e.preventDefault) e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return false; }
+function handleProjectDragEnter() { this.classList.add('drag-over'); }
+function handleProjectDragLeave() { this.classList.remove('drag-over'); }
+function handleProjectDrop(e) {
+    if (e.stopPropagation) e.stopPropagation();
+    if (dragSrcEl !== this) {
+        const srcId = dragSrcEl.dataset.id;
+        const tgtId = this.dataset.id;
+        const projects = store.get.projects().filter(p => p.status !== 'archivado');
+        const srcIdx = projects.findIndex(p => p.id === srcId);
+        const tgtIdx = projects.findIndex(p => p.id === tgtId);
+        if (srcIdx > -1 && tgtIdx > -1) {
+            const [moved] = projects.splice(srcIdx, 1);
+            projects.splice(tgtIdx, 0, moved);
+            store.dispatch('UPDATE_PROJECT_ORDERS', projects.map((p, i) => ({ id: p.id, order: i })));
+        }
+    }
+    return false;
+}
+function handleProjectDragEnd() {
+    this.style.opacity = '1';
+    document.querySelectorAll('.sidebar-project-item').forEach(item => item.classList.remove('drag-over'));
+}
+
+// Search Logic
+function openSearch() {
+    document.getElementById('search-overlay')?.classList.add('open');
+    document.getElementById('search-input')?.focus();
+    handleSearch('');
+}
+function closeSearch() {
+    document.getElementById('search-overlay')?.classList.remove('open');
+    if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
+}
+function handleSearch(q) {
+    const results = document.getElementById('search-results');
+    if (!results) return;
+    if (!q.trim()) { results.innerHTML = `<div class="search-hint">Escribe para buscar...</div>`; return; }
+    const ql = q.toLowerCase();
+    const matchedProjs = store.get.projects().filter(p => p.name.toLowerCase().includes(ql)).slice(0, 4);
+    const matchedTasks = store.get.allTasks().filter(t => t.title.toLowerCase().includes(ql)).slice(0, 8);
+
+    if (!matchedTasks.length && !matchedProjs.length) {
+        results.innerHTML = `<div class="search-hint">Sin resultados para "${esc(q)}".</div>`;
+        return;
+    }
+    results.innerHTML = [
+        ...matchedProjs.map(p => `
+            <div class="search-result-item" onclick="router.navigate('/project/${p.id}'); closeSearch();">
+                <i data-feather="briefcase" style="color:${p.color || 'var(--accent-primary)'}"></i>
+                <div class="res-info"><span class="res-title">${esc(p.name)}</span><span class="res-meta">Proyecto</span></div>
+            </div>`),
+        ...matchedTasks.map(t => `
+            <div class="search-result-item" onclick="router.navigate('/backlog'); closeSearch();">
+                <i data-feather="check-square"></i>
+                <div class="res-info"><span class="res-title">${esc(t.title)}</span><span class="res-meta">Tarea</span></div>
+            </div>`)
+    ].join('');
+    if (window.feather) feather.replace();
+}
+
+// Global Quick Add
+function openQuickAdd() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'quick-overlay';
+    overlay.innerHTML = `
+        <div class="modal" style="max-width:340px;">
+            <div class="modal-header"><h2>Nuevo…</h2><button class="btn btn-icon" id="qa-close"><i data-feather="x"></i></button></div>
+            <div class="modal-body" style="gap:8px;">
+                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openTaskModal();"><i data-feather="check-square"></i> Tarea</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openProjectModal();"><i data-feather="briefcase"></i> Proyecto</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openCycleModal();"><i data-feather="refresh-cw"></i> Ciclo</button>
+                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openDecisionModal();"><i data-feather="zap"></i> Decisión</button>
+            </div>
+        </div>`;
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    if (window.feather) feather.replace();
+    overlay.querySelector('#qa-close')?.addEventListener('click', () => overlay.remove());
+}
+
+// Export Helper
+async function exportData() {
+    try {
+        const data = {
+            version: '1.0', exportedAt: new Date().toISOString(),
+            projects: store.get.projects(), tasks: store.get.allTasks(),
+            cycles: store.get.cycles(), decisions: store.get.decisions()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `workspace-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (window.showToast) showToast('Datos exportados con éxito');
+    } catch (err) {
+        if (window.showToast) showToast('Error al exportar datos', 'error');
+    }
+}
+
+// UI Effects
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn');
     if (!btn) return;
     const rect = btn.getBoundingClientRect();
     const size = Math.max(rect.width, rect.height) * 1.5;
-    const x = e.clientX - rect.left - size / 2;
-    const y = e.clientY - rect.top - size / 2;
     const ripple = document.createElement('span');
     ripple.className = 'ripple';
-    ripple.style.cssText = `width:${size}px;height:${size}px;left:${x}px;top:${y}px;`;
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;`;
     btn.appendChild(ripple);
     ripple.addEventListener('animationend', () => ripple.remove());
 });
 
-// ── Page loading bar ──────────────────────────────────────────────────────────
-(function () {
-    const bar = document.createElement('div');
-    bar.id = 'page-loader';
-    bar.style.cssText = `
-        position:fixed;top:0;left:0;height:2px;width:100%;
-        background:linear-gradient(90deg,var(--accent-primary),var(--accent-teal));
-        z-index:9999;transform-origin:left;transform:scaleX(0);
-        transition:transform 0.3s ease,opacity 0.3s ease;opacity:1;pointer-events:none;
-    `;
-    document.body.appendChild(bar);
-
-    window.addEventListener('route:change', () => {
-        bar.style.transform = 'scaleX(0.3)';
-        bar.style.opacity = '1';
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                bar.style.transform = 'scaleX(1)';
-                setTimeout(() => { bar.style.opacity = '0'; bar.style.transform = 'scaleX(0)'; }, 350);
-            });
-        });
-    });
-})();
-
-// ── PWA Install prompt ─────────────────────────────────────────────────────────
-let _deferredInstallPrompt = null;
+// PWA Logic Extensions
+let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
-    _deferredInstallPrompt = e;
-    // Show a subtle install badge in the sidebar after 3 seconds
-    setTimeout(() => {
-        const profile = document.querySelector('.user-profile');
-        if (profile && !document.getElementById('install-hint')) {
-            const hint = document.createElement('div');
-            hint.id = 'install-hint';
-            hint.innerHTML = `<i data-feather="download"></i> Instalar app`;
-            hint.style.cssText = `display:flex;align-items:center;gap:6px;font-size:0.72rem;color:var(--accent-teal);cursor:pointer;padding:2px 0;animation:slideInUp 0.3s ease;`;
-            hint.addEventListener('click', async () => {
-                if (_deferredInstallPrompt) {
-                    _deferredInstallPrompt.prompt();
-                    const { outcome } = await _deferredInstallPrompt.userChoice;
-                    if (outcome === 'accepted') hint.remove();
-                    _deferredInstallPrompt = null;
-                }
-            });
-            profile.insertAdjacentElement('afterend', hint);
-            feather.replace();
-        }
-    }, 3000);
+    deferredInstallPrompt = e;
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner && !localStorage.getItem('pwa-install-dismissed')) {
+        banner.style.display = 'block';
+        if (window.feather) feather.replace();
+    }
 });
 
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.style.display = 'none';
+});
+
+// Expose globals
+window.refreshCurrentView = () => { /* Logic to refresh active view if needed */ };
+window.exportData = exportData;
+window.openQuickAdd = openQuickAdd;
+window.openSearch = openSearch;
+window.closeSearch = closeSearch;

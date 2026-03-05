@@ -176,6 +176,8 @@ body::before {
     display: flex;
     flex-direction: column;
     height: 100%;
+    overflow-x: hidden;
+    overflow-y: hidden;
     border-right: 1px solid var(--border-color);
     z-index: 20;
     transition: transform var(--dur-med) var(--ease);
@@ -240,6 +242,7 @@ body::before {
 .sidebar-nav {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 16px 10px;
     display: flex;
     flex-direction: column;
@@ -278,6 +281,8 @@ body::before {
     border: 1px solid transparent;
     position: relative;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .collapsed-sidebar .nav-item span,
@@ -339,17 +344,19 @@ body::before {
 }
 
 .sidebar-footer {
-    padding: 16px;
+    padding: 16px 12px;
     border-top: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 }
 
 .footer-actions {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-start;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

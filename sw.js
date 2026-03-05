@@ -1,9 +1,10 @@
 /**
- * sw.js — Service Worker
- * Cache-first strategy for shell assets + offline fallback + sync queue flush stub.
+ * sw.js — Service Worker v5
+ * Cache-first strategy for shell assets + offline fallback.
+ * Updated to include all new view modules and assets.
  */
 
-const CACHE_NAME = 'workspace-v4';
+const CACHE_NAME = 'workspace-v7';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
@@ -13,9 +14,13 @@ const SHELL_ASSETS = [
     '/styles/animations.css',
     '/js/db.js',
     '/js/utils.js',
-    '/js/components.js',
     '/js/store.js',
-    '/js/router.js',
+    '/js/sync.js',
+    '/js/modals.js',
+    '/js/notifications.js',
+    '/js/app.js',
+    '/js/api/zotero.js',
+    // Views
     '/js/views/dashboard.js',
     '/js/views/projects.js',
     '/js/views/backlog.js',
@@ -25,11 +30,23 @@ const SHELL_ASSETS = [
     '/js/views/document.js',
     '/js/views/decisions.js',
     '/js/views/library.js',
+    '/js/views/canvas.js',
     '/js/views/logs.js',
-    '/js/modals.js',
-    '/js/notifications.js',
-    '/js/sync.js',
-    '/js/app.js',
+    '/js/views/writing.js',
+    '/js/views/medical.js',
+    '/js/views/integrations.js',
+    '/js/views/matrix.js',
+    // Icons
+    '/icons/icon-72.png',
+    '/icons/icon-96.png',
+    '/icons/icon-128.png',
+    '/icons/icon-144.png',
+    '/icons/icon-152.png',
+    '/icons/icon-192.png',
+    '/icons/icon-384.png',
+    '/icons/icon-512.png',
+    '/icons/apple-touch-icon.png',
+    // External CDN (cached for offline)
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
     'https://unpkg.com/feather-icons/dist/feather.min.js',
 ];
@@ -37,8 +54,13 @@ const SHELL_ASSETS = [
 // ── Install: cache shell ──────────────────────────────────────────────────────
 self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_ASSETS))
+        caches.open(CACHE_NAME)
+            .then(cache => cache.addAll(SHELL_ASSETS.filter(a => !a.startsWith('https://fonts') && !a.startsWith('https://unpkg'))))
             .then(() => self.skipWaiting())
+            .catch(err => {
+                console.warn('[SW] Some assets failed to cache (non-fatal):', err);
+                return self.skipWaiting();
+            })
     );
 });
 
@@ -51,12 +73,10 @@ self.addEventListener('activate', event => {
     );
 });
 
-// ── Fetch: cache-first, fallback to network, fallback to index.html ───────────
+// ── Fetch: cache-first, fallback to network ───────────────────────────────────
 self.addEventListener('fetch', event => {
-    // Only handle GET requests
     if (event.request.method !== 'GET') return;
 
-    // Skip cross-origin requests that aren't in our known CDNs
     const url = new URL(event.request.url);
     const isLocal = url.origin === self.location.origin;
     const isCDN = url.hostname.includes('googleapis.com') ||
@@ -65,12 +85,31 @@ self.addEventListener('fetch', event => {
 
     if (!isLocal && !isCDN) return;
 
+    // Network-first for API calls, cache-first for static assets
+    const isAPI = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com/') && url.pathname.includes('calendar');
+
+    if (isAPI) {
+        // Network-first with cache fallback
+        event.respondWith(
+            fetch(event.request)
+                .then(res => {
+                    if (res && res.status === 200) {
+                        const clone = res.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                    }
+                    return res;
+                })
+                .catch(() => caches.match(event.request))
+        );
+        return;
+    }
+
+    // Cache-first for everything else
     event.respondWith(
         caches.match(event.request).then(cached => {
             if (cached) return cached;
             return fetch(event.request)
                 .then(res => {
-                    // Cache successful responses
                     if (res && res.status === 200) {
                         const clone = res.clone();
                         caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
@@ -78,7 +117,6 @@ self.addEventListener('fetch', event => {
                     return res;
                 })
                 .catch(() => {
-                    // Offline fallback: serve index.html for navigation requests
                     if (event.request.mode === 'navigate') {
                         return caches.match('/index.html');
                     }
@@ -87,7 +125,7 @@ self.addEventListener('fetch', event => {
     );
 });
 
-// ── Background sync stub ──────────────────────────────────────────────────────
+// ── Background sync ───────────────────────────────────────────────────────────
 self.addEventListener('sync', event => {
     if (event.tag === 'sync-workspace') {
         event.waitUntil(flushSyncQueue());
@@ -95,7 +133,26 @@ self.addEventListener('sync', event => {
 });
 
 async function flushSyncQueue() {
-    // Stub: in a real multi-user deployment this would push to a server API.
-    // For now IndexedDB is the source of truth and no remote sync is needed.
-    console.log('[SW] Background sync triggered — queue flush stub.');
+    console.log('[SW] Background sync triggered.');
 }
+
+// ── Push notifications (stub) ─────────────────────────────────────────────────
+self.addEventListener('push', event => {
+    if (!event.data) return;
+    const data = event.data.json();
+    event.waitUntil(
+        self.registration.showNotification(data.title || 'Workspace', {
+            body: data.body || '',
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-96.png',
+            data: { url: data.url || '/' }
+        })
+    );
+});
+
+self.addEventListener('notificationclick', event => {
+    event.notification.close();
+    event.waitUntil(
+        clients.openWindow(event.notification.data?.url || '/')
+    );
+});

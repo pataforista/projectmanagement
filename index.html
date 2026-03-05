@@ -4,16 +4,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#09090b">
+  <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
   <meta name="description"
-    content="Workspace de Producción — Gestión colaborativa de proyectos académicos y creativos.">
+    content="Workspace de Producción — Gestión colaborativa de proyectos académicos, médicos y creativos.">
+  <meta name="application-name" content="Workspace">
+  <meta name="mobile-web-app-capable" content="yes">
 
-  <title>Workspace de Producción</title>
-
+  <!-- Apple PWA meta -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Workspace">
-  <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="144x144" href="icons/icon-144.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
+
+  <!-- Standard icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-96.png">
+
+  <!-- Open Graph (for sharing) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Workspace de Producción">
+  <meta property="og:description" content="Gestión colaborativa de proyectos académicos, médicos y creativos.">
+  <meta property="og:image" content="icons/icon-512.png">
+
+  <title>Workspace de Producción</title>
 
   <link rel="manifest" href="manifest.json">
 
@@ -68,40 +86,49 @@
       <nav class="sidebar-nav">
 
         <div class="nav-section">
-          <span class="nav-label">Global</span>
+          <span class="nav-label">Inicio</span>
           <a class="nav-item" data-view="dashboard" href="#/dashboard">
-            <i data-feather="home"></i> Dashboard
+            <i data-feather="home"></i> <span>Dashboard</span>
           </a>
           <a class="nav-item" data-view="board" href="#/board">
-            <i data-feather="layout"></i> Tablero
+            <i data-feather="layout"></i> <span>Tablero</span>
           </a>
           <a class="nav-item" data-view="backlog" href="#/backlog">
-            <i data-feather="inbox"></i> Backlog
+            <i data-feather="inbox"></i> <span>Backlog</span>
           </a>
           <a class="nav-item" data-view="calendar" href="#/calendar">
-            <i data-feather="calendar"></i> Calendario
+            <i data-feather="calendar"></i> <span>Calendario</span>
+          </a>
+          <a class="nav-item" data-view="matrix" href="#/matrix">
+            <i data-feather="grid"></i> <span>Matriz</span>
           </a>
           <a class="nav-item" data-view="library" href="#/library">
-            <i data-feather="book-open"></i> Biblioteca
+            <i data-feather="book-open"></i> <span>Biblioteca</span>
           </a>
           <a class="nav-item" data-view="canvas" href="#/canvas">
-            <i data-feather="edit-3"></i> Canvas
+            <i data-feather="edit-3"></i> <span>Canvas</span>
           </a>
         </div>
 
         <div class="nav-section">
           <span class="nav-label">Producción</span>
           <a class="nav-item" data-view="projects" href="#/projects">
-            <i data-feather="briefcase"></i> Proyectos
+            <i data-feather="briefcase"></i> <span>Proyectos</span>
+          </a>
+          <a class="nav-item" data-view="writing" href="#/writing">
+            <i data-feather="type"></i> <span>Escritura</span>
+          </a>
+          <a class="nav-item" data-view="medical" href="#/medical">
+            <i data-feather="heart"></i> <span>Médico</span>
           </a>
           <a class="nav-item" data-view="cycles" href="#/cycles">
-            <i data-feather="refresh-cw"></i> Ciclos
+            <i data-feather="refresh-cw"></i> <span>Ciclos</span>
           </a>
           <a class="nav-item" data-view="decisions" href="#/decisions">
-            <i data-feather="zap"></i> Decisiones
+            <i data-feather="zap"></i> <span>Decisiones</span>
           </a>
           <a class="nav-item" data-view="logs" href="#/logs">
-            <i data-feather="activity"></i> Actividad
+            <i data-feather="activity"></i> <span>Actividad</span>
           </a>
         </div>
 
@@ -128,8 +155,15 @@
           <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)">
             <i data-feather="download"></i>
           </button>
+          <button class="btn btn-icon" id="btn-integrations" title="Integraciones y APIs">
+            <i data-feather="settings"></i>
+          </button>
           <button class="btn btn-icon" id="btn-help" title="Guía de Uso">
             <i data-feather="help-circle"></i>
+          </button>
+          <button class="btn btn-icon" id="btn-lock" onclick="lockWorkspace && lockWorkspace()"
+            title="Bloquear Workspace">
+            <i data-feather="lock"></i>
           </button>
         </div>
         <div class="user-profile" id="btn-user-profile" title="Configurar perfil">
@@ -154,7 +188,7 @@
           <div class="breadcrumbs">
             <span>Workspace</span>
             <i data-feather="chevron-right"></i>
-            <span class="current">Dashboard</span>
+            <span class="current" id="breadcrumb-current">Dashboard</span>
           </div>
         </div>
         <div class="topbar-actions">
@@ -162,13 +196,20 @@
             <i data-feather="search"></i>
           </button>
           <button class="btn btn-primary" id="btn-new-global">
-            <i data-feather="plus"></i> Nuevo
+            <i data-feather="plus"></i> <span class="d-desktop">Nuevo</span>
           </button>
         </div>
       </header>
 
       <!-- Dynamic view content -->
       <div class="content-view">
+        <!-- Page load shimmer (removed once app loads) -->
+        <div id="page-shimmer" class="page-shimmer-container" aria-hidden="true">
+          <div class="shimmer-header skeleton"></div>
+          <div class="shimmer-row skeleton"></div>
+          <div class="shimmer-row skeleton"></div>
+          <div class="shimmer-row skeleton" style="width:70%"></div>
+        </div>
         <div id="app-root">
           <!-- Rendered by router + view modules -->
         </div>
@@ -184,7 +225,7 @@
     <div class="search-box">
       <div class="search-input-wrap">
         <i data-feather="search"></i>
-        <input id="search-input" type="text" placeholder="Buscar tareas, proyectos…" autocomplete="off">
+        <input id="search-input" type="text" placeholder="Buscar tareas, proyectos, sesiones…" autocomplete="off">
         <kbd
           style="font-size:0.7rem;color:var(--text-muted);border:1px solid var(--border-color);border-radius:4px;padding:2px 5px;">ESC</kbd>
       </div>
@@ -197,13 +238,28 @@
   <!-- Toast container -->
   <div id="toast-container"></div>
 
+  <!-- PWA Install prompt (appears when supported) -->
+  <div id="pwa-install-banner" class="pwa-banner" style="display:none;">
+    <div class="pwa-banner-content">
+      <img src="icons/icon-96.png" alt="Workspace" width="36" height="36" style="border-radius:8px;">
+      <div style="flex:1;">
+        <strong>Instalar Workspace</strong>
+        <p style="font-size:0.78rem; color:var(--text-muted); margin:0;">Acceso rápido, sin navegador.</p>
+      </div>
+      <button class="btn btn-primary btn-sm" id="pwa-install-btn">Instalar</button>
+      <button class="btn btn-ghost btn-sm" id="pwa-install-dismiss"><i data-feather="x"></i></button>
+    </div>
+  </div>
+
   <!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
-  <!-- Load order matters: db → utils → store → router → views → modals → app -->
+  <!-- Load order matters: db → utils → store → sync → modals → components → views → app -->
   <script src="js/db.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/router.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/modals.js"></script>
+  <script src="js/components.js"></script>
   <script src="js/api/zotero.js"></script>
 
   <!-- View modules -->
@@ -218,11 +274,13 @@
   <script src="js/views/library.js"></script>
   <script src="js/views/canvas.js"></script>
   <script src="js/views/logs.js"></script>
+  <script src="js/views/writing.js"></script>
+  <script src="js/views/medical.js"></script>
+  <script src="js/views/integrations.js"></script>
+  <script src="js/views/matrix.js"></script>
 
-  <!-- Modals + Bootstrap -->
-  <script src="js/modals.js"></script>
+  <!-- App bootstrap (last) -->
   <script src="js/notifications.js"></script>
-  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
 
 </body>

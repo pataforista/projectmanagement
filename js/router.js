@@ -15,6 +15,11 @@ const ROUTES = {
     '/decisions': 'decisions',
     '/library': 'library',
     '/logs': 'logs',
+    '/matrix': 'matrix',
+    '/writing': 'writing',
+    '/medical': 'medical',
+    '/integrations': 'integrations',
+    '/canvas': 'canvas',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -28,6 +33,11 @@ const ROUTE_META = {
     decisions: { label: 'Decisiones', subtitle: 'Registro de decisiones clave del workspace.' },
     library: { label: 'Biblioteca', subtitle: 'Recursos de investigación, docencia y gestión open-source.' },
     logs: { label: 'Actividad', subtitle: 'Registro de actividad del equipo.' },
+    matrix: { label: 'Matriz', subtitle: 'Prioriza por urgencia e importancia.' },
+    writing: { label: 'Escritura', subtitle: 'Modo manuscrito para artículos y libros.' },
+    medical: { label: 'Panel Médico', subtitle: 'Seguimiento de interconsultas y derivaciones.' },
+    integrations: { label: 'Integraciones', subtitle: 'Conecta con Google, Zotero y Todoist.' },
+    canvas: { label: 'Canvas', subtitle: 'Tablero visual de ideas y proyectos.' },
     project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
     document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
 };
