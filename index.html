@@ -65,6 +65,42 @@
         <input type="password" id="auth-password" class="form-input" placeholder="Contraseña" required autofocus>
         <button type="submit" class="btn btn-primary" style="justify-content:center;">Desbloquear</button>
       </form>
+
+      <!-- Forgot password link (shown only when recovery hash exists) -->
+      <div id="auth-forgot-container" style="display:none; margin-top:10px; text-align:center;">
+        <button type="button" id="auth-forgot-link"
+          style="background:none; border:none; color:var(--text-muted); font-size:0.82rem; cursor:pointer; text-decoration:underline; padding:4px 8px; font-family:inherit;">
+          ¿Olvidaste tu contraseña?
+        </button>
+      </div>
+
+      <!-- Recovery code input panel -->
+      <div id="auth-recovery-panel" style="display:none; flex-direction:column; gap:12px; margin-top:8px;">
+        <input type="text" id="auth-recovery-code" class="form-input"
+          placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off"
+          style="text-transform:uppercase; font-family:var(--font-mono); letter-spacing:2px; text-align:center;">
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="auth-recovery-back" class="btn btn-secondary" style="flex:1; justify-content:center;">Volver</button>
+          <button type="button" id="auth-recovery-submit" class="btn btn-primary" style="flex:1; justify-content:center;">Verificar</button>
+        </div>
+      </div>
+
+      <!-- New password panel (after code verified) -->
+      <div id="auth-newpwd-panel" style="display:none; flex-direction:column; gap:12px; margin-top:8px;">
+        <p style="color:var(--accent-success); font-size:0.85rem; text-align:center; margin:0;">Codigo correcto. Crea una nueva contrasena.</p>
+        <input type="password" id="auth-newpwd-input" class="form-input" placeholder="Nueva contrasena (min. 4 caracteres)">
+        <button type="button" id="auth-newpwd-submit" class="btn btn-primary" style="justify-content:center;">Guardar contrasena</button>
+      </div>
+
+      <!-- Recovery code display (shown once at creation / after reset) -->
+      <div id="auth-code-display" style="display:none; flex-direction:column; gap:10px; margin-top:8px; padding:16px; background:var(--accent-warning-bg); border-radius:10px; border:1px solid rgba(245,158,11,0.3);">
+        <p style="color:var(--accent-warning); font-size:0.85rem; font-weight:600; margin:0;">Guarda este codigo de recuperacion</p>
+        <p style="color:var(--text-secondary); font-size:0.8rem; margin:0;">Si olvidas tu contrasena, necesitaras este codigo. Guardalo en un lugar seguro.</p>
+        <div id="auth-code-value"
+          style="font-family:var(--font-mono); font-size:1rem; letter-spacing:2px; text-align:center; padding:12px; background:var(--bg-base); border-radius:8px; color:var(--text-primary); font-weight:700;"></div>
+        <button type="button" id="auth-code-copy" class="btn btn-secondary" style="justify-content:center;">Copiar codigo</button>
+        <button type="button" id="auth-code-done" class="btn btn-primary" style="justify-content:center;">Ya lo guarde — Continuar</button>
+      </div>
     </div>
   </div>
 

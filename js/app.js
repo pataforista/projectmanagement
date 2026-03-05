@@ -17,10 +17,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         return hash.toString();
     };
 
+    const generateRecoveryCode = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 16; i++) {
+            if (i > 0 && i % 4 === 0) code += '-';
+            code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return code;
+    };
+
+    const normalizeCode = str => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
     let savedHash = localStorage.getItem('workspace_lock_hash');
 
     await new Promise(resolve => {
         if (!authOverlay) return resolve();
+
+        const authForgotContainer = document.getElementById('auth-forgot-container');
+        const authForgotLink = document.getElementById('auth-forgot-link');
+        const authRecoveryPanel = document.getElementById('auth-recovery-panel');
+        const authRecoveryCode = document.getElementById('auth-recovery-code');
+        const authRecoveryBack = document.getElementById('auth-recovery-back');
+        const authRecoverySubmit = document.getElementById('auth-recovery-submit');
+        const authNewpwdPanel = document.getElementById('auth-newpwd-panel');
+        const authNewpwdInput = document.getElementById('auth-newpwd-input');
+        const authNewpwdSubmit = document.getElementById('auth-newpwd-submit');
+        const authCodeDisplay = document.getElementById('auth-code-display');
+        const authCodeValue = document.getElementById('auth-code-value');
+        const authCodeCopy = document.getElementById('auth-code-copy');
+        const authCodeDone = document.getElementById('auth-code-done');
+
+        const showCodeDisplay = (code, onDone) => {
+            authCodeValue.textContent = code;
+            authCodeDisplay.style.display = 'flex';
+            authCodeCopy.onclick = () => {
+                navigator.clipboard.writeText(code).catch(() => {});
+                authCodeCopy.textContent = '¡Copiado!';
+                setTimeout(() => authCodeCopy.textContent = 'Copiar codigo', 2000);
+            };
+            authCodeDone.onclick = onDone;
+        };
 
         if (!savedHash) {
             authOverlay.classList.add('open');
@@ -33,13 +70,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setTimeout(() => authPassword.style.border = '', 1000);
                     return;
                 }
+                const recoveryCode = generateRecoveryCode();
                 localStorage.setItem('workspace_lock_hash', hashStr(pwd));
-                authOverlay.classList.remove('open');
-                resolve();
+                localStorage.setItem('workspace_recovery_hash', hashStr(normalizeCode(recoveryCode)));
+                authForm.style.display = 'none';
+                authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
+                showCodeDisplay(recoveryCode, () => {
+                    authOverlay.classList.remove('open');
+                    resolve();
+                });
             };
         } else {
             authOverlay.classList.add('open');
             authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
+
+            if (localStorage.getItem('workspace_recovery_hash') && authForgotContainer) {
+                authForgotContainer.style.display = 'block';
+            }
+
             authForm.onsubmit = (e) => {
                 e.preventDefault();
                 const pwd = authPassword.value.trim();
@@ -52,6 +100,65 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setTimeout(() => authPassword.style.border = '', 1000);
                 }
             };
+
+            if (authForgotLink) {
+                authForgotLink.onclick = () => {
+                    authForm.style.display = 'none';
+                    if (authForgotContainer) authForgotContainer.style.display = 'none';
+                    authSubtitle.textContent = "Ingresa tu codigo de recuperacion.";
+                    authRecoveryPanel.style.display = 'flex';
+                    authRecoveryCode.focus();
+                };
+            }
+
+            if (authRecoveryBack) {
+                authRecoveryBack.onclick = () => {
+                    authRecoveryPanel.style.display = 'none';
+                    authNewpwdPanel.style.display = 'none';
+                    authRecoveryCode.value = '';
+                    authRecoveryCode.style.border = '';
+                    authForm.style.display = 'flex';
+                    if (authForgotContainer) authForgotContainer.style.display = 'block';
+                    authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
+                };
+            }
+
+            if (authRecoverySubmit) {
+                authRecoverySubmit.onclick = () => {
+                    const savedRecoveryHash = localStorage.getItem('workspace_recovery_hash');
+                    const entered = normalizeCode(authRecoveryCode.value.trim());
+                    if (savedRecoveryHash && hashStr(entered) === savedRecoveryHash) {
+                        authRecoveryPanel.style.display = 'none';
+                        authSubtitle.textContent = "Crea una nueva contraseña.";
+                        authNewpwdPanel.style.display = 'flex';
+                        authNewpwdInput.focus();
+                    } else {
+                        authRecoveryCode.style.border = '1px solid var(--accent-danger)';
+                        authRecoveryCode.value = '';
+                        setTimeout(() => authRecoveryCode.style.border = '', 1000);
+                    }
+                };
+            }
+
+            if (authNewpwdSubmit) {
+                authNewpwdSubmit.onclick = () => {
+                    const newPwd = authNewpwdInput.value.trim();
+                    if (newPwd.length < 4) {
+                        authNewpwdInput.style.border = '1px solid var(--accent-warning)';
+                        setTimeout(() => authNewpwdInput.style.border = '', 1000);
+                        return;
+                    }
+                    const newRecoveryCode = generateRecoveryCode();
+                    localStorage.setItem('workspace_lock_hash', hashStr(newPwd));
+                    localStorage.setItem('workspace_recovery_hash', hashStr(normalizeCode(newRecoveryCode)));
+                    authNewpwdPanel.style.display = 'none';
+                    authSubtitle.textContent = "¡Contraseña restablecida! Guarda tu nuevo codigo.";
+                    showCodeDisplay(newRecoveryCode, () => {
+                        authOverlay.classList.remove('open');
+                        resolve();
+                    });
+                };
+            }
         }
     });
 
