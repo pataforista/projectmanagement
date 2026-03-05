@@ -152,6 +152,29 @@ function getObsidianFileName(uri) {
     }
 }
 
+// ── Member Avatar Helpers ────────────────────────────────────────────────────
+const _AVATAR_COLORS = ['#5e6ad2','#16a085','#8e44ad','#c0392b','#d35400','#2980b9','#f39c12','#27ae60','#e74c3c','#1abc9c'];
+
+function memberInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return parts.length > 1
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : name.slice(0, 2).toUpperCase();
+}
+
+function memberColor(name) {
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return _AVATAR_COLORS[Math.abs(hash) % _AVATAR_COLORS.length];
+}
+
+function memberAvatarHtml(member, size = 28) {
+    const initials = memberInitials(member.name);
+    const color = memberColor(member.name);
+    return `<div title="${esc(member.name)}" style="width:${size}px;height:${size}px;border-radius:50%;background:${color};color:#fff;font-size:${Math.round(size * 0.38)}px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;border:2px solid var(--bg-surface);flex-shrink:0;">${initials}</div>`;
+}
+
 // Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
@@ -163,3 +186,6 @@ window.bindTaskCheckboxes = bindTaskCheckboxes;
 window.getObsidianFileName = getObsidianFileName;
 window.downloadFile = downloadFile;
 window.PROJECT_TYPES = PROJECT_TYPES;
+window.memberInitials = memberInitials;
+window.memberColor = memberColor;
+window.memberAvatarHtml = memberAvatarHtml;

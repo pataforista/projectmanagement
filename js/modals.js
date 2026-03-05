@@ -246,6 +246,26 @@ function openProjectModal(p = null) {
         <label class="form-label">Nota de Obsidian (URI)</label>
         <input class="form-input" id="proj-obsidian" placeholder="obsidian://open?vault=..." value="${isEdit ? esc(p?.obsidianUri || '') : ''}">
       </div>
+      <div class="form-group">
+        <label class="form-label">Google Doc (URL)</label>
+        <input class="form-input" id="proj-gdoc" placeholder="https://docs.google.com/document/d/..." value="${isEdit ? esc(p?.googleDocUrl || '') : ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Responsables</label>
+        <div id="proj-members-select" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:var(--bg-surface-2);border-radius:var(--radius-md);min-height:40px;">
+          ${(function() {
+            const members = store.get.members();
+            if (!members.length) return '<span style="font-size:0.78rem;color:var(--text-muted);">No hay miembros. Añade desde la vista Equipo.</span>';
+            const assigned = isEdit ? (p?.memberIds || []) : [];
+            return members.map(m => `
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.82rem;padding:4px 8px;border-radius:20px;border:1px solid var(--border-color);transition:all 0.15s;" class="member-check-label">
+                <input type="checkbox" class="proj-member-cb" value="${m.id}" ${assigned.includes(m.id) ? 'checked' : ''} style="accent-color:var(--accent-primary);">
+                <span class="member-avatar-xs" style="width:18px;height:18px;border-radius:50%;background:${memberColor(m.name)};color:#fff;font-size:0.58rem;display:inline-flex;align-items:center;justify-content:center;font-weight:700;">${memberInitials(m.name)}</span>
+                ${esc(m.name)}
+              </label>`).join('');
+          })()}
+        </div>
+      </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Fecha de inicio</label>
@@ -302,15 +322,18 @@ function openProjectModal(p = null) {
     const name = modal.querySelector('#proj-name').value.trim();
     if (!name) { showToast('El nombre es obligatorio.', 'error'); return; }
 
+    const memberIds = [...modal.querySelectorAll('.proj-member-cb:checked')].map(cb => cb.value);
     const data = {
       name,
       type: modal.querySelector('#proj-type').value,
       status: modal.querySelector('#proj-status').value,
       goal: modal.querySelector('#proj-goal').value,
       obsidianUri: modal.querySelector('#proj-obsidian').value.trim(),
+      googleDocUrl: modal.querySelector('#proj-gdoc').value.trim(),
       startDate: modal.querySelector('#proj-start').value || null,
       endDate: modal.querySelector('#proj-end').value || null,
       color: modal.querySelector('#proj-color').value,
+      memberIds,
     };
 
     if (isEdit) {

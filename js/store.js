@@ -263,6 +263,21 @@ const store = (() => {
                 _notify(storeName);
                 return record;
             }
+            case 'UPDATE_MEMBER': {
+                storeName = 'members';
+                const updated = { ..._state.members.find(m => m.id === payload.id), ...payload };
+                await dbAPI.put(storeName, updated);
+                _state.members = _state.members.map(m => m.id === payload.id ? updated : m);
+                _notify(storeName);
+                break;
+            }
+            case 'DELETE_MEMBER': {
+                storeName = 'members';
+                await dbAPI.delete(storeName, payload.id);
+                _state.members = _state.members.filter(m => m.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
 
             // ── Library / Zotero ──
             case 'IMPORT_LIBRARY': {

@@ -87,7 +87,16 @@ function renderProjectCards(projects) {
           ${cycle ? `<span><i data-feather="refresh-cw" style="width:10px;height:10px;"></i> ${esc(cycle.name)}</span>` : ''}
           ${p.endDate ? `<span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(p.endDate)}</span>` : ''}
           ${statusBadge(p.status)}
+          ${p.googleDocUrl ? `<a href="${esc(p.googleDocUrl)}" target="_blank" onclick="event.stopPropagation()" title="Abrir Google Doc" style="color:var(--text-muted);display:inline-flex;align-items:center;gap:3px;font-size:0.68rem;"><i data-feather="file-text" style="width:10px;height:10px;color:#4285f4;"></i></a>` : ''}
         </div>
+        ${(p.memberIds && p.memberIds.length) ? `
+        <div style="display:flex;gap:-4px;margin-top:6px;">
+          ${p.memberIds.slice(0,5).map(mid => {
+            const m = store.get.memberById(mid);
+            return m ? memberAvatarHtml(m, 24) : '';
+          }).join('')}
+          ${p.memberIds.length > 5 ? `<div style="width:24px;height:24px;border-radius:50%;background:var(--bg-surface-3);color:var(--text-muted);font-size:0.62rem;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--bg-surface);">+${p.memberIds.length - 5}</div>` : ''}
+        </div>` : ''}
       </div>`;
   }).join('');
 }
@@ -175,23 +184,54 @@ function showProjectTab(root, p, tab) {
   const decisions = store.get.decisionsByProject(p.id);
 
   if (tab === 'overview') {
+    // External links card (Obsidian + Google Docs)
     let extCard = '';
-    if (p.obsidianUri) {
-      const isZotero = p.obsidianUri.startsWith('zotero://');
-      const icon = isZotero ? 'book' : 'external-link';
-      const title = isZotero ? 'Conexión con Zotero' : 'Conexión Ext (Obsidian/Local)';
-      const btnText = isZotero ? 'Abrir en Zotero' : `Abrir: ${esc(getObsidianFileName(p.obsidianUri))}`;
+    const hasObs = !!p.obsidianUri;
+    const hasGdoc = !!p.googleDocUrl;
+    if (hasObs || hasGdoc) {
+      const obsBtn = hasObs ? (() => {
+        const isZotero = p.obsidianUri.startsWith('zotero://');
+        return `<a href="${p.obsidianUri}" class="btn btn-secondary btn-sm" style="gap:6px;" title="${isZotero ? 'Abrir en Zotero' : 'Abrir en Obsidian'}">
+          <i data-feather="${isZotero ? 'book' : 'external-link'}"></i> ${isZotero ? 'Zotero' : esc(getObsidianFileName(p.obsidianUri))}
+        </a>`;
+      })() : '';
+      const gdocBtn = hasGdoc ? `<a href="${esc(p.googleDocUrl)}" target="_blank" class="btn btn-secondary btn-sm" style="gap:6px;">
+        <i data-feather="file-text" style="color:#4285f4;"></i> Abrir Google Doc
+      </a>` : '';
 
       extCard = `
-      <div class="card glass-panel" style="margin-top:20px; grid-column: span 2;">
+      <div class="card glass-panel" style="grid-column: span 2;">
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-          <h3>${title}</h3>
-          <a href="${p.obsidianUri}" class="btn btn-secondary btn-sm" style="gap:6px;">
-            <i data-feather="${icon}"></i> ${btnText}
-          </a>
+          <h3>Documentos vinculados</h3>
+          <div style="display:flex;gap:8px;">${obsBtn}${gdocBtn}</div>
         </div>
       </div>`;
     }
+
+    // Members card
+    const assignedMembers = (p.memberIds || []).map(mid => store.get.memberById(mid)).filter(Boolean);
+    const membersCard = `
+      <div class="card glass-panel" style="grid-column: span 2;">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>Responsables</h3>
+          <button class="btn btn-ghost btn-xs" onclick="openProjectModal(store.get.projectById('${p.id}'))">
+            <i data-feather="edit-2" style="width:11px;height:11px;"></i> Editar
+          </button>
+        </div>
+        <div class="card-body">
+          ${assignedMembers.length ? `
+            <div style="display:flex;flex-wrap:wrap;gap:12px;">
+              ${assignedMembers.map(m => `
+                <div style="display:flex;align-items:center;gap:8px;">
+                  ${memberAvatarHtml(m, 32)}
+                  <div>
+                    <div style="font-size:0.84rem;font-weight:600;">${esc(m.name)}</div>
+                    ${m.role ? `<div style="font-size:0.72rem;color:var(--text-muted);">${esc(m.role)}</div>` : ''}
+                  </div>
+                </div>`).join('')}
+            </div>` : `<p style="font-size:0.82rem;color:var(--text-muted);">Sin responsables asignados. <button class="btn-text" onclick="openProjectModal(store.get.projectById('${p.id}'))" style="color:var(--accent-primary);">Asignar</button></p>`}
+        </div>
+      </div>`;
 
     const thoughts = p.thoughts || [];
 
@@ -240,6 +280,7 @@ function showProjectTab(root, p, tab) {
           </div>
         </div>
 
+        ${membersCard}
         ${extCard}
       </div>`;
 

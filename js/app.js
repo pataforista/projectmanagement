@@ -239,6 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('matrix', (root) => renderMatrix(root))
         .on('writing', (root) => renderWriting(root))
         .on('medical', (root) => renderMedical(root))
+        .on('team', (root) => renderTeam(root))
         .on('integrations', (root) => renderIntegrations(root))
         .on('canvas', (root) => renderCanvas && renderCanvas(root))
         .on('logs', (root) => renderLogs(root))
