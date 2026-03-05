@@ -440,10 +440,13 @@ function initUIToggles() {
     document.documentElement.setAttribute('data-theme', savedTheme);
 
     themeBtn?.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        let currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const themes = ['dark', 'light', 'rosel', 'celada'];
+        const currentIdx = themes.indexOf(currentTheme);
+        const newTheme = themes[(currentIdx + 1) % themes.length];
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('app-theme', newTheme);
+        if (window.showToast) window.showToast('Tema cambiado a: ' + newTheme, 'info');
     });
 
     // Mobile Menu
@@ -653,10 +656,32 @@ window.addEventListener('beforeinstallprompt', (e) => {
     deferredInstallPrompt = e;
     const banner = document.getElementById('pwa-install-banner');
     if (banner && !localStorage.getItem('pwa-install-dismissed')) {
-        banner.style.display = 'block';
+        banner.style.display = 'flex';
         if (window.feather) feather.replace();
     }
 });
+
+const btnInstall = document.getElementById('pwa-install-btn');
+const btnDismiss = document.getElementById('pwa-install-dismiss');
+
+if (btnInstall) {
+    btnInstall.addEventListener('click', async () => {
+        const banner = document.getElementById('pwa-install-banner');
+        if (banner) banner.style.display = 'none';
+        if (deferredInstallPrompt) {
+            deferredInstallPrompt.prompt();
+            const { outcome } = await deferredInstallPrompt.userChoice;
+            deferredInstallPrompt = null;
+        }
+    });
+}
+if (btnDismiss) {
+    btnDismiss.addEventListener('click', () => {
+        const banner = document.getElementById('pwa-install-banner');
+        if (banner) banner.style.display = 'none';
+        localStorage.setItem('pwa-install-dismissed', 'true');
+    });
+}
 
 window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;

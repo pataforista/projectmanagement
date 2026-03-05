@@ -120,6 +120,7 @@ function renderWriting(root) {
             <div class="editor-actions" style="display:flex; gap:8px;">
               <button class="btn btn-icon btn-sm" title="Usar Plantilla Académica" id="wr-template-btn"><i data-feather="file-plus"></i></button>
               <button class="btn btn-icon btn-sm" title="Metadatos YAML (Propiedades)" id="wr-properties-btn"><i data-feather="settings"></i></button>
+              <button class="btn btn-icon btn-sm" title="Vista Previa Markdown" id="wr-preview-btn"><i data-feather="eye"></i></button>
               <button class="btn btn-icon btn-sm" title="Crear Snapshot (Versión)" id="wr-snapshot"><i data-feather="camera"></i></button>
               <button class="btn btn-icon btn-sm" title="Exportar .md" id="wr-export"><i data-feather="download"></i></button>
               <button class="btn btn-primary btn-sm" id="wr-save">Guardar</button>
@@ -130,9 +131,12 @@ function renderWriting(root) {
               PROPIEDADES (YAML)
               <button class="btn btn-ghost btn-xs" id="wr-prop-toggle">✕</button>
             </div>
-            <textarea id="wr-properties" class="form-textarea" style="min-height:60px; font-family:monospace; font-size:0.75rem; border:none; background:transparent; padding:0 0 12px 0;" placeholder="estado: borrador&#10;revisor: Dr. Gomez"></textarea>
+            <textarea id="wr-properties" class="form-textarea" style="min-height:60px; font-family:monospace; font-size:0.75rem; border:none; background:transparent; padding:0 0 12px 0;" placeholder="estado: borrador&#10;revisor: Dr. Gomez">
+${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify(doc.properties, null, 2)) : ''}
+            </textarea>
           </div>
           <div class="editor-body" style="position:relative; flex:1; display:flex; flex-direction:column;">
+            <div id="wr-markdown-preview" style="position:absolute; inset:0; background:var(--bg-surface); z-index:3; overflow-y:auto; padding:20px; display:none; line-height:1.6;" class="content-view"></div>
             <div id="wr-annotations-layer" style="position:absolute; top:0; left:0; pointer-events:none; width:100%; height:100%; overflow:hidden; padding:20px; font-family:inherit; white-space:pre-wrap; color:transparent; line-height:1.6; z-index:1;"></div>
             <textarea id="wr-editor" class="manuscript-textarea" style="position:relative; z-index:2; background:transparent; flex:1;" placeholder="Empieza a escribir aquí...">${esc(doc.content || '')}</textarea>
           </div>
@@ -331,52 +335,131 @@ function renderWriting(root) {
             };
           });
         } else if (tab === 'connections') {
-          const docId = activeProjectId;
-          const backlinks = store.get.getBacklinks(docId) || [];
-          const unlinked = store.get.getUnlinkedMentions(docId) || [];
+          const docId = activeProjectId; // Assuming 1-to-1 project-doc mapping in this view
+          const currentDoc = store.get.documentByProject(docId);
+          const title = currentDoc ? currentDoc.title : p.name;
+          const safeTitle = title.toLowerCase();
+
+          let backlinks = [];
+          let unlinked = [];
+
+          if (safeTitle) {
+            const allDocs = store.get.documents() || [];
+            allDocs.forEach(d => {
+              if (d.projectId === docId) return; // Skip self
+              if (!d.content) return;
+
+              const contentLow = d.content.toLowerCase();
+              if (contentLow.includes(`[[${safeTitle}]]`)) {
+                backlinks.push(d);
+              } else if (contentLow.includes(safeTitle)) {
+                unlinked.push(d);
+              }
+            });
+          }
 
           container.innerHTML = `
             <div class="writing-connections" style="padding:10px;">
               <h4 style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px; text-transform:uppercase;">Backlinks</h4>
               ${backlinks.length ? backlinks.map(b => `
-                <div class="connection-item" style="padding:8px; background:var(--bg-surface-2); border-radius:6px; margin-bottom:8px; font-size:0.8rem; cursor:pointer;" onclick="app.navigate('writing?project=${b.id}')">
-                  ${esc(b.title)}
+                <div class="connection-item" style="padding:8px; background:var(--bg-surface-2); border-radius:6px; margin-bottom:8px; font-size:0.8rem; cursor:pointer;" onclick="app.navigate('writing?project=${b.projectId}')">
+                  <i data-feather="link" style="width:12px; height:12px; margin-right:4px;"></i> ${esc(b.title || 'Doc')}
                 </div>
               `).join('') : '<div style="color:var(--text-muted); font-size:0.75rem; margin-bottom:12px;">Sin enlaces directos.</div>'}
               
               <h4 style="font-size:0.75rem; color:var(--text-muted); margin:15px 0 10px; text-transform:uppercase;">Menciones</h4>
               ${unlinked.length ? unlinked.map(u => `
-                <div class="connection-item" style="padding:8px; border:1px dashed var(--border-color); border-radius:6px; margin-bottom:8px; font-size:0.8rem; color:var(--text-secondary);">
-                  ${esc(u.title)}
+                <div class="connection-item" style="padding:8px; border:1px dashed var(--border-color); border-radius:6px; margin-bottom:8px; font-size:0.8rem; color:var(--text-secondary); cursor:pointer;" onclick="app.navigate('writing?project=${u.projectId}')">
+                  ${esc(u.title || 'Doc')}
                 </div>
-              `).join('') : '<div style="color:var(--text-muted); font-size:0.75rem;">Sin menciones detectadas.</div>'}
+              `).join('') : '<div style="color:var(--text-muted); font-size:0.75rem;">Sin menciones detectadas en otros docs.</div>'}
             </div>
           `;
+          feather.replace();
         }
       });
     });
 
     // Annotations (Contextual Comments)
     const renderAnnotations = () => {
-      const annotations = store.get.annotationsByProject(activeProjectId);
+      const annotations = store.get.annotationsByProject(activeProjectId) || [];
       const layer = root.querySelector('#wr-annotations-layer');
       if (!layer) return;
 
       let text = editor.value;
+      if (!text) {
+        layer.innerHTML = '';
+        return;
+      }
+
       let html = esc(text);
 
-      // Simple highlighting for annotations (this is hard without a rich editor, but let's try a basic approach)
-      // For a more advanced version, we'd need a div instead of textarea or sync scrolls
-      // For now, let's just show a badge/count
+      // Highlight annotated text
+      annotations.forEach(ann => {
+        if (ann.selectedText && text.includes(ann.selectedText)) {
+          // Create an invisible overlay span that has a visible bottom border
+          const span = `<span style="border-bottom:2px dotted var(--accent-warning); cursor:help;" title="Anotación: ${esc(ann.text)}" class="annotation-hl">${esc(ann.selectedText)}</span>`;
+          html = html.replace(esc(ann.selectedText), span);
+        }
+      });
+
+      // Make line breaks match the textarea
+      layer.innerHTML = html.replace(/\n/g, '<br/>');
     };
 
-    editor.addEventListener('mouseup', () => {
+    // Update layer on type
+    editor.addEventListener('input', () => {
+      renderAnnotations();
+      // keep layer scroll in sync during typing
+      const layer = root.querySelector('#wr-annotations-layer');
+      if (layer) layer.scrollTop = editor.scrollTop;
+    });
+
+    // Floating annotation button
+    let floatBtn = null;
+    editor.addEventListener('mouseup', (e) => {
+      // Remove old button
+      if (floatBtn) floatBtn.remove();
+
       const selection = window.getSelection().toString().trim();
       if (selection && selection.length > 3) {
-        // Show a small floating button to "Annotate"
-        // Implementation of floating pop-up logic
-        const range = selection;
-        // Simplified for now: button in header
+        floatBtn = document.createElement('button');
+        floatBtn.className = 'btn btn-primary btn-sm';
+        floatBtn.innerHTML = '<i data-feather="message-square" style="width:12px;height:12px;"></i> Anotar';
+        floatBtn.style.position = 'absolute';
+
+        // Simple positioning near the mouse
+        const rect = root.querySelector('.editor-body').getBoundingClientRect();
+        floatBtn.style.left = `${Math.min(e.clientX - rect.left, rect.width - 80)}px`;
+        floatBtn.style.top = `${Math.max(0, e.clientY - rect.top - 40)}px`;
+        floatBtn.style.zIndex = 10;
+
+        root.querySelector('.editor-body').appendChild(floatBtn);
+        feather.replace();
+
+        floatBtn.addEventListener('click', async () => {
+          const comment = prompt(`Anotar sobre: "${selection.substring(0, 30)}..."\nEscribe tu comentario:`);
+          if (comment) {
+            await store.dispatch('ADD_ANNOTATION', {
+              projectId: activeProjectId,
+              documentId: `doc-${activeProjectId}`,
+              selectedText: selection,
+              text: comment,
+              author: store.get.currentUser?.name || 'Revisor'
+            });
+            renderAnnotations();
+            showToast('Anotación guardada', 'success');
+          }
+          floatBtn.remove();
+          floatBtn = null;
+        });
+      }
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (floatBtn && !floatBtn.contains(e.target)) {
+        floatBtn.remove();
+        floatBtn = null;
       }
     });
 
@@ -418,17 +501,39 @@ function renderWriting(root) {
       if (panel) panel.style.display = 'none';
     });
 
-    // Save button
+    // Save button (Including YAML parse)
     root.querySelector('#wr-save').addEventListener('click', async () => {
       const title = root.querySelector('#wr-section-title').value.trim();
       const content = editor.value;
+      const yamlStr = root.querySelector('#wr-properties').value.trim();
+      let parsedProps = doc.properties || {};
+
+      if (yamlStr) {
+        try {
+          if (window.jsyaml) {
+            parsedProps = jsyaml.load(yamlStr);
+          } else {
+            // Fallback if no yaml library
+            const lines = yamlStr.split('\n');
+            lines.forEach(l => {
+              const [k, v] = l.split(':');
+              if (k && v) parsedProps[k.trim()] = v.trim();
+            });
+          }
+        } catch (e) {
+          console.warn("Error parsing YAML properties", e);
+          showToast("Aviso: Formato YAML inválido.", "warning");
+        }
+      }
+
       await store.dispatch('SAVE_DOCUMENT', {
         projectId: activeProjectId,
         title,
         content,
+        properties: parsedProps,
         updatedAt: Date.now()
       });
-      showToast('Documento guardado.', 'success');
+      showToast('Documento y meta-datos guardados.', 'success');
     });
 
     // Export button
@@ -437,6 +542,60 @@ function renderWriting(root) {
       const content = editor.value;
       downloadFile(`${title}.md`, content);
       showToast('Archivo exportado.', 'success');
+    });
+
+    // Preview and Dataview parser
+    root.querySelector('#wr-preview-btn')?.addEventListener('click', () => {
+      const previewPanel = root.querySelector('#wr-markdown-preview');
+      const isShowing = previewPanel.style.display === 'block';
+
+      if (isShowing) {
+        previewPanel.style.display = 'none';
+        editor.style.display = 'block';
+      } else {
+        editor.style.display = 'none';
+        previewPanel.style.display = 'block';
+
+        let rawText = editor.value;
+
+        // 1. Basic Markdown substitution (Bold, Headings, Quotes)
+        rawText = esc(rawText)
+          .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+          .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+          .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+          .replace(/^\> (.*$)/gim, '<blockquote style="border-left:3px solid var(--accent-primary); padding-left:10px; color:var(--text-secondary);">$1</blockquote>')
+          .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
+          .replace(/\*(.*)\*/gim, '<i>$1</i>')
+          .replace(/\[\[(.*?)\]\]/g, '<span style="color:var(--accent-teal); cursor:pointer; text-decoration:underline;" class="backlink-ref">$1</span>');
+
+        // 2. Parse Dataview blocks (```dataview \n COMMAND)
+        rawText = rawText.replace(/```dataview\s*([\s\S]*?)```/gi, (match, query) => {
+          const q = query.trim().toLowerCase();
+          if (q.startsWith('list tareas')) {
+            const tasks = store.get.allTasks();
+            let filtered = tasks;
+
+            // Simple "WHERE estado = 'pendiente'" parser mockup
+            if (q.includes("where estado = 'pendiente'")) {
+              filtered = tasks.filter(t => t.status === 'todo' || t.status === 'in-progress');
+            }
+
+            return `<div style="background:var(--bg-surface-2); padding:10px; border-radius:8px; border:1px solid var(--border-color); margin:10px 0;">
+                      <div style="font-family:var(--font-mono); font-size:0.7rem; color:var(--accent-primary); margin-bottom:8px;">DATAVIEW SQL RETURNED ${filtered.length} ROWS</div>
+                      <table style="width:100%; text-align:left; border-collapse:collapse; font-size:0.85rem;">
+                         <tr style="border-bottom:1px solid var(--border-color);"><th>Tarea</th><th>Estado</th></tr>
+                         ${filtered.map(t => `<tr><td style="padding:4px 0;">${esc(t.title)}</td><td>${esc(t.status)}</td></tr>`).join('')}
+                      </table>
+                  </div>`;
+          }
+          return `<div style="color:var(--accent-danger);">Error parsing dataview query: ${esc(query)}</div>`;
+        });
+
+        // Convert linebreaks to <br> for standard text outside of tags
+        rawText = rawText.replace(/\n/g, '<br/>');
+
+        previewPanel.innerHTML = rawText;
+      }
     });
 
     // Bibliography Generator

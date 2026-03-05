@@ -83,6 +83,97 @@
     --accent-primary-glow: rgba(94, 106, 210, 0.15);
 }
 
+[data-theme="rosel"] {
+    --bg-base: #050510;
+    --bg-surface: rgba(10, 10, 25, 0.85);
+    --bg-surface-2: rgba(20, 20, 45, 0.9);
+    --bg-surface-hover: rgba(30, 30, 60, 0.95);
+    --bg-panel: rgba(5, 5, 20, 0.7);
+    --bg-input: rgba(255, 0, 255, 0.05);
+    --bg-overlay: rgba(0, 0, 0, 0.85);
+
+    --border-color: rgba(0, 255, 255, 0.3);
+    --border-highlight: rgba(255, 0, 255, 0.5);
+    --border-focus: rgba(0, 255, 255, 0.8);
+
+    --text-primary: #00FFFF;
+    /* Standard Outrun Cyan */
+    --text-secondary: #FF00FF;
+    /* Standard Outrun Magenta */
+    --text-muted: #800080;
+
+    --accent-primary: #FF00FF;
+    --accent-primary-glow: rgba(255, 0, 255, 0.6);
+    --accent-primary-hover: #ff33ff;
+    --accent-teal: #00FFFF;
+
+    --font-family: 'Orbitron', var(--font-mono);
+    --shadow-md: 0 0 10px rgba(0, 255, 255, 0.2);
+    --shadow-lg: 0 0 20px rgba(255, 0, 255, 0.3);
+    --shadow-xl: 0 0 30px rgba(0, 255, 255, 0.4);
+}
+
+/* CRT Scanlines and Perspective Grid for Rosel */
+[data-theme="rosel"] body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 4px, 6px 100%;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+[data-theme="celada"] {
+    --bg-base: #2d1b2e;
+    --bg-surface: rgba(45, 27, 46, 0.85);
+    --bg-surface-2: rgba(60, 35, 61, 0.9);
+    --bg-surface-hover: rgba(75, 45, 76, 0.95);
+    --bg-panel: rgba(30, 15, 30, 0.7);
+    --bg-input: rgba(255, 255, 255, 0.08);
+    --bg-overlay: rgba(20, 10, 20, 0.85);
+
+    --border-color: rgba(167, 139, 250, 0.3);
+    --border-highlight: rgba(167, 139, 250, 0.6);
+    --border-focus: rgba(244, 114, 182, 0.8);
+
+    --text-primary: #fdf4ff;
+    --text-secondary: #fbcfe8;
+    --text-muted: #c084fc;
+
+    --accent-primary: #f472b6;
+    --accent-primary-glow: rgba(244, 114, 182, 0.4);
+    --accent-primary-hover: #fb7185;
+    --accent-teal: #34d399;
+
+    --font-family: 'Nunito', sans-serif;
+    --radius-sm: 10px 20px 10px 20px / 20px 10px 20px 10px;
+    --radius-md: 20px 30px 20px 30px / 30px 20px 30px 20px;
+    --radius-lg: 30px 40px 30px 40px / 40px 30px 40px 30px;
+    --radius-xl: 40px 50px 40px 50px / 50px 40px 50px 40px;
+
+    --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
+    --shadow-md: 4px 4px 0 rgba(0, 0, 0, 0.5);
+    --shadow-lg: 6px 6px 0 rgba(0, 0, 0, 0.5);
+    --shadow-xl: 8px 8px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Organic magic background for Celada */
+[data-theme="celada"] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+        radial-gradient(circle at 15% 50%, rgba(244, 114, 182, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 30%, rgba(52, 211, 153, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 50% 90%, rgba(167, 139, 250, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+}
+
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
 *,
 *::before,
@@ -161,8 +252,8 @@ body::before {
     background: var(--bg-surface);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
-    border: 1px solid var(--border-color);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--border-highlight);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────────── */
@@ -669,6 +760,14 @@ body::before {
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--border-highlight) transparent;
+    display: flex;
+    flex-direction: column;
+}
+
+#app-root {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .view-inner {

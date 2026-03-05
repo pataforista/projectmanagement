@@ -53,8 +53,67 @@ export const renderGraph = (root) => {
         });
     });
 
-    // In a real environment, we'd initialize ForceGraph here:
-    // ForceGraph()(document.getElementById('graph-canvas-wrap')).graphData(data)...
+    const container = root.querySelector('#graph-canvas-wrap');
+    if (typeof ForceGraph === 'undefined') {
+        container.innerHTML = '<div style="color:var(--accent-danger); padding:20px;">Error: No se pudo cargar Force-Graph JS desde CDN. Verifica tu conexión a internet o los scripts en index.html.</div>';
+        return;
+    }
+
+    // Remove loading overlay
+    const overlay = root.querySelector('#graph-container > div:first-child');
+    if (overlay) overlay.style.display = 'none';
+
+    // Get current theme background
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-surface').trim() || '#0f0f12';
+
+    // Render Graph
+    const Graph = ForceGraph()(container)
+        .graphData(data)
+        .backgroundColor('transparent')
+        .nodeId('id')
+        .nodeVal(node => node.type === 'project' ? 25 : 10)
+        .nodeLabel('name')
+        .nodeColor('color')
+        .linkColor(link => link.type === 'crosslink' ? 'var(--accent-teal)' : 'var(--border-focus)')
+        .linkWidth(link => link.type === 'crosslink' ? 2 : 1)
+        .linkDirectionalParticles(link => link.type === 'crosslink' ? 2 : 0)
+        .linkDirectionalParticleSpeed(d => 0.005)
+        .onNodeClick(node => {
+            // Navigate based on type
+            if (node.type === 'doc') {
+                const doc = documents.find(d => d.id === node.id);
+                if (doc && doc.projectId) {
+                    localStorage.setItem('active_writing_project', doc.projectId);
+                    location.hash = '#/writing';
+                }
+            } else if (node.type === 'project') {
+                location.hash = `#/board?project=${node.id}`;
+            }
+        })
+        .nodeCanvasObject((node, ctx, globalScale) => {
+            // Draw Node Circle
+            const size = node.type === 'project' ? 8 : 4;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
+            ctx.fillStyle = node.color;
+            ctx.fill();
+
+            // Draw Label
+            const label = node.name;
+            const fontSize = 12 / globalScale;
+            ctx.font = `${fontSize}px var(--font-family)`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'var(--text-primary)';
+            ctx.fillText(label, node.x, node.y + size + fontSize);
+        });
+
+    // Resize observer to make canvas responsive
+    const resizeObserver = new ResizeObserver(() => {
+        Graph.width(container.clientWidth);
+        Graph.height(container.clientHeight);
+    });
+    resizeObserver.observe(container);
 
     feather.replace();
 };
