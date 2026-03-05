@@ -293,6 +293,14 @@ const store = (() => {
                 _notify(storeName);
                 break;
             }
+            case 'UPDATE_LIBRARY_ITEM': {
+                storeName = 'library';
+                const updated = payload; // Full item object with updated fields
+                await dbAPI.put(storeName, updated);
+                _state.library = _state.library.map(i => i.id === updated.id ? updated : i);
+                _notify(storeName);
+                break;
+            }
 
             // ── Interconsultations ──
             case 'ADD_INTERCONSULTATION': {

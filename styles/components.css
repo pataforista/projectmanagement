@@ -308,6 +308,10 @@
     border-color: var(--border-highlight);
 }
 
+.task-item:hover .task-delete-btn {
+    opacity: 1 !important;
+}
+
 .task-checkbox {
     width: 16px;
     height: 16px;

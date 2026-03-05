@@ -36,8 +36,23 @@ function taskItem(t) {
         </span>
       </div>
       <div class="priority-pip ${t.priority || 'baja'}"></div>
+      <button class="btn btn-sm btn-ghost task-delete-btn" title="Eliminar tarea" onclick="deleteTask('${t.id}')" style="opacity:0; color:var(--accent-danger); padding:2px 6px; margin-left:4px; transition:opacity 0.15s;">
+        <i data-feather="trash-2" style="width:13px;height:13px;"></i>
+      </button>
     </li>`;
 }
+
+// ── Delete Task (global, used from taskItem) ─────────────────────────────────
+window.deleteTask = async function (id) {
+  if (!confirm('¿Eliminar esta tarea? Esta acción no se puede deshacer.')) return;
+  await store.dispatch('DELETE_TASK', { id });
+  // Re-render current view
+  const root = document.getElementById('app-root');
+  if (root && window.router?.current) {
+    const { viewName, params } = router.current;
+    router._render(viewName, params);
+  }
+};
 
 // ── Cycle Widget (Dashboard) ─────────────────────────────────────────────────
 function cycleWidget(c) {

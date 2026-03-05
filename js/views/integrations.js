@@ -103,6 +103,29 @@ function renderIntegrations(root) {
           </div>
         </div>
 
+        <!-- Claude AI -->
+        <div class="card glass-panel integration-card">
+          <div class="integration-header">
+            <div class="integration-icon" style="background:linear-gradient(135deg,#d97706,#b45309);"><i data-feather="cpu"></i></div>
+            <div class="integration-title">
+              <h3>Claude AI</h3>
+              <span class="badge ${localStorage.getItem('claude_api_key') ? 'badge-success' : 'badge-neutral'}">
+                ${localStorage.getItem('claude_api_key') ? 'Configurado' : 'No configurado'}
+              </span>
+            </div>
+          </div>
+          <div class="integration-body">
+            <p>Genera resúmenes inteligentes de tus referencias Zotero con IA.</p>
+            <div class="form-group" style="margin-top:12px;">
+                <label style="font-size:0.75rem; color:var(--text-muted);">API Key de Anthropic</label>
+                <input type="password" class="form-input" id="int-claude-key" value="${esc(localStorage.getItem('claude_api_key') || '')}" placeholder="sk-ant-...">
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-save-claude" style="margin-top:16px;width:100%;">
+              Guardar API Key
+            </button>
+          </div>
+        </div>
+
         <!-- Seguridad -->
         <div class="card glass-panel integration-card">
           <div class="integration-header">
@@ -156,6 +179,18 @@ function renderIntegrations(root) {
   root.querySelector('#sync-google-tasks')?.addEventListener('change', (e) => {
     localStorage.setItem('sync_gtasks', e.target.checked);
     showToast(`Google Tasks ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
+  });
+
+  root.querySelector('#btn-save-claude')?.addEventListener('click', () => {
+    const key = root.querySelector('#int-claude-key').value.trim();
+    if (key) {
+      localStorage.setItem('claude_api_key', key);
+      showToast('API Key de Claude guardada.', 'success');
+    } else {
+      localStorage.removeItem('claude_api_key');
+      showToast('API Key eliminada.', 'info');
+    }
+    renderIntegrations(root);
   });
 
   root.querySelector('#btn-save-todoist')?.addEventListener('click', () => {
