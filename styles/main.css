@@ -83,8 +83,13 @@
     --accent-primary-glow: rgba(94, 106, 210, 0.15);
 }
 
-/* ── Dr. Rosel — Retrowave / Outrun ──────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════════
+   Dr. Rosel — RETROWAVE / OUTRUN
+   "Este módulo de datos fluye tan rápido como un Testarossa en una autopista
+    digital. Bienvenido a la Midnight City, arquitecto."
+   ══════════════════════════════════════════════════════════════════════════ */
 [data-theme="retrowave"] {
+    /* — Midnight City base — */
     --bg-base: #0d0015;
     --bg-surface: rgba(22, 0, 40, 0.82);
     --bg-surface-2: rgba(32, 4, 58, 0.9);
@@ -93,83 +98,191 @@
     --bg-input: rgba(224, 64, 251, 0.06);
     --bg-overlay: rgba(8, 0, 18, 0.88);
 
+    /* — Neon borders — */
     --border-color: rgba(224, 64, 251, 0.18);
-    --border-highlight: rgba(0, 229, 255, 0.25);
-    --border-focus: rgba(224, 64, 251, 0.7);
+    --border-highlight: rgba(0, 229, 255, 0.28);
+    --border-focus: rgba(224, 64, 251, 0.75);
 
+    /* — Signal text — */
     --text-primary: #f2d6ff;
     --text-secondary: #b070d8;
     --text-muted: #6b3090;
 
-    --accent-primary: #e040fb;
+    /* — Neon palette — */
+    --accent-primary: #e040fb;         /* magenta — main signal */
     --accent-primary-rgb: 224, 64, 251;
     --accent-primary-glow: rgba(224, 64, 251, 0.45);
     --accent-primary-hover: #c400e0;
-    --accent-success: #00ffb3;
+    --accent-success: #00ffb3;         /* neon green — data confirmed */
     --accent-success-bg: rgba(0, 255, 179, 0.1);
-    --accent-warning: #ff6e00;
+    --accent-warning: #ff6e00;         /* outrun orange — sunset burst */
     --accent-warning-bg: rgba(255, 110, 0, 0.12);
-    --accent-danger: #ff1744;
+    --accent-danger: #ff1744;          /* hot red — system alert */
     --accent-danger-bg: rgba(255, 23, 68, 0.12);
-    --accent-info: #00e5ff;
+    --accent-info: #00e5ff;            /* cyan — datastream */
     --accent-info-bg: rgba(0, 229, 255, 0.1);
     --accent-purple: #ea80fc;
     --accent-purple-bg: rgba(234, 128, 252, 0.12);
     --accent-teal: #00e5ff;
     --accent-teal-bg: rgba(0, 229, 255, 0.1);
 
+    /* — Holographic shadows — */
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.6), 0 0 8px rgba(224, 64, 251, 0.2);
     --shadow-md: 0 4px 12px rgba(0,0,0,0.7), 0 0 20px rgba(224, 64, 251, 0.18);
     --shadow-lg: 0 12px 28px rgba(0,0,0,0.8), 0 0 40px rgba(224, 64, 251, 0.22);
     --shadow-xl: 0 24px 48px rgba(0,0,0,0.9), 0 0 60px rgba(224, 64, 251, 0.28);
+
+    /* — Orbitron: la fuente del futuro pasado — */
+    --font-family: 'Orbitron', 'Inter', monospace;
+
+    /* — Organic radius replaced by sharp cyber-edges — */
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+    --radius-xl: 8px;
 }
 
-/* Retrowave: animated neon grid background */
+/* — Outrun gradient sky + sunset glow — */
 [data-theme="retrowave"] body::before {
     background:
-        radial-gradient(ellipse 70% 50% at 50% -15%, rgba(224, 64, 251, 0.22) 0%, transparent 60%),
-        radial-gradient(ellipse 50% 40% at 0% 100%, rgba(0, 229, 255, 0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 60% 35% at 100% 80%, rgba(255, 110, 0, 0.1) 0%, transparent 50%);
+        radial-gradient(ellipse 80% 55% at 50% -20%, rgba(224, 64, 251, 0.28) 0%, transparent 58%),
+        radial-gradient(ellipse 55% 40% at 0% 100%, rgba(0, 229, 255, 0.14) 0%, transparent 55%),
+        radial-gradient(ellipse 65% 40% at 100% 85%, rgba(255, 110, 0, 0.14) 0%, transparent 52%),
+        linear-gradient(to bottom, #0d0015 0%, #1a0030 60%, #2d0050 100%);
 }
 
+/* — Perspective grid (infinite highway to the neon horizon) — */
 [data-theme="retrowave"] body::after {
+    content: '';
+    position: fixed;
+    bottom: 0;
+    left: -50%;
+    right: -50%;
+    height: 55%;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        linear-gradient(rgba(224, 64, 251, 0.25) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(224, 64, 251, 0.25) 1px, transparent 1px);
+    background-size: 60px 30px;
+    transform: perspective(300px) rotateX(55deg);
+    transform-origin: bottom center;
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 80%);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 80%);
+    animation: grid-scroll 8s linear infinite;
+}
+
+@keyframes grid-scroll {
+    from { background-position: 0 0; }
+    to   { background-position: 0 30px; }
+}
+
+/* — CRT scanlines overlay — */
+[data-theme="retrowave"] .app-container::after {
     content: '';
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 0;
-    background-image:
-        linear-gradient(rgba(224, 64, 251, 0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(224, 64, 251, 0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
-    mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 60%);
-    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 60%);
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px,
+        rgba(0, 0, 0, 0.08) 4px
+    );
 }
 
-/* Retrowave: neon glow on active nav items and accented borders */
+/* — Orbitron headings — */
+[data-theme="retrowave"] h1,
+[data-theme="retrowave"] h2,
+[data-theme="retrowave"] h3,
+[data-theme="retrowave"] .brand-text,
+[data-theme="retrowave"] .view-header h1 {
+    font-family: 'Orbitron', monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+/* — Neon text glow on primary headings — */
+[data-theme="retrowave"] h1,
+[data-theme="retrowave"] .view-header h1 {
+    color: #f2d6ff;
+    text-shadow:
+        0 0 8px rgba(224, 64, 251, 0.7),
+        0 0 20px rgba(224, 64, 251, 0.4),
+        0 0 40px rgba(224, 64, 251, 0.2);
+}
+
+/* — Neon active nav — */
 [data-theme="retrowave"] .nav-item.active {
-    box-shadow: 0 0 12px rgba(224, 64, 251, 0.35), inset 0 0 12px rgba(224, 64, 251, 0.08);
+    color: #e040fb;
+    text-shadow: 0 0 10px rgba(224, 64, 251, 0.8);
+    box-shadow: 0 0 14px rgba(224, 64, 251, 0.3), inset 0 0 14px rgba(224, 64, 251, 0.06);
 }
 
+/* — Neon sidebar brand — */
+[data-theme="retrowave"] .workspace-brand .brand-text {
+    background: linear-gradient(90deg, #e040fb, #00e5ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* — Glowing primary button — */
 [data-theme="retrowave"] .btn-primary {
-    box-shadow: 0 0 16px rgba(224, 64, 251, 0.4);
+    background: linear-gradient(135deg, #e040fb, #c400e0);
+    box-shadow: 0 0 16px rgba(224, 64, 251, 0.5), 0 0 32px rgba(224, 64, 251, 0.2);
+    border: 1px solid rgba(224, 64, 251, 0.4);
+    transition: all 0.15s;
 }
 
 [data-theme="retrowave"] .btn-primary:hover {
-    box-shadow: 0 0 24px rgba(224, 64, 251, 0.6);
+    box-shadow: 0 0 28px rgba(224, 64, 251, 0.75), 0 0 50px rgba(224, 64, 251, 0.3);
+    transform: translateY(-1px);
 }
 
+/* — Progress bar: pink→cyan gradient with glow — */
 [data-theme="retrowave"] .progress-fill {
     background: linear-gradient(90deg, #e040fb, #00e5ff);
-    box-shadow: 0 0 8px rgba(224, 64, 251, 0.5);
+    box-shadow: 0 0 8px rgba(224, 64, 251, 0.6);
 }
 
+/* — Glass panels with neon border — */
 [data-theme="retrowave"] .glass-panel {
-    border-color: rgba(224, 64, 251, 0.18);
+    border-color: rgba(224, 64, 251, 0.2);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6), 0 0 1px rgba(224, 64, 251, 0.3) inset;
 }
 
-/* ── Dr. Celada — Dark Adventure Time ────────────────────────────────────── */
+/* — Input fields with neon focus — */
+[data-theme="retrowave"] .form-input:focus,
+[data-theme="retrowave"] .form-select:focus,
+[data-theme="retrowave"] .form-textarea:focus {
+    border-color: #e040fb;
+    box-shadow: 0 0 0 3px rgba(224, 64, 251, 0.25), 0 0 12px rgba(224, 64, 251, 0.2);
+}
+
+/* — Sidebar background — */
+[data-theme="retrowave"] .sidebar {
+    background: rgba(18, 0, 35, 0.9);
+    border-right: 1px solid rgba(224, 64, 251, 0.2);
+}
+
+/* — Badge colors in retrowave — */
+[data-theme="retrowave"] .badge-neutral {
+    background: rgba(224, 64, 251, 0.12);
+    color: #ea80fc;
+    border: 1px solid rgba(224, 64, 251, 0.3);
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dr. Celada — DARK ADVENTURE TIME  (Nightosphere Edition)
+   "Este script invoca los datos del servidor a través de un portal fetch...
+    como el Liche convoca almas desde el pozo oscuro. Mathematical."
+   ══════════════════════════════════════════════════════════════════════════ */
 [data-theme="adventure"] {
+    /* — Night Kingdom base — */
     --bg-base: #080e1c;
     --bg-surface: rgba(11, 18, 36, 0.85);
     --bg-surface-2: rgba(16, 26, 52, 0.9);
@@ -178,64 +291,182 @@
     --bg-input: rgba(0, 212, 170, 0.05);
     --bg-overlay: rgba(6, 10, 22, 0.88);
 
+    /* — Magical borders — */
     --border-color: rgba(0, 212, 170, 0.16);
     --border-highlight: rgba(255, 209, 0, 0.22);
     --border-focus: rgba(0, 212, 170, 0.65);
 
+    /* — Candy text — */
     --text-primary: #dff5ec;
     --text-secondary: #68c4a8;
     --text-muted: #36745e;
 
-    --accent-primary: #00d4aa;
+    /* — Ooo palette — */
+    --accent-primary: #00d4aa;         /* LSP teal — main power */
     --accent-primary-rgb: 0, 212, 170;
     --accent-primary-glow: rgba(0, 212, 170, 0.32);
     --accent-primary-hover: #00b390;
-    --accent-success: #6cff47;
+    --accent-success: #6cff47;         /* Slime Princess green */
     --accent-success-bg: rgba(108, 255, 71, 0.1);
-    --accent-warning: #ffd100;
+    --accent-warning: #ffd100;         /* Finn's hat yellow */
     --accent-warning-bg: rgba(255, 209, 0, 0.1);
-    --accent-danger: #ff4081;
+    --accent-danger: #ff4081;          /* Princess Bubblegum pink */
     --accent-danger-bg: rgba(255, 64, 129, 0.12);
-    --accent-info: #64b5f6;
+    --accent-info: #64b5f6;            /* Ice King blue */
     --accent-info-bg: rgba(100, 181, 246, 0.1);
-    --accent-purple: #ce93d8;
+    --accent-purple: #ce93d8;          /* Marceline violet */
     --accent-purple-bg: rgba(206, 147, 216, 0.1);
     --accent-teal: #00d4aa;
     --accent-teal-bg: rgba(0, 212, 170, 0.1);
 
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.55), 0 0 8px rgba(0, 212, 170, 0.12);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.6), 0 0 18px rgba(0, 212, 170, 0.1);
-    --shadow-lg: 0 12px 28px rgba(0,0,0,0.7), 0 0 32px rgba(0, 212, 170, 0.12);
-    --shadow-xl: 0 24px 48px rgba(0,0,0,0.8), 0 0 50px rgba(0, 212, 170, 0.14);
+    /* — Glowing candy shadows — */
+    --shadow-sm: 0 2px 6px rgba(0,0,0,0.55), 0 0 8px rgba(0, 212, 170, 0.12);
+    --shadow-md: 0 6px 16px rgba(0,0,0,0.6), 0 0 18px rgba(0, 212, 170, 0.1);
+    --shadow-lg: 0 14px 30px rgba(0,0,0,0.7), 0 0 32px rgba(0, 212, 170, 0.12);
+    --shadow-xl: 0 26px 52px rgba(0,0,0,0.8), 0 0 50px rgba(0, 212, 170, 0.14);
+
+    /* — Bangers: the ancient wizard's font — */
+    --font-family: 'Inter', -apple-system, sans-serif; /* body stays readable */
+
+    /* — Organic, hand-drawn-feeling border-radius — */
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+
+    /* — Elastic, magical transitions — */
+    --ease: cubic-bezier(0.34, 1.56, 0.64, 1);   /* overshoot spring */
+    --ease-out: cubic-bezier(0.22, 1.4, 0.36, 1); /* elastic exit */
+    --dur-fast: 180ms;
+    --dur-med: 280ms;
 }
 
-/* Adventure Time: bubbly, candy-color background */
+/* — Nightosphere sky with candy-glow horizons — */
 [data-theme="adventure"] body::before {
     background:
-        radial-gradient(ellipse 65% 45% at 15% -5%, rgba(0, 212, 170, 0.18) 0%, transparent 58%),
-        radial-gradient(ellipse 50% 35% at 90% 95%, rgba(255, 64, 129, 0.12) 0%, transparent 52%),
-        radial-gradient(ellipse 40% 30% at 80% 10%, rgba(255, 209, 0, 0.08) 0%, transparent 48%);
+        radial-gradient(ellipse 65% 45% at 15% -5%, rgba(0, 212, 170, 0.2) 0%, transparent 58%),
+        radial-gradient(ellipse 50% 35% at 90% 95%, rgba(255, 64, 129, 0.14) 0%, transparent 52%),
+        radial-gradient(ellipse 40% 30% at 82% 8%, rgba(255, 209, 0, 0.1) 0%, transparent 48%),
+        radial-gradient(ellipse 30% 25% at 5% 70%, rgba(206, 147, 216, 0.08) 0%, transparent 45%),
+        linear-gradient(to bottom, #080e1c 0%, #0c1428 55%, #0f1a35 100%);
+}
+
+/* — Bangers for headings (the Dungeon Master's voice) — */
+[data-theme="adventure"] h1,
+[data-theme="adventure"] h2,
+[data-theme="adventure"] .view-header h1 {
+    font-family: 'Bangers', 'Inter', sans-serif;
+    letter-spacing: 0.08em;
+    font-weight: 400; /* Bangers is naturally bold */
+}
+
+/* — Candy glow on main title — */
+[data-theme="adventure"] .view-header h1 {
+    color: #00d4aa;
+    text-shadow:
+        0 0 10px rgba(0, 212, 170, 0.6),
+        0 0 24px rgba(0, 212, 170, 0.3);
+    font-size: 2rem;
+}
+
+/* — Elastic nav transitions (rubber hose animation energy) — */
+[data-theme="adventure"] .nav-item {
+    transition: all var(--dur-fast) var(--ease);
+    border-radius: var(--radius-md);
+}
+
+[data-theme="adventure"] .nav-item:hover {
+    transform: scale(1.04) translateX(2px);
 }
 
 [data-theme="adventure"] .nav-item.active {
-    box-shadow: 0 0 10px rgba(0, 212, 170, 0.3), inset 0 0 10px rgba(0, 212, 170, 0.06);
+    color: #00d4aa;
+    text-shadow: 0 0 8px rgba(0, 212, 170, 0.7);
+    box-shadow: 0 0 12px rgba(0, 212, 170, 0.25), inset 0 0 12px rgba(0, 212, 170, 0.06);
 }
 
+/* — Brand: Mathematical gradient — */
+[data-theme="adventure"] .workspace-brand .brand-text {
+    font-family: 'Bangers', sans-serif;
+    letter-spacing: 0.12em;
+    background: linear-gradient(90deg, #00d4aa, #ffd100, #ff4081);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* — Bubbly primary button with overshooting hover — */
 [data-theme="adventure"] .btn-primary {
-    box-shadow: 0 0 12px rgba(0, 212, 170, 0.35);
+    background: linear-gradient(135deg, #00d4aa, #00b390);
+    box-shadow: 0 0 14px rgba(0, 212, 170, 0.4);
+    border-radius: var(--radius-md);
+    transition: all var(--dur-fast) var(--ease);
 }
 
 [data-theme="adventure"] .btn-primary:hover {
-    box-shadow: 0 0 20px rgba(0, 212, 170, 0.5);
+    transform: scale(1.06) translateY(-2px);
+    box-shadow: 0 0 24px rgba(0, 212, 170, 0.6), 0 6px 20px rgba(0,0,0,0.3);
 }
 
+/* — Candy progress bar: teal→yellow→pink — */
 [data-theme="adventure"] .progress-fill {
     background: linear-gradient(90deg, #00d4aa, #ffd100);
-    box-shadow: 0 0 6px rgba(0, 212, 170, 0.4);
+    box-shadow: 0 0 6px rgba(0, 212, 170, 0.45);
+    border-radius: 99px;
+    transition: width var(--dur-med) var(--ease-out);
 }
 
+/* — Organic glass panels — */
 [data-theme="adventure"] .glass-panel {
-    border-color: rgba(0, 212, 170, 0.16);
+    border-color: rgba(0, 212, 170, 0.18);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 1px rgba(0, 212, 170, 0.25) inset;
+}
+
+/* — Card hover: elastic pop — */
+[data-theme="adventure"] .project-card {
+    transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast);
+    border-radius: var(--radius-lg);
+}
+
+[data-theme="adventure"] .project-card:hover {
+    transform: scale(1.03) translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5), 0 0 20px rgba(0, 212, 170, 0.2);
+}
+
+/* — Task items: bouncy on hover — */
+[data-theme="adventure"] .task-item {
+    border-radius: var(--radius-md);
+    transition: all var(--dur-fast) var(--ease);
+}
+
+[data-theme="adventure"] .task-item:hover {
+    transform: translateX(4px);
+    border-color: rgba(0, 212, 170, 0.3);
+}
+
+/* — Input fields with Ooo magic on focus — */
+[data-theme="adventure"] .form-input:focus,
+[data-theme="adventure"] .form-select:focus,
+[data-theme="adventure"] .form-textarea:focus {
+    border-color: #00d4aa;
+    box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.22), 0 0 16px rgba(0, 212, 170, 0.15);
+    transform: scale(1.01);
+    transition: all var(--dur-fast) var(--ease);
+}
+
+/* — Sidebar: the dark tower — */
+[data-theme="adventure"] .sidebar {
+    background: rgba(8, 13, 28, 0.92);
+    border-right: 1px solid rgba(0, 212, 170, 0.18);
+}
+
+/* — Badges: candy colored — */
+[data-theme="adventure"] .badge-neutral {
+    background: rgba(0, 212, 170, 0.12);
+    color: #00d4aa;
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    border-radius: 99px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
