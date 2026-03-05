@@ -83,6 +83,161 @@
     --accent-primary-glow: rgba(94, 106, 210, 0.15);
 }
 
+/* ── Dr. Rosel — Retrowave / Outrun ──────────────────────────────────────── */
+[data-theme="retrowave"] {
+    --bg-base: #0d0015;
+    --bg-surface: rgba(22, 0, 40, 0.82);
+    --bg-surface-2: rgba(32, 4, 58, 0.9);
+    --bg-surface-hover: rgba(48, 8, 80, 0.96);
+    --bg-panel: rgba(14, 0, 28, 0.65);
+    --bg-input: rgba(224, 64, 251, 0.06);
+    --bg-overlay: rgba(8, 0, 18, 0.88);
+
+    --border-color: rgba(224, 64, 251, 0.18);
+    --border-highlight: rgba(0, 229, 255, 0.25);
+    --border-focus: rgba(224, 64, 251, 0.7);
+
+    --text-primary: #f2d6ff;
+    --text-secondary: #b070d8;
+    --text-muted: #6b3090;
+
+    --accent-primary: #e040fb;
+    --accent-primary-rgb: 224, 64, 251;
+    --accent-primary-glow: rgba(224, 64, 251, 0.45);
+    --accent-primary-hover: #c400e0;
+    --accent-success: #00ffb3;
+    --accent-success-bg: rgba(0, 255, 179, 0.1);
+    --accent-warning: #ff6e00;
+    --accent-warning-bg: rgba(255, 110, 0, 0.12);
+    --accent-danger: #ff1744;
+    --accent-danger-bg: rgba(255, 23, 68, 0.12);
+    --accent-info: #00e5ff;
+    --accent-info-bg: rgba(0, 229, 255, 0.1);
+    --accent-purple: #ea80fc;
+    --accent-purple-bg: rgba(234, 128, 252, 0.12);
+    --accent-teal: #00e5ff;
+    --accent-teal-bg: rgba(0, 229, 255, 0.1);
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.6), 0 0 8px rgba(224, 64, 251, 0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.7), 0 0 20px rgba(224, 64, 251, 0.18);
+    --shadow-lg: 0 12px 28px rgba(0,0,0,0.8), 0 0 40px rgba(224, 64, 251, 0.22);
+    --shadow-xl: 0 24px 48px rgba(0,0,0,0.9), 0 0 60px rgba(224, 64, 251, 0.28);
+}
+
+/* Retrowave: animated neon grid background */
+[data-theme="retrowave"] body::before {
+    background:
+        radial-gradient(ellipse 70% 50% at 50% -15%, rgba(224, 64, 251, 0.22) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 0% 100%, rgba(0, 229, 255, 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 35% at 100% 80%, rgba(255, 110, 0, 0.1) 0%, transparent 50%);
+}
+
+[data-theme="retrowave"] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        linear-gradient(rgba(224, 64, 251, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(224, 64, 251, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 60%);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 60%);
+}
+
+/* Retrowave: neon glow on active nav items and accented borders */
+[data-theme="retrowave"] .nav-item.active {
+    box-shadow: 0 0 12px rgba(224, 64, 251, 0.35), inset 0 0 12px rgba(224, 64, 251, 0.08);
+}
+
+[data-theme="retrowave"] .btn-primary {
+    box-shadow: 0 0 16px rgba(224, 64, 251, 0.4);
+}
+
+[data-theme="retrowave"] .btn-primary:hover {
+    box-shadow: 0 0 24px rgba(224, 64, 251, 0.6);
+}
+
+[data-theme="retrowave"] .progress-fill {
+    background: linear-gradient(90deg, #e040fb, #00e5ff);
+    box-shadow: 0 0 8px rgba(224, 64, 251, 0.5);
+}
+
+[data-theme="retrowave"] .glass-panel {
+    border-color: rgba(224, 64, 251, 0.18);
+}
+
+/* ── Dr. Celada — Dark Adventure Time ────────────────────────────────────── */
+[data-theme="adventure"] {
+    --bg-base: #080e1c;
+    --bg-surface: rgba(11, 18, 36, 0.85);
+    --bg-surface-2: rgba(16, 26, 52, 0.9);
+    --bg-surface-hover: rgba(24, 38, 72, 0.96);
+    --bg-panel: rgba(7, 12, 26, 0.65);
+    --bg-input: rgba(0, 212, 170, 0.05);
+    --bg-overlay: rgba(6, 10, 22, 0.88);
+
+    --border-color: rgba(0, 212, 170, 0.16);
+    --border-highlight: rgba(255, 209, 0, 0.22);
+    --border-focus: rgba(0, 212, 170, 0.65);
+
+    --text-primary: #dff5ec;
+    --text-secondary: #68c4a8;
+    --text-muted: #36745e;
+
+    --accent-primary: #00d4aa;
+    --accent-primary-rgb: 0, 212, 170;
+    --accent-primary-glow: rgba(0, 212, 170, 0.32);
+    --accent-primary-hover: #00b390;
+    --accent-success: #6cff47;
+    --accent-success-bg: rgba(108, 255, 71, 0.1);
+    --accent-warning: #ffd100;
+    --accent-warning-bg: rgba(255, 209, 0, 0.1);
+    --accent-danger: #ff4081;
+    --accent-danger-bg: rgba(255, 64, 129, 0.12);
+    --accent-info: #64b5f6;
+    --accent-info-bg: rgba(100, 181, 246, 0.1);
+    --accent-purple: #ce93d8;
+    --accent-purple-bg: rgba(206, 147, 216, 0.1);
+    --accent-teal: #00d4aa;
+    --accent-teal-bg: rgba(0, 212, 170, 0.1);
+
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.55), 0 0 8px rgba(0, 212, 170, 0.12);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.6), 0 0 18px rgba(0, 212, 170, 0.1);
+    --shadow-lg: 0 12px 28px rgba(0,0,0,0.7), 0 0 32px rgba(0, 212, 170, 0.12);
+    --shadow-xl: 0 24px 48px rgba(0,0,0,0.8), 0 0 50px rgba(0, 212, 170, 0.14);
+}
+
+/* Adventure Time: bubbly, candy-color background */
+[data-theme="adventure"] body::before {
+    background:
+        radial-gradient(ellipse 65% 45% at 15% -5%, rgba(0, 212, 170, 0.18) 0%, transparent 58%),
+        radial-gradient(ellipse 50% 35% at 90% 95%, rgba(255, 64, 129, 0.12) 0%, transparent 52%),
+        radial-gradient(ellipse 40% 30% at 80% 10%, rgba(255, 209, 0, 0.08) 0%, transparent 48%);
+}
+
+[data-theme="adventure"] .nav-item.active {
+    box-shadow: 0 0 10px rgba(0, 212, 170, 0.3), inset 0 0 10px rgba(0, 212, 170, 0.06);
+}
+
+[data-theme="adventure"] .btn-primary {
+    box-shadow: 0 0 12px rgba(0, 212, 170, 0.35);
+}
+
+[data-theme="adventure"] .btn-primary:hover {
+    box-shadow: 0 0 20px rgba(0, 212, 170, 0.5);
+}
+
+[data-theme="adventure"] .progress-fill {
+    background: linear-gradient(90deg, #00d4aa, #ffd100);
+    box-shadow: 0 0 6px rgba(0, 212, 170, 0.4);
+}
+
+[data-theme="adventure"] .glass-panel {
+    border-color: rgba(0, 212, 170, 0.16);
+}
+
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
 *,
 *::before,
@@ -546,13 +701,17 @@ body::before {
     background: var(--bg-surface-hover);
 }
 
-[data-theme="light"] .sun-icon {
-    display: none;
-}
+/* Theme toggle icon visibility — only show the icon for the NEXT theme */
+.theme-icon { display: none; }
 
-[data-theme="dark"] .moon-icon {
-    display: none;
-}
+[data-theme="dark"]       .theme-icon-light     { display: block; }
+[data-theme="light"]      .theme-icon-retrowave  { display: block; }
+[data-theme="retrowave"]  .theme-icon-adventure  { display: block; }
+[data-theme="adventure"]  .theme-icon-dark       { display: block; }
+
+/* Legacy sun/moon (keep hidden to avoid conflicts) */
+[data-theme="light"] .sun-icon { display: none; }
+[data-theme="dark"] .moon-icon { display: none; }
 
 .collapsed-sidebar .user-info {
     display: none;

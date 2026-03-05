@@ -336,15 +336,32 @@ function initUIToggles() {
         localStorage.setItem('sidebar-collapsed', !!isCollapsed);
     });
 
-    // Theme Toggle
+    // Theme Toggle — cycles: dark → light → retrowave → adventure → dark
+    const THEMES = [
+        { id: 'dark',       label: 'Dark' },
+        { id: 'light',      label: 'Light' },
+        { id: 'retrowave',  label: 'Retrowave' },
+        { id: 'adventure',  label: 'Aventura' },
+    ];
+
+    const applyTheme = (themeId) => {
+        document.documentElement.setAttribute('data-theme', themeId);
+        localStorage.setItem('app-theme', themeId);
+        const label = themeBtn?.querySelector('.theme-label');
+        const meta = THEMES.find(t => t.id === themeId);
+        if (label && meta) label.textContent = meta.label;
+        if (themeBtn) themeBtn.title = `Tema: ${meta?.label} — clic para cambiar`;
+        feather.replace(); // refresh icons after theme switch
+    };
+
     const savedTheme = localStorage.getItem('app-theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    applyTheme(savedTheme);
 
     themeBtn?.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('app-theme', newTheme);
+        const current = document.documentElement.getAttribute('data-theme');
+        const idx = THEMES.findIndex(t => t.id === current);
+        const next = THEMES[(idx + 1) % THEMES.length];
+        applyTheme(next.id);
     });
 
     // Mobile Menu

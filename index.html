@@ -182,9 +182,12 @@
 
       <div class="sidebar-footer">
         <div class="footer-actions">
-          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema">
-            <i data-feather="sun" class="sun-icon"></i>
-            <i data-feather="moon" class="moon-icon"></i>
+          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema" style="width:auto;padding:0 10px;gap:6px;border-radius:20px;font-size:0.7rem;font-weight:600;">
+            <i data-feather="moon"    class="theme-icon theme-icon-dark"      style="width:14px;height:14px;"></i>
+            <i data-feather="sun"     class="theme-icon theme-icon-light"     style="width:14px;height:14px;"></i>
+            <i data-feather="zap"     class="theme-icon theme-icon-retrowave" style="width:14px;height:14px;"></i>
+            <i data-feather="star"    class="theme-icon theme-icon-adventure" style="width:14px;height:14px;"></i>
+            <span class="theme-label" style="letter-spacing:0.03em;"></span>
           </button>
           <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.openPanel()"
             title="Conectar Google Drive" style="position:relative;">
