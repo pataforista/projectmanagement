@@ -628,20 +628,57 @@ function openProfileModal() {
     localStorage.setItem('workspace_user_avatar', avatar);
 
     const newPwd = modal.querySelector('#profile-pwd').value.trim();
+    let recoveryCodeForDisplay = null;
     if (newPwd) {
       const hashStr = str => {
         let hash = 0;
         for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
         return hash.toString();
       };
+      const generateRecoveryCode = () => {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 16; i++) {
+          if (i > 0 && i % 4 === 0) code += '-';
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        return code;
+      };
+      recoveryCodeForDisplay = generateRecoveryCode();
       localStorage.setItem('workspace_lock_hash', hashStr(newPwd));
-      showToast('Contraseña maestra actualizada', 'success');
+      localStorage.setItem('workspace_recovery_hash', hashStr(recoveryCodeForDisplay.replace(/-/g, '')));
     }
     localStorage.setItem('autolock_enabled', modal.querySelector('#profile-autolock').checked);
 
     updateUserProfileUI();
-    closeModal();
-    showToast('Perfil actualizado', 'success');
+
+    if (recoveryCodeForDisplay) {
+      openModal(`
+        <div class="modal-header">
+          <h2><i data-feather="key"></i> Codigo de Recuperacion</h2>
+        </div>
+        <div class="modal-body" style="padding:24px; display:flex; flex-direction:column; gap:16px;">
+          <p style="color:var(--accent-warning); font-weight:600; margin:0;">Guarda este codigo en un lugar seguro.</p>
+          <p style="color:var(--text-secondary); font-size:0.85rem; margin:0;">Si olvidas tu contrasena, necesitaras este codigo para recuperar el acceso. No se mostrara de nuevo.</p>
+          <div style="font-family:var(--font-mono); font-size:1.1rem; letter-spacing:3px; text-align:center; padding:16px; background:var(--bg-base); border-radius:8px; color:var(--text-primary); font-weight:700; border:1px solid var(--border-highlight);">${recoveryCodeForDisplay}</div>
+          <button class="btn btn-secondary" id="rc-copy-btn" style="justify-content:center;">Copiar codigo</button>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="rc-done-btn" style="justify-content:center;"><i data-feather="check"></i> Ya lo guarde — Cerrar</button>
+        </div>`);
+      const rcModal = document.querySelector('#modal-overlay .modal');
+      rcModal.querySelector('#rc-copy-btn').onclick = () => {
+        navigator.clipboard.writeText(recoveryCodeForDisplay).catch(() => {});
+        rcModal.querySelector('#rc-copy-btn').textContent = '¡Copiado!';
+      };
+      rcModal.querySelector('#rc-done-btn').onclick = () => {
+        closeModal();
+        showToast('Contrasena y codigo de recuperacion actualizados', 'success');
+      };
+    } else {
+      closeModal();
+      showToast('Perfil actualizado', 'success');
+    }
   });
 }
 
