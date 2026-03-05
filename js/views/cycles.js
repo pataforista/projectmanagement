@@ -77,3 +77,5 @@ function bindCycleCards(grid) {
     });
   });
 }
+
+window.renderCycles = renderCycles;

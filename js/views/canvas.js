@@ -226,3 +226,5 @@ async function saveCanvasState() {
         console.error('Failed to save canvas', e);
     }
 }
+
+window.renderCanvas = renderCanvas;

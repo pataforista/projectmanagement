@@ -1683,3 +1683,55 @@
     max-width: 320px;
     text-align: center;
 }
+
+/* ── Writing History & Versions ────────────────────────────────────────────── */
+.writing-history {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.history-item {
+    border: 1px solid var(--border-color);
+    transition: all var(--dur-fast);
+}
+
+.history-item:hover {
+    border-color: var(--border-highlight);
+    background: var(--bg-surface-hover) !important;
+}
+
+/* ── Project Chat / Discussions ─────────────────────────────────────────────── */
+.chat-container {
+    height: 500px;
+    background: var(--bg-surface);
+}
+
+.chat-messages {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-highlight) transparent;
+}
+
+.msg-me div:last-child {
+    border-bottom-right-radius: 2px !important;
+}
+
+.msg-other div:last-child {
+    border-bottom-left-radius: 2px !important;
+}
+
+.chat-msg {
+    animation: slideInUp 0.3s ease-out;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

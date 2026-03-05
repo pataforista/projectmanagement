@@ -152,6 +152,11 @@ function getObsidianFileName(uri) {
     }
 }
 
+// ── UUID ─────────────────────────────────────────────────────────────────────
+export function generateUID() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
 // Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
@@ -163,3 +168,6 @@ window.bindTaskCheckboxes = bindTaskCheckboxes;
 window.getObsidianFileName = getObsidianFileName;
 window.downloadFile = downloadFile;
 window.PROJECT_TYPES = PROJECT_TYPES;
+window.generateUID = generateUID;
+
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES };

@@ -159,6 +159,9 @@ const syncManager = (() => {
             documents: store.get.documents ? store.get.documents() : [],
             members: store.get.members(),
             logs: store.get.logs ? store.get.logs() : [],
+            messages: store.get.messages ? store.get.messages() : [],
+            annotations: store.get.annotations ? store.get.annotations() : [],
+            snapshots: store.get.snapshots ? store.get.snapshots() : [],
         };
     }
 
@@ -171,7 +174,6 @@ const syncManager = (() => {
             const cfg = getConfig();
             const data = getSnapshot();
 
-            // Allow manual override via cfg.sharedFileId or previous creation
             let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
             if (!fileId) fileId = await findFile(cfg.fileName);
 
@@ -181,16 +183,11 @@ const syncManager = (() => {
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
                 if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate + 60000) {
-                    // Release lock before showing confirm dialog
-                    isSyncing = false;
-                    const confirmPull = confirm("⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?");
-                    if (confirmPull) {
-                        // Do a clean pull, update local timestamp, then return without pushing
-                        await pull();
-                        return;
-                    }
-                    // User said No, re-acquire lock and continue pushing
-                    isSyncing = true;
+                    // Remote is NEWER — abort push safely (no lock release required)
+                    // Show non-blocking notification instead of confirm() to avoid race window
+                    if (window.showToast) showToast('⚠️ Drive tiene cambios más recientes. Usa "Traer cambios" antes de guardar.', 'warning', 6000);
+                    console.warn('[Sync] Push aborted: remote is newer. Pull first.');
+                    return; // isSyncing is reset in finally
                 }
                 await updateFile(fileId, data);
             } else {
@@ -615,4 +612,5 @@ const syncManager = (() => {
     return { init, authenticate, disconnect, push, pull, openPanel, getConfig, syncCalendar, syncGoogleTasks, syncTodoist };
 })();
 
+export { syncManager };
 window.syncManager = syncManager;

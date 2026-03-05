@@ -149,3 +149,5 @@ function showDayTasks(root, dateStr) {
   feather.replace();
   bindTaskCheckboxes(panel);
 }
+
+window.renderCalendar = renderCalendar;

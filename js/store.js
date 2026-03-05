@@ -1,7 +1,6 @@
-/**
- * store.js — Central reactive state
- * Loads from IndexedDB, provides subscribe() and dispatch()
- */
+import { dbAPI } from './db.js';
+import { createDelta, applyDelta } from './utils/versioning.js';
+import { generateUID as uid, esc } from './utils.js';
 
 const store = (() => {
     // ──────────────────────────────────────────────────────────────────────────
@@ -19,6 +18,10 @@ const store = (() => {
         interconsultations: [],
         sessions: [],
         timeLogs: [],
+        snapshots: [],
+        annotations: [],
+        messages: [],
+        notifications: [],
     };
 
     const _subscribers = {};
@@ -41,6 +44,10 @@ const store = (() => {
         _state.interconsultations = await dbAPI.getAll('interconsultations') || [];
         _state.sessions = await dbAPI.getAll('sessions') || [];
         _state.timeLogs = await dbAPI.getAll('timeLogs') || [];
+        _state.snapshots = await dbAPI.getAll('snapshots') || [];
+        _state.annotations = await dbAPI.getAll('annotations') || [];
+        _state.messages = await dbAPI.getAll('messages') || [];
+        _state.notifications = await dbAPI.getAll('notifications') || [];
         _notify('*');
     }
 
@@ -82,14 +89,14 @@ const store = (() => {
     // ──────────────────────────────────────────────────────────────────────────
 
     async function dispatch(action, payload) {
-        const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const _uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let storeName;
 
         switch (action) {
             // ── Projects ──
             case 'ADD_PROJECT': {
                 storeName = 'projects';
-                const record = { id: uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: Date.now(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.projects.push(record);
                 _notify(storeName);
@@ -133,7 +140,7 @@ const store = (() => {
             case 'ADD_TASK': {
                 storeName = 'tasks';
                 const record = {
-                    id: uid,
+                    id: _uid,
                     createdAt: Date.now(),
                     cycleId: null,
                     subtasks: [],
@@ -172,7 +179,7 @@ const store = (() => {
             // ── Cycles ──
             case 'ADD_CYCLE': {
                 storeName = 'cycles';
-                const record = { id: uid, createdAt: Date.now(), status: 'activo', ...payload };
+                const record = { id: _uid, createdAt: Date.now(), status: 'activo', ...payload };
                 await dbAPI.put(storeName, record);
                 _state.cycles.push(record);
                 _notify(storeName);
@@ -202,7 +209,7 @@ const store = (() => {
             // ── Decisions ──
             case 'ADD_DECISION': {
                 storeName = 'decisions';
-                const record = { id: uid, createdAt: Date.now(), relatedTaskIds: [], ...payload };
+                const record = { id: _uid, createdAt: Date.now(), relatedTaskIds: [], ...payload };
                 await dbAPI.put(storeName, record);
                 _state.decisions.push(record);
                 _notify(storeName);
@@ -246,7 +253,7 @@ const store = (() => {
             case 'ADD_LOG': {
                 storeName = 'logs';
                 if (!_state.logs) _state.logs = [];
-                const record = { id: uid, timestamp: Date.now(), ...payload };
+                const record = { id: _uid, timestamp: Date.now(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.logs.push(record);
                 _notify(storeName);
@@ -257,7 +264,7 @@ const store = (() => {
             // ── Members ──
             case 'ADD_MEMBER': {
                 storeName = 'members';
-                const record = { id: uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: Date.now(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.members.push(record);
                 _notify(storeName);
@@ -297,7 +304,7 @@ const store = (() => {
             // ── Interconsultations ──
             case 'ADD_INTERCONSULTATION': {
                 storeName = 'interconsultations';
-                const record = { id: uid, createdAt: Date.now(), status: 'Solicitada', ...payload };
+                const record = { id: _uid, createdAt: Date.now(), status: 'Solicitada', ...payload };
                 await dbAPI.put(storeName, record);
                 _state.interconsultations.push(record);
                 _notify(storeName);
@@ -326,7 +333,7 @@ const store = (() => {
             // ── Sessions ──
             case 'ADD_SESSION': {
                 storeName = 'sessions';
-                const record = { id: uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: Date.now(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.sessions.push(record);
                 _notify(storeName);
@@ -355,7 +362,7 @@ const store = (() => {
             // ── Time Logs ──
             case 'ADD_TIME_LOG': {
                 storeName = 'timeLogs';
-                const record = { id: uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: Date.now(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.timeLogs.push(record);
                 _notify(storeName);
@@ -369,17 +376,136 @@ const store = (() => {
                 break;
             }
 
-            // ── Sync ──
-            case 'HYDRATE_STORE': {
-                // Key names should match _state keys
-                for (const key in payload) {
-                    if (Array.isArray(payload[key]) && _state.hasOwnProperty(key)) {
-                        await dbAPI.clear(key);
-                        _state[key] = payload[key];
-                        for (const r of payload[key]) {
-                            await dbAPI.put(key, r);
+            // ── Snapshots ──
+            case 'ADD_SNAPSHOT': {
+                storeName = 'snapshots';
+                const projectSnapshots = _state.snapshots
+                    .filter(s => s.projectId === payload.projectId)
+                    .sort((a, b) => b.timestamp - a.timestamp);
+
+                const lastSnap = projectSnapshots[0];
+                let snapshotRecord = {
+                    id: _uid,
+                    timestamp: Date.now(),
+                    projectId: payload.projectId,
+                    title: payload.title || 'Versión'
+                };
+
+                if (lastSnap && lastSnap.content) {
+                    // Store delta relative to last snapshot if possible
+                    // However, it's safer to store full content for snapshots 
+                    // and use deltas for intermediate saves. 
+                    // But the user requested "only save the patch".
+                    // Let's implement full content for the LATEST and deltas for OLDER ones?
+                    // No, usually Git-Lite stores deltas relative to a BASE.
+                    const delta = createDelta(lastSnap.content, payload.content);
+                    snapshotRecord.delta = delta;
+                    // We keep 'content' empty or limited to save space
+                } else {
+                    snapshotRecord.content = payload.content;
+                }
+
+                await dbAPI.put(storeName, snapshotRecord);
+                _state.snapshots.push(snapshotRecord);
+                _notify(storeName);
+                if (window.showToast) showToast('Versión guardada (delta).', 'success');
+                return snapshotRecord;
+            }
+            case 'DELETE_SNAPSHOT': {
+                storeName = 'snapshots';
+                await dbAPI.delete(storeName, payload.id);
+                _state.snapshots = _state.snapshots.filter(s => s.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Annotations ──
+            case 'ADD_ANNOTATION': {
+                storeName = 'annotations';
+                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.annotations.push(record);
+                _notify(storeName);
+                return record;
+            }
+            case 'DELETE_ANNOTATION': {
+                storeName = 'annotations';
+                await dbAPI.delete(storeName, payload.id);
+                _state.annotations = _state.annotations.filter(a => a.id !== payload.id);
+                _notify(storeName);
+                break;
+            }
+
+            // ── Messages ──
+            case 'ADD_MESSAGE': {
+                storeName = 'messages';
+                const record = { id: _uid, timestamp: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.messages.push(record);
+                _notify(storeName);
+
+                // Mentions Logic
+                if (record.text && record.text.includes('@')) {
+                    const matches = record.text.match(/@(\w+)/g);
+                    if (matches) {
+                        for (const match of matches) {
+                            await dispatch('ADD_NOTIFICATION', {
+                                type: 'mention',
+                                title: `Mención de ${record.author}`,
+                                text: record.text,
+                                read: false,
+                                projectId: record.projectId
+                            });
                         }
                     }
+                }
+                return record;
+            }
+            case 'ADD_NOTIFICATION': {
+                storeName = 'notifications';
+                const record = { id: _uid, timestamp: Date.now(), ...payload };
+                await dbAPI.put(storeName, record);
+                _state.notifications.push(record);
+                _notify(storeName);
+                return record;
+            }
+
+            // ── Sync ──
+            case 'HYDRATE_STORE': {
+                // ── Step 0: Validate & sanitize remote payload (Pillar 3 — XSS Guard) ──
+                let sanitizedPayload = payload;
+                try {
+                    const { validateSyncPayload } = await import('./utils/schema.js');
+                    const { valid, rejected } = validateSyncPayload(payload);
+                    if (rejected > 0) {
+                        console.warn(`[Store] HYDRATE: ${rejected} invalid records dropped by schema validator.`);
+                    }
+                    sanitizedPayload = valid;
+                } catch (schemaErr) {
+                    console.error('[Store] Schema validation failed, aborting HYDRATE:', schemaErr);
+                    break;
+                }
+
+                // Step 1: update memory immediately (safe & instant)
+                const validKeys = Object.keys(_state);
+                for (const key of validKeys) {
+                    if (Array.isArray(sanitizedPayload[key])) {
+                        _state[key] = sanitizedPayload[key];
+                    }
+                }
+                // Step 2: sync IDB in parallel using Promise.allSettled
+                // This way, a single store failure does NOT corrupt others
+                const ops = validKeys
+                    .filter(k => Array.isArray(sanitizedPayload[k]))
+                    .map(async (key) => {
+                        await dbAPI.clear(key);
+                        for (const r of sanitizedPayload[key]) await dbAPI.put(key, r);
+                    });
+                const results = await Promise.allSettled(ops);
+                const failed = results.filter(r => r.status === 'rejected');
+                if (failed.length) {
+                    console.error('[HYDRATE] Partial IDB sync failure:', failed);
+                    if (window.showToast) showToast('Sincronización parcial: algunos datos no se persistieron localmente.', 'warning');
                 }
                 _notify('*');
                 break;
@@ -409,7 +535,32 @@ const store = (() => {
         decisions: () => _state.decisions,
         documentByProject: (id) => _state.documents.find(d => d.projectId === id) || null,
         documents: () => _state.documents,
+        documentById: (id) => _state.documents.find(d => d.id === id),
+        getBacklinks: (docId) => {
+            const doc = _state.documents.find(d => d.id === docId);
+            if (!doc) return [];
+            // Find other docs that explicitly link to this one (if we had a link syntax)
+            // For now, we search for docs that contain the title of this doc
+            return _state.documents.filter(d =>
+                d.id !== docId &&
+                d.content && d.content.includes(`[[${doc.title}]]`)
+            );
+        },
+        getUnlinkedMentions: (docId) => {
+            const doc = _state.documents.find(d => d.id === docId);
+            if (!doc || !doc.title) return [];
+            return _state.documents.filter(d =>
+                d.id !== docId &&
+                d.content &&
+                d.content.includes(doc.title) &&
+                !d.content.includes(`[[${doc.title}]]`)
+            );
+        },
         members: () => _state.members,
+        query: (collection, filterFn) => {
+            if (!_state[collection]) return [];
+            return _state[collection].filter(filterFn);
+        },
         memberById: (id) => _state.members.find(m => m.id === id),
         projectById: (id) => _state.projects.find(p => p.id === id),
         allTasks: () => _state.tasks,
@@ -435,12 +586,24 @@ const store = (() => {
         sessionsByDate: (date) => _state.sessions.filter(s => s.date === date),
         timeLogs: () => _state.timeLogs,
         timeLogsByTask: (taskId) => _state.timeLogs.filter(t => t.taskId === taskId),
+        messages: () => _state.messages,
+        annotations: () => _state.annotations,
+        snapshots: () => _state.snapshots,
         totalTimeByTask: (taskId) => _state.timeLogs
             .filter(t => t.taskId === taskId)
             .reduce((sum, log) => sum + (log.minutes || 0), 0),
+        snapshotsByProject: (projectId) => _state.snapshots.filter(s => s.projectId === projectId),
+        annotationsByProject: (projectId) => _state.annotations.filter(a => a.projectId === projectId),
+        messagesByProject: (projectId) => _state.messages.filter(m => m.projectId === projectId),
+        notifications: () => _state.notifications,
+        unreadNotifications: () => _state.notifications.filter(n => !n.read),
+        // Recursive tree helpers
+        getChildProjects: (parentId) => _state.projects.filter(p => p.parentId === parentId),
+        getChildTasks: (parentId) => _state.tasks.filter(t => t.parentId === parentId),
     };
 
     return { load, seedIfEmpty, dispatch, subscribe, get };
 })();
 
+export { store };
 window.store = store;

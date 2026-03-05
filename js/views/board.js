@@ -154,3 +154,5 @@ function bindDragDrop(container) {
     });
   });
 }
+
+window.renderBoard = renderBoard;

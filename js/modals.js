@@ -106,6 +106,16 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
           <button class="btn btn-secondary" id="add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
         </div>
       </div>
+      <div class="form-group">
+        <label class="form-label">Referencias de Zotero</label>
+        <select class="form-select" id="task-refs" multiple style="height:80px;">
+          ${store.get.library().map(lib => `
+            <option value="${lib.id}" ${isEdit && (task.referenceIds || []).includes(lib.id) ? 'selected' : ''}>
+              ${esc(lib.author.split(';')[0])} — ${esc(lib.title)}
+            </option>`).join('')}
+        </select>
+        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">Mantén Ctrl (o Cmd) presionado para seleccionar varias.</div>
+      </div>
     </div>
     <div class="modal-footer" style="display:flex; justify-content:space-between; width:100%;">
       <div>
@@ -191,7 +201,8 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       description: modal.querySelector('#task-desc').value,
       assigneeId: 'u1',
       tags,
-      subtasks: subTasks
+      subtasks: subTasks,
+      referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value)
     };
 
     if (isEdit) {
@@ -668,7 +679,7 @@ function openProfileModal() {
         </div>`);
       const rcModal = document.querySelector('#modal-overlay .modal');
       rcModal.querySelector('#rc-copy-btn').onclick = () => {
-        navigator.clipboard.writeText(recoveryCodeForDisplay).catch(() => {});
+        navigator.clipboard.writeText(recoveryCodeForDisplay).catch(() => { });
         rcModal.querySelector('#rc-copy-btn').textContent = '¡Copiado!';
       };
       rcModal.querySelector('#rc-done-btn').onclick = () => {

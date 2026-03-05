@@ -8,7 +8,7 @@
 //    elimines o modifiques un archivo en SHELL_ASSETS (o en index.html / sw.js),
 //    para que los usuarios existentes descarguen el service worker actualizado.
 //    Ejemplo: workspace-v7 → workspace-v8
-const CACHE_NAME = 'workspace-v7';
+const CACHE_NAME = 'workspace-v8';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
@@ -18,6 +18,10 @@ const SHELL_ASSETS = [
     '/styles/animations.css',
     '/js/db.js',
     '/js/utils.js',
+    '/js/utils/crypto.js',
+    '/js/utils/schema.js',
+    '/js/utils/versioning.js',
+    '/js/utils/templates.js',
     '/js/store.js',
     '/js/sync.js',
     '/js/modals.js',

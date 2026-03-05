@@ -232,3 +232,5 @@ function processZoteroItem(raw) {
     importedAt: Date.now()
   };
 }
+
+window.renderLibrary = renderLibrary;

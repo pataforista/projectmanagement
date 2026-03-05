@@ -153,3 +153,5 @@ function bindInlineStatus(root) {
     });
   });
 }
+
+window.renderBacklog = renderBacklog;

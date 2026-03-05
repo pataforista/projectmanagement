@@ -149,6 +149,8 @@ function renderProjectDetail(root, params) {
         <button class="tab-btn" data-tab="cycles">Ciclos (${cycles.length})</button>
         <button class="tab-btn" data-tab="document">Documento</button>
         <button class="tab-btn" data-tab="decisions">Decisiones (${decisions.length})</button>
+        <button class="tab-btn" data-tab="discussions">Discusión</button>
+        <button class="tab-btn" data-tab="reports">Reportes</button>
       </div>
 
       <div id="proj-tab-content"></div>
@@ -269,12 +271,27 @@ function showProjectTab(root, p, tab) {
       });
     });
   } else if (tab === 'tasks') {
+    const view = content.dataset.view || 'list';
     content.innerHTML = `
-      <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
+      <div style="margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+        <div class="view-switcher" style="background:var(--bg-surface-2); padding:4px; border-radius:8px; display:flex; gap:4px;">
+          <button class="btn btn-xs ${view === 'list' ? 'btn-primary' : 'btn-ghost'}" id="view-list-btn" title="Lista"><i data-feather="list" style="width:14px;"></i></button>
+          <button class="btn btn-xs ${view === 'board' ? 'btn-primary' : 'btn-ghost'}" id="view-board-btn" title="Tablero"><i data-feather="trello" style="width:14px;"></i></button>
+        </div>
         <button class="btn btn-primary btn-sm" id="proj-new-task-btn"><i data-feather="plus"></i> Nueva tarea</button>
       </div>
-      <ul class="task-list">${tasks.length ? tasks.map(t => taskItem(t)).join('') : emptyState('check-square', 'Sin tareas aún.')}</ul>`;
+      <div id="tasks-container">
+        ${view === 'list'
+        ? `<ul class="task-list">${tasks.length ? tasks.map(t => taskItem(t)).join('') : emptyState('check-square', 'Sin tareas aún.')}</ul>`
+        : renderKanban(tasks)
+      }
+      </div>`;
+
     feather.replace();
+
+    content.querySelector('#view-list-btn').onclick = () => { content.dataset.view = 'list'; showProjectTab(root, p, 'tasks'); };
+    content.querySelector('#view-board-btn').onclick = () => { content.dataset.view = 'board'; showProjectTab(root, p, 'tasks'); };
+
     bindTaskCheckboxes(content);
     content.querySelector('#proj-new-task-btn')?.addEventListener('click', () => openTaskModal(p.id));
   } else if (tab === 'cycles') {
@@ -296,10 +313,129 @@ function showProjectTab(root, p, tab) {
       <div class="decisions-list">${decisions.length ? decisions.map(d => decisionCard(d)).join('') : emptyState('zap', 'Sin decisiones.')}</div>`;
     feather.replace();
     content.querySelector('#proj-new-dec-btn')?.addEventListener('click', () => openDecisionModal(p.id));
+  } else if (tab === 'discussions') {
+    const messages = store.get.messagesByProject(p.id).sort((a, b) => a.timestamp - b.timestamp);
+    content.innerHTML = `
+      <div class="chat-container card glass-panel" style="display:flex; flex-direction:column; height:500px;">
+        <div class="chat-messages" id="chat-messages" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:12px;">
+          ${messages.length ? messages.map(m => `
+            <div class="chat-msg ${m.from === 'me' ? 'msg-me' : 'msg-other'}" style="max-width:80%; align-self: ${m.from === 'me' ? 'flex-end' : 'flex-start'};">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:4px; text-align:${m.from === 'me' ? 'right' : 'left'};">
+                ${esc(m.author || 'Autor')} • ${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+              <div style="padding:10px 14px; border-radius:12px; background: ${m.from === 'me' ? 'var(--accent-primary)' : 'var(--bg-surface-2)'}; color: ${m.from === 'me' ? '#fff' : 'var(--text-primary)'}; font-size:0.88rem; line-height:1.4;">
+                ${esc(m.text)}
+              </div>
+            </div>
+          `).join('') : '<div style="text-align:center; color:var(--text-muted); margin-top:40px;">No hay mensajes aún. Inicia la conversación.</div>'}
+        </div>
+        <div class="chat-input-wrap" style="padding:16px; border-top:1px solid var(--border-color); display:flex; gap:10px;">
+          <input type="text" class="form-input" id="chat-input" placeholder="Escribe un mensaje..." style="flex:1;">
+          <button class="btn btn-primary" id="chat-send"><i data-feather="send"></i></button>
+        </div>
+      </div>
+    `;
+    feather.replace();
+    const chatMsgScroll = content.querySelector('#chat-messages');
+    chatMsgScroll.scrollTop = chatMsgScroll.scrollHeight;
+
+    const sendMsg = async () => {
+      const input = content.querySelector('#chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      await store.dispatch('ADD_MESSAGE', {
+        projectId: p.id,
+        text,
+        author: localStorage.getItem('workspace_user_name') || 'Carlos',
+        from: 'me'
+      });
+      input.value = '';
+      showProjectTab(root, p, 'discussions');
+    };
+
+    content.querySelector('#chat-send').onclick = sendMsg;
+    content.querySelector('#chat-input').onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
+  } else if (tab === 'reports') {
+    content.innerHTML = `
+        <div class="reports-view" style="padding:20px;">
+          <div class="card glass-panel" style="padding:20px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-surface-2);">
+            <h3 style="font-size:1rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+              <i data-feather="terminal" style="width:18px;"></i> Dataview-Lite
+            </h3>
+            <textarea id="report-query" class="form-textarea" style="font-family:monospace; min-height:80px; font-size:0.85rem; border:1px solid var(--border-color); background:var(--bg-card); margin-bottom:15px;" placeholder="LIST TAREAS"></textarea>
+            <button class="btn btn-primary" id="btn-run-report" style="width:100%;">Ejecutar</button>
+          </div>
+          <div id="report-results" style="margin-top:25px;"></div>
+        </div>
+      `;
+    feather.replace();
+    content.querySelector('#btn-run-report').onclick = () => {
+      const q = content.querySelector('#report-query').value.trim().toUpperCase();
+      if (q === 'LIST TAREAS') {
+        const tasks = store.get.tasksByProject(p.id);
+        content.querySelector('#report-results').innerHTML = `
+                <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+                  <thead><tr style="background:var(--bg-surface-2); text-align:left;"><th style="padding:10px;">Tarea</th><th style="padding:10px;">Estado</th></tr></thead>
+                  <tbody>${tasks.map(t => `<tr style="border-top:1px solid var(--border-color);"><td style="padding:10px;">${esc(t.title)}</td><td style="padding:10px;">${esc(t.status)}</td></tr>`).join('')}</tbody>
+                </table>`;
+      } else {
+        content.querySelector('#report-results').innerHTML = `<div class="alert alert-warning">Prueba "LIST TAREAS".</div>`;
+      }
+    };
   }
 
   feather.replace();
   bindTaskCheckboxes(content);
+}
+
+function renderKanban(tasks) {
+  const statuses = ['Capturado', 'En elaboración', 'En espera', 'Terminado'];
+  return `
+    <div class="kanban-board" style="display:flex; gap:16px; overflow-x:auto; padding-bottom:12px;">
+      ${statuses.map(status => {
+    const statusTasks = tasks.filter(t => t.status === status);
+    return `
+          <div class="kanban-column" style="flex:0 0 280px; background:var(--bg-surface-2); border-radius:12px; display:flex; flex-direction:column; max-height:600px;">
+            <div style="padding:12px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color);">
+              <h4 style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">${status}</h4>
+              <span class="badge badge-neutral" style="font-size:0.65rem;">${statusTasks.length}</span>
+            </div>
+            <div class="kanban-items" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px;">
+              ${statusTasks.map(t => `
+                <div class="card kanban-card" style="padding:12px; cursor:pointer; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; box-shadow:var(--shadow-sm);" onclick="openTaskModal('${t.projectId}', '${t.id}')">
+                  <div style="font-size:0.88rem; font-weight:500; margin-bottom:8px;">${esc(t.title)}</div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.7rem; color:var(--text-muted);">
+                    <span>${t.priority}</span>
+                    ${t.dueDate ? `<span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(t.dueDate)}</span>` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+  }).join('')}
+    </div>
+  `;
+}
+
+function renderCalendar(tasks) {
+  const tasksWithDate = tasks.filter(t => t.dueDate);
+  return `
+    <div class="calendar-mini-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap:8px;">
+      ${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => `<div style="text-align:center; font-size:0.7rem; font-weight:700; color:var(--text-muted); padding-bottom:8px;">${d}</div>`).join('')}
+      ${Array.from({ length: 31 }).map((_, i) => {
+    const day = i + 1;
+    // Simple mock: just showing tasks for "this month" in a list
+    const dayTasks = tasksWithDate.filter(t => new Date(t.dueDate).getDate() === day);
+    return `
+          <div style="min-height:80px; background:var(--bg-surface-2); border-radius:8px; padding:6px; border:1px solid ${dayTasks.length ? 'var(--accent-primary)' : 'var(--border-color)'}">
+            <div style="font-size:0.65rem; margin-bottom:4px; opacity:0.6;">${day}</div>
+            ${dayTasks.map(t => `<div style="font-size:0.6rem; background:var(--accent-primary); color:#fff; padding:2px 4px; border-radius:4px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(t.title)}">${esc(t.title)}</div>`).join('')}
+          </div>
+        `;
+  }).join('')}
+    </div>
+  `;
 }
 
 function detailRow(label, value) {
@@ -308,3 +444,6 @@ function detailRow(label, value) {
     <span style="font-weight:500;">${value}</span>
   </div>`;
 }
+
+window.renderProjects = renderProjects;
+window.renderProjectDetail = renderProjectDetail;

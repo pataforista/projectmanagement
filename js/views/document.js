@@ -289,3 +289,5 @@ function defaultDocContent(p) {
         { type: 'paragraph', text: '' },
     ];
 }
+
+window.renderDocumentView = renderDocumentView;

@@ -103,3 +103,5 @@ function renderDashboard(root) {
   bindTaskCheckboxes(root);
   root.querySelector('#dash-new-task')?.addEventListener('click', () => openTaskModal());
 }
+
+window.renderDashboard = renderDashboard;

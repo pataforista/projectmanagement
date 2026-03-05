@@ -1,10 +1,21 @@
 /**
  * db.js — Offline-first IndexedDB layer
  * Full schema for Workspace de Producción v1
+ * Nexus Fortress: AES-256-GCM at-rest encryption via Web Crypto API
  */
 
+// Lazily resolved crypto module (imported after auth unlocks the key)
+let _cryptoLayer = null;
+async function getCrypto() {
+  if (!_cryptoLayer) {
+    _cryptoLayer = await import('./utils/crypto.js');
+  }
+  return _cryptoLayer;
+}
+
+
 const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let db;
 
@@ -21,9 +32,12 @@ const STORES = {
   interconsultations: 'interconsultations',
   sessions: 'sessions',
   timeLogs: 'timeLogs',
+  snapshots: 'snapshots',
+  annotations: 'annotations',
+  messages: 'messages',
 };
 
-const initDB = () => new Promise(async (resolve, reject) => {
+export const initDB = () => new Promise(async (resolve, reject) => {
   const openDB = () => new Promise((res, rej) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -56,12 +70,14 @@ const initDB = () => new Promise(async (resolve, reject) => {
         const s = d.createObjectStore('projects', { keyPath: 'id' });
         s.createIndex('type', 'type', { unique: false });
         s.createIndex('status', 'status', { unique: false });
+        s.createIndex('parentId', 'parentId', { unique: false });
       }
 
       // Tasks
       if (!d.objectStoreNames.contains('tasks')) {
         const s = d.createObjectStore('tasks', { keyPath: 'id' });
         s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('parentId', 'parentId', { unique: false });
         s.createIndex('cycleId', 'cycleId', { unique: false });
         s.createIndex('status', 'status', { unique: false });
         s.createIndex('priority', 'priority', { unique: false });
@@ -131,6 +147,27 @@ const initDB = () => new Promise(async (resolve, reject) => {
         s.createIndex('taskId', 'taskId', { unique: false });
         s.createIndex('projectId', 'projectId', { unique: false });
       }
+
+      // Snapshots (Version control for writing)
+      if (!d.objectStoreNames.contains('snapshots')) {
+        const s = d.createObjectStore('snapshots', { keyPath: 'id' });
+        s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+
+      // Annotations (Contextual comments)
+      if (!d.objectStoreNames.contains('annotations')) {
+        const s = d.createObjectStore('annotations', { keyPath: 'id' });
+        s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('documentId', 'documentId', { unique: false });
+      }
+
+      // Messages (Project discussions)
+      if (!d.objectStoreNames.contains('messages')) {
+        const s = d.createObjectStore('messages', { keyPath: 'id' });
+        s.createIndex('projectId', 'projectId', { unique: false });
+        s.createIndex('timestamp', 'timestamp', { unique: false });
+      }
     };
   });
 
@@ -157,6 +194,26 @@ const initDB = () => new Promise(async (resolve, reject) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // Generic CRUD helpers
 // ──────────────────────────────────────────────────────────────────────────────
+
+// Throttled save indicator — avoids DOM flooding in batch operations
+let _saveIndicatorEl = null;
+let _saveIndicatorTimer = null;
+function _showSaveIndicator() {
+  if (_saveIndicatorTimer) clearTimeout(_saveIndicatorTimer);
+  if (!_saveIndicatorEl) {
+    _saveIndicatorEl = document.createElement('div');
+    _saveIndicatorEl.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--accent-success); color:#fff; padding:4px 10px; border-radius:12px; font-size:0.7rem; font-weight:600; opacity:0; transition:opacity 0.2s; z-index:999999; pointer-events:none; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:4px;';
+    _saveIndicatorEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Guardado local';
+    document.body.appendChild(_saveIndicatorEl);
+    requestAnimationFrame(() => { if (_saveIndicatorEl) _saveIndicatorEl.style.opacity = '1'; });
+  }
+  _saveIndicatorTimer = setTimeout(() => {
+    if (_saveIndicatorEl) {
+      _saveIndicatorEl.style.opacity = '0';
+      setTimeout(() => { _saveIndicatorEl?.remove(); _saveIndicatorEl = null; }, 200);
+    }
+  }, 1500);
+}
 
 function tx(storeName, mode, fn) {
   return new Promise((resolve, reject) => {
@@ -185,27 +242,30 @@ function tx(storeName, mode, fn) {
   });
 }
 
-const dbAPI = {
+export const dbAPI = {
   /** Add a record. Rejects if key already exists. */
   add(storeName, record) {
     return tx(storeName, 'readwrite', s => s.add(record));
   },
 
-  /** Put (upsert) a record. */
+  /** Put (upsert) a record — encrypts sensitive stores when key is available. */
   async put(storeName, record) {
     try {
-      const res = await tx(storeName, 'readwrite', s => s.put(record));
+      let dataToStore = record;
+
+      // Encrypt if store is sensitive and the crypto key is available
+      const crypto = await getCrypto();
+      if (crypto.ENCRYPTED_STORES.has(storeName) && crypto.hasKey()) {
+        dataToStore = await crypto.encryptRecord(record);
+        // Always preserve the primary key (id) outside the encrypted envelope
+        // so IndexedDB can use it as keyPath
+        dataToStore.id = record.id;
+      }
+
+      const res = await tx(storeName, 'readwrite', s => s.put(dataToStore));
+      // Show a throttled save indicator (single reusable DOM node)
       if (storeName !== 'logs' && storeName !== 'syncQueue') {
-        // Subtle visual feedback that DB is saving
-        const ind = document.createElement('div');
-        ind.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--accent-success); color:#fff; padding:4px 10px; border-radius:12px; font-size:0.7rem; font-weight:600; opacity:0; transition:opacity 0.2s; z-index:999999; pointer-events:none; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:4px;';
-        ind.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Guardado local';
-        document.body.appendChild(ind);
-        requestAnimationFrame(() => ind.style.opacity = '1');
-        setTimeout(() => {
-          ind.style.opacity = '0';
-          setTimeout(() => ind.remove(), 200);
-        }, 1500);
+        _showSaveIndicator();
       }
       return res;
     } catch (e) {
@@ -215,18 +275,34 @@ const dbAPI = {
   },
 
   /** Get a single record by primary key. */
-  getById(storeName, id) {
-    return tx(storeName, 'readonly', s => s.get(id));
+  async getById(storeName, id) {
+    const rawRecord = await tx(storeName, 'readonly', s => s.get(id));
+    if (!rawRecord) return null;
+    const crypto = await getCrypto();
+    if (crypto.ENCRYPTED_STORES.has(storeName) && crypto.hasKey()) {
+      return crypto.decryptRecord(rawRecord);
+    }
+    return rawRecord;
   },
 
-  /** Get all records in a store. */
-  getAll(storeName) {
-    return tx(storeName, 'readonly', s => s.getAll());
+  /** Get all records in a store — decrypts if store is encrypted. */
+  async getAll(storeName) {
+    const rawRecords = await tx(storeName, 'readonly', s => s.getAll());
+    const crypto = await getCrypto();
+    if (crypto.ENCRYPTED_STORES.has(storeName) && crypto.hasKey()) {
+      return crypto.decryptAll(rawRecords);
+    }
+    return rawRecords;
   },
 
   /** Get all records matching an index value. */
-  getByIndex(storeName, indexName, value) {
-    return tx(storeName, 'readonly', s => s.index(indexName).getAll(value));
+  async getByIndex(storeName, indexName, value) {
+    const rawRecords = await tx(storeName, 'readonly', s => s.index(indexName).getAll(value));
+    const crypto = await getCrypto();
+    if (crypto.ENCRYPTED_STORES.has(storeName) && crypto.hasKey()) {
+      return crypto.decryptAll(rawRecords);
+    }
+    return rawRecords;
   },
 
   /** Delete a record by primary key. */

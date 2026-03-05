@@ -5,16 +5,62 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-    // ── 0. App Lock (Auth) ─────────────────────────────────────────────────────
+    // ── 0. App Lock (Auth) — Nexus Fortress ───────────────────────────────────
     const authOverlay = document.getElementById('auth-overlay');
     const authForm = document.getElementById('auth-form');
     const authPassword = document.getElementById('auth-password');
     const authSubtitle = document.getElementById('auth-subtitle');
 
-    const hashStr = str => {
+    // Import crypto layer (available as ES module or global import)
+    const cryptoLayer = await import('./utils/crypto.js').catch(() => null);
+
+    // ── Secure hash via Web Crypto SHA-256 ──
+    const hashStr = async (str) => {
+        if (cryptoLayer) return cryptoLayer.hashPassword(str);
+        // Fallback for environments without module support (should not happen)
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
+    // ── Legacy Hash (djb2) for Migration ──
+    const legacyHash = (str) => {
         let hash = 0;
-        for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-        return hash.toString();
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return String(hash);
+    };
+
+    // ── Brute-Force Protection ──
+    const LOCKOUT_KEY = 'nexus_lockout';
+    const ATTEMPT_KEY = 'nexus_attempts';
+    const MAX_ATTEMPTS = 5;
+    const LOCKOUT_MS = 30_000; // 30 seconds
+
+    const isLockedOut = () => {
+        const lockoutUntil = Number(localStorage.getItem(LOCKOUT_KEY) || 0);
+        return Date.now() < lockoutUntil;
+    };
+
+    const getRemainingLockout = () => {
+        const lockoutUntil = Number(localStorage.getItem(LOCKOUT_KEY) || 0);
+        return Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+    };
+
+    const recordFailedAttempt = () => {
+        const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
+        localStorage.setItem(ATTEMPT_KEY, String(attempts));
+        if (attempts >= MAX_ATTEMPTS) {
+            localStorage.setItem(LOCKOUT_KEY, String(Date.now() + LOCKOUT_MS));
+            localStorage.setItem(ATTEMPT_KEY, '0');
+        }
+        return attempts;
+    };
+
+    const clearAttempts = () => {
+        localStorage.removeItem(ATTEMPT_KEY);
+        localStorage.removeItem(LOCKOUT_KEY);
     };
 
     const generateRecoveryCode = () => {
@@ -30,6 +76,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const normalizeCode = str => str.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
     let savedHash = localStorage.getItem('workspace_lock_hash');
+
+
 
     await new Promise(resolve => {
         if (!authOverlay) return resolve();
@@ -52,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             authCodeValue.textContent = code;
             authCodeDisplay.style.display = 'flex';
             authCodeCopy.onclick = () => {
-                navigator.clipboard.writeText(code).catch(() => {});
+                navigator.clipboard.writeText(code).catch(() => { });
                 authCodeCopy.textContent = '¡Copiado!';
                 setTimeout(() => authCodeCopy.textContent = 'Copiar codigo', 2000);
             };
@@ -62,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!savedHash) {
             authOverlay.classList.add('open');
             authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-            authForm.onsubmit = (e) => {
+            authForm.onsubmit = async (e) => {
                 e.preventDefault();
                 const pwd = authPassword.value.trim();
                 if (pwd.length < 4) {
@@ -70,9 +118,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setTimeout(() => authPassword.style.border = '', 1000);
                     return;
                 }
+                // Hash password with SHA-256 + salted PBKDF2-derived salt
+                const hash = await hashStr(pwd);
                 const recoveryCode = generateRecoveryCode();
-                localStorage.setItem('workspace_lock_hash', hashStr(pwd));
-                localStorage.setItem('workspace_recovery_hash', hashStr(normalizeCode(recoveryCode)));
+                const recoveryHash = await hashStr(normalizeCode(recoveryCode));
+                localStorage.setItem('workspace_lock_hash', hash);
+                localStorage.setItem('workspace_recovery_hash', recoveryHash);
+                // Derive encryption key and activate the crypto layer
+                if (cryptoLayer) await cryptoLayer.unlock(pwd);
                 authForm.style.display = 'none';
                 authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
                 showCodeDisplay(recoveryCode, () => {
@@ -88,15 +141,57 @@ document.addEventListener('DOMContentLoaded', async () => {
                 authForgotContainer.style.display = 'block';
             }
 
-            authForm.onsubmit = (e) => {
+            authForm.onsubmit = async (e) => {
                 e.preventDefault();
+
+                if (isLockedOut()) {
+                    const secs = getRemainingLockout();
+                    authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
+                    authPassword.value = '';
+                    return;
+                }
+
                 const pwd = authPassword.value.trim();
-                if (hashStr(pwd) === savedHash) {
+                const inputHash = await hashStr(pwd);
+                let isMatch = (inputHash === savedHash);
+
+                // ── Legacy Migration Check ──
+                if (!isMatch && savedHash.length < 60) {
+                    const legHash = legacyHash(pwd);
+                    if (legHash === savedHash) {
+                        console.log('[Fortress] Legacy hash matched. Upgrading to Nexus Fortress (SHA-256)...');
+                        const newHash = await hashStr(pwd);
+                        const recoveryCode = generateRecoveryCode();
+                        const recoveryHash = await hashStr(normalizeCode(recoveryCode));
+                        localStorage.setItem('workspace_lock_hash', newHash);
+                        localStorage.setItem('workspace_recovery_hash', recoveryHash);
+                        isMatch = true;
+                        // Show recovery code because we just generated it
+                        authForm.style.display = 'none';
+                        authSubtitle.textContent = "Seguridad actualizada. Guarda tu nuevo codigo.";
+                        showCodeDisplay(recoveryCode, () => {
+                            authOverlay.classList.remove('open');
+                            resolve();
+                        });
+                        if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                        return; // Exit here as showCodeDisplay will resolve
+                    }
+                }
+
+                if (isMatch) {
+                    clearAttempts();
+                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
                     authOverlay.classList.remove('open');
                     resolve();
                 } else {
+                    const attempts = recordFailedAttempt();
                     authPassword.style.border = '1px solid var(--accent-danger)';
                     authPassword.value = '';
+                    if (isLockedOut()) {
+                        authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
+                    } else {
+                        authSubtitle.textContent = "Contraseña incorrecta.";
+                    }
                     setTimeout(() => authPassword.style.border = '', 1000);
                 }
             };
@@ -124,10 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             if (authRecoverySubmit) {
-                authRecoverySubmit.onclick = () => {
+                authRecoverySubmit.onclick = async () => {
                     const savedRecoveryHash = localStorage.getItem('workspace_recovery_hash');
                     const entered = normalizeCode(authRecoveryCode.value.trim());
-                    if (savedRecoveryHash && hashStr(entered) === savedRecoveryHash) {
+                    const inputHash = await hashStr(entered);
+                    if (savedRecoveryHash && inputHash === savedRecoveryHash) {
                         authRecoveryPanel.style.display = 'none';
                         authSubtitle.textContent = "Crea una nueva contraseña.";
                         authNewpwdPanel.style.display = 'flex';
@@ -141,7 +237,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             if (authNewpwdSubmit) {
-                authNewpwdSubmit.onclick = () => {
+                authNewpwdSubmit.onclick = async () => {
                     const newPwd = authNewpwdInput.value.trim();
                     if (newPwd.length < 4) {
                         authNewpwdInput.style.border = '1px solid var(--accent-warning)';
@@ -149,14 +245,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                     const newRecoveryCode = generateRecoveryCode();
-                    localStorage.setItem('workspace_lock_hash', hashStr(newPwd));
-                    localStorage.setItem('workspace_recovery_hash', hashStr(normalizeCode(newRecoveryCode)));
+                    const newLockHash = await hashStr(newPwd);
+                    const newRecHash = await hashStr(normalizeCode(newRecoveryCode));
+                    localStorage.setItem('workspace_lock_hash', newLockHash);
+                    localStorage.setItem('workspace_recovery_hash', newRecHash);
                     authNewpwdPanel.style.display = 'none';
                     authSubtitle.textContent = "¡Contraseña restablecida! Guarda tu nuevo codigo.";
                     showCodeDisplay(newRecoveryCode, () => {
                         authOverlay.classList.remove('open');
                         resolve();
                     });
+                    if (cryptoLayer) await cryptoLayer.unlock(newPwd);
                 };
             }
         }
@@ -238,6 +337,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('library', (root) => renderLibrary(root))
         .on('matrix', (root) => renderMatrix(root))
         .on('writing', (root) => renderWriting(root))
+        .on('graph', (root) => renderGraph(root))
         .on('medical', (root) => renderMedical(root))
         .on('integrations', (root) => renderIntegrations(root))
         .on('canvas', (root) => renderCanvas && renderCanvas(root))
@@ -374,21 +474,37 @@ function initUIToggles() {
 }
 
 function refreshSidebarProjects() {
-    const container = document.getElementById('sidebar-projects');
+    const container = document.getElementById('sidebar-projects-list');
     if (!container) return;
-    const projects = store.get.projects().filter(p => p.status !== 'archivado');
-    container.innerHTML = projects.map(p => `
-    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true">
-      <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
-      <span class="nav-item-text">${esc(p.name)}</span>
-      <span class="nav-count">${store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length}</span>
-    </a>`).join('');
+    const allProjects = store.get.projects().filter(p => p.status !== 'archivado');
 
+    const renderNode = (parentId, depth = 0) => {
+        const children = allProjects.filter(p => (parentId === null ? !p.parentId : p.parentId === parentId));
+        if (children.length === 0) return '';
+
+        return children.map(p => {
+            const taskCount = store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length;
+            return `
+                <div class="nested-project-wrapper" data-id="${p.id}">
+                    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true" style="padding-left: ${16 + (depth * 14)}px;">
+                        <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
+                        <span class="nav-item-text">${esc(p.name)}</span>
+                        ${taskCount > 0 ? `<span class="nav-count">${taskCount}</span>` : ''}
+                    </a>
+                    <div class="project-children">
+                        ${renderNode(p.id, depth + 1)}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    };
+
+    container.innerHTML = renderNode(null);
+
+    // Re-bind listeners
     container.querySelectorAll('.sidebar-project-item').forEach(item => {
         item.addEventListener('dragstart', handleProjectDragStart);
-        item.addEventListener('dragenter', handleProjectDragEnter);
         item.addEventListener('dragover', handleProjectDragOver);
-        item.addEventListener('dragleave', handleProjectDragLeave);
         item.addEventListener('drop', handleProjectDrop);
         item.addEventListener('dragend', handleProjectDragEnd);
     });
@@ -410,13 +526,25 @@ function handleProjectDrop(e) {
     if (dragSrcEl !== this) {
         const srcId = dragSrcEl.dataset.id;
         const tgtId = this.dataset.id;
-        const projects = store.get.projects().filter(p => p.status !== 'archivado');
-        const srcIdx = projects.findIndex(p => p.id === srcId);
-        const tgtIdx = projects.findIndex(p => p.id === tgtId);
-        if (srcIdx > -1 && tgtIdx > -1) {
-            const [moved] = projects.splice(srcIdx, 1);
-            projects.splice(tgtIdx, 0, moved);
-            store.dispatch('UPDATE_PROJECT_ORDERS', projects.map((p, i) => ({ id: p.id, order: i })));
+
+        // Logical nesting: if Ctrl is held, nest it. Otherwise reorder.
+        if (e.ctrlKey) {
+            store.dispatch('UPDATE_PROJECT', { id: srcId, parentId: tgtId });
+            showToast('Proyecto anidado.', 'info');
+        } else {
+            // Reordering logic
+            const all = store.get.projects().filter(p => p.status !== 'archivado');
+            const srcIdx = all.findIndex(p => p.id === srcId);
+            const tgtIdx = all.findIndex(p => p.id === tgtId);
+            if (srcIdx > -1 && tgtIdx > -1) {
+                const [moved] = all.splice(srcIdx, 1);
+                all.splice(tgtIdx, 0, moved);
+                // Also reset parentId if reordering at top level? Or keep it?
+                // For now, let's just reorder and clear parentId to bring to same level
+                const targetParent = all[tgtIdx].parentId || null;
+                store.dispatch('UPDATE_PROJECT', { id: srcId, parentId: targetParent });
+                store.dispatch('UPDATE_PROJECT_ORDERS', all.map((p, i) => ({ id: p.id, order: i })));
+            }
         }
     }
     return false;

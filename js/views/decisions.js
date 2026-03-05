@@ -79,3 +79,5 @@ function bindDecisionCards(root) {
     });
   });
 }
+
+window.renderDecisions = renderDecisions;
