@@ -39,11 +39,19 @@ function renderLibrary(root) {
                <i data-feather="settings"></i>
              </button>
              
-             <div class="popover-menu glass-panel" id="zotero-config-popover" style="display:none; position:absolute; right:0; top:40px; width:300px; padding:16px; border-radius:8px; z-index:100; text-align:left;">
-               <h4 style="margin:0 0 12px 0; font-size:0.9rem;">Configuración Zotero API</h4>
-               <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">Obtén tu UserID y Web API Key gratuitos desde las preferencias de tu cuenta en zotero.org.</p>
-               <input class="form-input" id="zot-user-id" placeholder="Zotero User ID (ej. 1234567)" style="margin-bottom:8px;" value="${esc(zoteroApi.getCredentials().userId)}">
-               <input class="form-input" id="zot-api-key" placeholder="API Key secreta" type="password" style="margin-bottom:12px;" value="${esc(zoteroApi.getCredentials().apiKey)}">
+             <div class="popover-menu glass-panel" id="zotero-config-popover" style="display:none; position:absolute; right:0; top:40px; width:320px; padding:16px; border-radius:8px; z-index:100; text-align:left;">
+               <h4 style="margin:0 0 8px 0; font-size:0.9rem;">Configuración Zotero API</h4>
+               <div style="background:var(--bg-surface-2); border-radius:6px; padding:10px; margin-bottom:12px; font-size:0.75rem; color:var(--text-secondary); line-height:1.5;">
+                 <strong style="color:var(--text-primary);">¿Cómo obtener tus credenciales?</strong><br>
+                 1. Ve a <strong>zotero.org → Settings → Feeds/API</strong><br>
+                 2. Tu <strong>User ID</strong> es un <em>número</em> (ej. <code style="background:var(--bg-surface-3);padding:1px 4px;border-radius:3px;">1234567</code>), no tu email<br>
+                 3. Crea una <strong>API Key</strong> con permisos de lectura
+               </div>
+               <label style="font-size:0.75rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">USER ID NUMÉRICO</label>
+               <input class="form-input" id="zot-user-id" placeholder="Ej: 1234567 (solo números)" style="margin-bottom:4px;" value="${esc(zoteroApi.getCredentials().userId)}">
+               <p id="zot-user-id-error" style="display:none; font-size:0.72rem; color:var(--accent-danger); margin:0 0 8px 0;">&#9888; El User ID es un número, no un email. Encuéntralo en zotero.org/settings/keys</p>
+               <label style="font-size:0.75rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">API KEY</label>
+               <input class="form-input" id="zot-api-key" placeholder="Tu API Key secreta" type="password" style="margin-bottom:12px;" value="${esc(zoteroApi.getCredentials().apiKey)}">
                <button class="btn btn-primary btn-sm" id="btn-zot-save-cfg" style="width:100%;">Guardar credenciales</button>
              </div>
            </div>
@@ -91,12 +99,30 @@ function renderLibrary(root) {
 
   if (btnSaveCfg) {
     btnSaveCfg.addEventListener('click', () => {
-      const uid = document.getElementById('zot-user-id').value;
-      const key = document.getElementById('zot-api-key').value;
+      const uid = document.getElementById('zot-user-id').value.trim();
+      const key = document.getElementById('zot-api-key').value.trim();
+      const errorEl = document.getElementById('zot-user-id-error');
+
+      // Validate: User ID must be numeric, not an email or string
+      if (!uid || !/^\d+$/.test(uid)) {
+        errorEl.style.display = 'block';
+        document.getElementById('zot-user-id').focus();
+        return;
+      }
+
+      errorEl.style.display = 'none';
       zoteroApi.setCredentials(uid, key);
       popover.style.display = 'none';
       showToast('Credenciales guardadas localmente', 'success');
     });
+
+    // Hide error on input change
+    const userIdInput = document.getElementById('zot-user-id');
+    if (userIdInput) {
+      userIdInput.addEventListener('input', () => {
+        document.getElementById('zot-user-id-error').style.display = 'none';
+      });
+    }
   }
 
   if (btnSync) {
