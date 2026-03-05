@@ -4,6 +4,10 @@
  * Updated to include all new view modules and assets.
  */
 
+// ⚠️  RECORDATORIO: incrementa el número de versión cada vez que agregues,
+//    elimines o modifiques un archivo en SHELL_ASSETS (o en index.html / sw.js),
+//    para que los usuarios existentes descarguen el service worker actualizado.
+//    Ejemplo: workspace-v7 → workspace-v8
 const CACHE_NAME = 'workspace-v7';
 const SHELL_ASSETS = [
     '/',
@@ -36,6 +40,8 @@ const SHELL_ASSETS = [
     '/js/views/medical.js',
     '/js/views/integrations.js',
     '/js/views/matrix.js',
+    // Vendor
+    '/js/vendor/feather.min.js',
     // Icons
     '/icons/icon-72.png',
     '/icons/icon-96.png',
@@ -48,14 +54,13 @@ const SHELL_ASSETS = [
     '/icons/apple-touch-icon.png',
     // External CDN (cached for offline)
     'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
-    'https://unpkg.com/feather-icons/dist/feather.min.js',
 ];
 
 // ── Install: cache shell ──────────────────────────────────────────────────────
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(SHELL_ASSETS.filter(a => !a.startsWith('https://fonts') && !a.startsWith('https://unpkg'))))
+            .then(cache => cache.addAll(SHELL_ASSETS.filter(a => !a.startsWith('https://'))))
             .then(() => self.skipWaiting())
             .catch(err => {
                 console.warn('[SW] Some assets failed to cache (non-fatal):', err);
@@ -80,8 +85,7 @@ self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
     const isLocal = url.origin === self.location.origin;
     const isCDN = url.hostname.includes('googleapis.com') ||
-        url.hostname.includes('gstatic.com') ||
-        url.hostname.includes('unpkg.com');
+        url.hostname.includes('gstatic.com');
 
     if (!isLocal && !isCDN) return;
 
