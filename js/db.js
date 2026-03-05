@@ -155,6 +155,34 @@ const initDB = () => new Promise(async (resolve, reject) => {
 
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Save indicator (debounced — one element reused across rapid batch saves)
+// ──────────────────────────────────────────────────────────────────────────────
+
+let _saveIndicatorEl = null;
+let _saveIndicatorTimer = null;
+
+function _showSaveIndicator() {
+  if (!_saveIndicatorEl) {
+    _saveIndicatorEl = document.createElement('div');
+    _saveIndicatorEl.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--accent-success);color:#fff;padding:4px 10px;border-radius:12px;font-size:0.7rem;font-weight:600;opacity:0;transition:opacity 0.2s;z-index:999999;pointer-events:none;box-shadow:0 2px 5px rgba(0,0,0,0.2);display:flex;align-items:center;gap:4px;';
+    _saveIndicatorEl.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Guardado local';
+    document.body.appendChild(_saveIndicatorEl);
+  }
+  requestAnimationFrame(() => { if (_saveIndicatorEl) _saveIndicatorEl.style.opacity = '1'; });
+
+  clearTimeout(_saveIndicatorTimer);
+  _saveIndicatorTimer = setTimeout(() => {
+    if (_saveIndicatorEl) {
+      _saveIndicatorEl.style.opacity = '0';
+      setTimeout(() => {
+        _saveIndicatorEl?.remove();
+        _saveIndicatorEl = null;
+      }, 200);
+    }
+  }, 1500);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Generic CRUD helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -196,16 +224,7 @@ const dbAPI = {
     try {
       const res = await tx(storeName, 'readwrite', s => s.put(record));
       if (storeName !== 'logs' && storeName !== 'syncQueue') {
-        // Subtle visual feedback that DB is saving
-        const ind = document.createElement('div');
-        ind.style.cssText = 'position:fixed; bottom:20px; right:20px; background:var(--accent-success); color:#fff; padding:4px 10px; border-radius:12px; font-size:0.7rem; font-weight:600; opacity:0; transition:opacity 0.2s; z-index:999999; pointer-events:none; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:4px;';
-        ind.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Guardado local';
-        document.body.appendChild(ind);
-        requestAnimationFrame(() => ind.style.opacity = '1');
-        setTimeout(() => {
-          ind.style.opacity = '0';
-          setTimeout(() => ind.remove(), 200);
-        }, 1500);
+        _showSaveIndicator();
       }
       return res;
     } catch (e) {

@@ -1,5 +1,5 @@
 /**
- * sw.js — Service Worker v5
+ * sw.js — Service Worker v7
  * Cache-first strategy for shell assets + offline fallback.
  * Updated to include all new view modules and assets.
  */
@@ -15,9 +15,11 @@ const SHELL_ASSETS = [
     '/js/db.js',
     '/js/utils.js',
     '/js/store.js',
+    '/js/router.js',
     '/js/sync.js',
     '/js/modals.js',
     '/js/notifications.js',
+    '/js/components.js',
     '/js/app.js',
     '/js/api/zotero.js',
     // Views

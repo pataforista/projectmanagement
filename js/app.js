@@ -19,54 +19,76 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let savedHash = localStorage.getItem('workspace_lock_hash');
 
-    await new Promise(resolve => {
-        if (!authOverlay) return resolve();
+    // Re-usable function to show the lock overlay and resolve when unlocked
+    function showLockScreen() {
+        return new Promise(resolve => {
+            if (!authOverlay) return resolve();
+            savedHash = localStorage.getItem('workspace_lock_hash');
+            authPassword.value = '';
+            authPassword.style.border = '';
 
-        if (!savedHash) {
-            authOverlay.classList.add('open');
-            authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-            authForm.onsubmit = (e) => {
-                e.preventDefault();
-                const pwd = authPassword.value.trim();
-                if (pwd.length < 4) {
-                    authPassword.style.border = '1px solid var(--accent-warning)';
-                    setTimeout(() => authPassword.style.border = '', 1000);
-                    return;
-                }
-                localStorage.setItem('workspace_lock_hash', hashStr(pwd));
-                authOverlay.classList.remove('open');
-                resolve();
-            };
-        } else {
-            authOverlay.classList.add('open');
-            authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
-            authForm.onsubmit = (e) => {
-                e.preventDefault();
-                const pwd = authPassword.value.trim();
-                if (hashStr(pwd) === savedHash) {
+            if (!savedHash) {
+                authOverlay.classList.add('open');
+                authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
+                authForm.onsubmit = (e) => {
+                    e.preventDefault();
+                    const pwd = authPassword.value.trim();
+                    if (pwd.length < 4) {
+                        authPassword.style.border = '1px solid var(--accent-warning)';
+                        setTimeout(() => authPassword.style.border = '', 1000);
+                        return;
+                    }
+                    localStorage.setItem('workspace_lock_hash', hashStr(pwd));
                     authOverlay.classList.remove('open');
                     resolve();
-                } else {
-                    authPassword.style.border = '1px solid var(--accent-danger)';
-                    authPassword.value = '';
-                    setTimeout(() => authPassword.style.border = '', 1000);
-                }
-            };
-        }
-    });
+                };
+            } else {
+                authOverlay.classList.add('open');
+                authPassword.focus();
+                authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
+                let failedAttempts = 0;
+                let throttled = false;
+                authForm.onsubmit = (e) => {
+                    e.preventDefault();
+                    if (throttled) return;
+                    const pwd = authPassword.value.trim();
+                    if (hashStr(pwd) === savedHash) {
+                        failedAttempts = 0;
+                        authOverlay.classList.remove('open');
+                        resolve();
+                    } else {
+                        failedAttempts++;
+                        authPassword.style.border = '1px solid var(--accent-danger)';
+                        authPassword.value = '';
+                        // Progressive delay: 1s, 2s, 4s, 4s...
+                        const delay = Math.min(1000 * Math.pow(2, failedAttempts - 1), 4000);
+                        throttled = true;
+                        authForm.querySelector('button[type="submit"]').disabled = true;
+                        setTimeout(() => {
+                            throttled = false;
+                            authForm.querySelector('button[type="submit"]').disabled = false;
+                            authPassword.style.border = '';
+                        }, delay);
+                    }
+                };
+            }
+        });
+    }
+
+    await showLockScreen();
 
     // ── 0.1. Auto-Lock & Global Lock ───────────────────────────────────────────
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden' && localStorage.getItem('autolock_enabled') === 'true') {
             if (localStorage.getItem('workspace_lock_hash')) {
-                location.reload();
+                showLockScreen();
             }
         }
     });
 
     window.lockWorkspace = () => {
         if (localStorage.getItem('workspace_lock_hash')) {
-            location.reload();
+            showLockScreen();
         } else {
             if (window.showToast) showToast('Primero configura una contraseña en Perfil.', 'info');
         }

@@ -47,9 +47,10 @@ function parseCsv(text) {
     return result;
 }
 
-String.prototype.slugify = function () {
-    return this.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-};
+function slugify(str) {
+    return String(str).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+window.slugify = slugify;
 
 function downloadFile(name, content) {
     const blob = new Blob([content], { type: 'text/markdown' });

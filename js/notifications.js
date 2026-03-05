@@ -46,9 +46,9 @@ const NotificationsManager = {
                 if (t.status === 'Terminado' || t.status === 'Archivado') return;
                 if (!t.dueDate) return;
 
-                // Due date is YYYY-MM-DD
-                const dueDate = new Date(t.dueDate);
-                // Adjust for timezone differences by checking local time components
+                // Parse YYYY-MM-DD as local time to avoid UTC midnight offset issues
+                const [y, m, d] = t.dueDate.split('-').map(Number);
+                const dueDate = new Date(y, m - 1, d);
                 const diffTime = dueDate.getTime() - today.getTime();
                 const diffDays = diffTime / (1000 * 60 * 60 * 24);
 

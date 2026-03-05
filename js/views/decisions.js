@@ -25,7 +25,7 @@ function renderDecisions(root) {
         </div>
       </div>
       <div class="decisions-list" id="decisions-list">
-        ${renderDecisionsList(store.get.allDecisions())}
+        ${renderDecisionsList(store.get.decisions())}
       </div>
     </div>`;
 
@@ -36,7 +36,7 @@ function renderDecisions(root) {
     root.querySelector(`#${id}`)?.addEventListener('change', () => {
       const pid = root.querySelector('#dec-filter-proj')?.value || '';
       const impact = root.querySelector('#dec-filter-impact')?.value || '';
-      let decs = store.get.allDecisions();
+      let decs = store.get.decisions();
       if (pid) decs = decs.filter(d => d.projectId === pid);
       if (impact) decs = decs.filter(d => d.impact === impact);
       root.querySelector('#decisions-list').innerHTML = renderDecisionsList(decs);
@@ -62,7 +62,7 @@ function bindDecisionCards(root) {
       if (e.target.closest('.dec-del-btn')) return;
 
       const dId = card.dataset.id;
-      const decision = store.get.allDecisions().find(d => d.id === dId);
+      const decision = store.get.decisions().find(d => d.id === dId);
       if (decision) openDecisionModal(decision);
     });
   });
@@ -72,7 +72,7 @@ function bindDecisionCards(root) {
       e.stopPropagation();
       if (confirm('¿Eliminar esta decisión?')) {
         await store.dispatch('DELETE_DECISION', { id: btn.dataset.id });
-        root.querySelector('#decisions-list').innerHTML = renderDecisionsList(store.get.allDecisions());
+        root.querySelector('#decisions-list').innerHTML = renderDecisionsList(store.get.decisions());
         feather.replace();
         bindDecisionCards(root);
       }

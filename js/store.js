@@ -405,7 +405,6 @@ const store = (() => {
         cyclesByProject: (id) => _state.cycles.filter(c => c.projectId === id),
         activeCycles: () => _state.cycles.filter(c => c.status === 'activo'),
         decisionsByProject: (id) => _state.decisions.filter(d => d.projectId === id),
-        allDecisions: () => _state.decisions,
         decisions: () => _state.decisions,
         documentByProject: (id) => _state.documents.find(d => d.projectId === id) || null,
         documents: () => _state.documents,

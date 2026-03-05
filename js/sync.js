@@ -20,6 +20,27 @@ const syncManager = (() => {
         autoSyncMinutes: 5,
     };
 
+    function _confirmDialog(message) {
+        return new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.style.zIndex = '100000';
+            overlay.innerHTML = `
+                <div class="modal" style="max-width:380px;">
+                    <div class="modal-body" style="padding:24px 20px 8px;">
+                        <p style="margin:0;line-height:1.5;">${esc(message)}</p>
+                    </div>
+                    <div class="modal-footer" style="justify-content:flex-end;gap:8px;">
+                        <button class="btn btn-secondary" id="_cd-no">No, sobrescribir</button>
+                        <button class="btn btn-primary" id="_cd-yes">Sí, descargar primero</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            overlay.querySelector('#_cd-yes').addEventListener('click', () => { overlay.remove(); resolve(true); });
+            overlay.querySelector('#_cd-no').addEventListener('click', () => { overlay.remove(); resolve(false); });
+        });
+    }
+
     function getConfig() {
         const raw = localStorage.getItem(CONFIG_KEY);
         if (!raw) return { ...defaultConfig };
@@ -181,15 +202,14 @@ const syncManager = (() => {
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
                 if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate + 60000) {
-                    // Release lock before showing confirm dialog
                     isSyncing = false;
-                    const confirmPull = confirm("⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?");
+                    const confirmPull = await _confirmDialog(
+                        '⚠️ Drive tiene cambios más recientes. ¿Deseas descargar los cambios del equipo antes de sobrescribir?'
+                    );
                     if (confirmPull) {
-                        // Do a clean pull, update local timestamp, then return without pushing
                         await pull();
                         return;
                     }
-                    // User said No, re-acquire lock and continue pushing
                     isSyncing = true;
                 }
                 await updateFile(fileId, data);
@@ -326,6 +346,7 @@ const syncManager = (() => {
     async function exportToMarkdown(projectId) {
         const p = store.get.projectById(projectId);
         const doc = store.get.documentByProject(projectId);
+        if (!p) return showToast('Proyecto no encontrado', 'error');
         if (!doc) return showToast('No hay documento para este proyecto', 'info');
 
         const text = doc.content.map(b => {
@@ -338,7 +359,7 @@ const syncManager = (() => {
             return '---';
         }).join('\n\n');
 
-        downloadFile(`${p.name.slugify()}.md`, text);
+        downloadFile(`${slugify(p.name)}.md`, text);
     }
 
     function parseTrelloJson(json) {
