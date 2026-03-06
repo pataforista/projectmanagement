@@ -5,6 +5,7 @@
 function renderIntegrations(root) {
   const syncConfig = (window.syncManager?.getConfig) ? syncManager.getConfig() : {};
   const zoteroCreds = (window.zoteroApi?.getCredentials) ? zoteroApi.getCredentials() : { userId: '', apiKey: '' };
+  const zenodoCreds = (window.zenodoApi?.getCredentials) ? zenodoApi.getCredentials() : { token: '', sandbox: true };
 
   root.innerHTML = `
     <div class="view-inner">
@@ -103,6 +104,34 @@ function renderIntegrations(root) {
           </div>
         </div>
 
+        <!-- Zenodo -->
+        <div class="card glass-panel integration-card">
+          <div class="integration-header">
+            <div class="integration-icon" style="background:linear-gradient(135deg,#1f6feb,#0d4a8a);"><i data-feather="globe"></i></div>
+            <div class="integration-title">
+              <h3>Zenodo</h3>
+              <span class="badge ${zenodoCreds.token ? 'badge-success' : 'badge-neutral'}">
+                ${zenodoCreds.token ? (zenodoCreds.sandbox ? 'Sandbox' : 'Producción') : 'No conectado'}
+              </span>
+            </div>
+          </div>
+          <div class="integration-body">
+            <p>Publica proyectos con DOI permanente en Zenodo (CERN).</p>
+            <div class="form-group" style="margin-top:12px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">Access Token</label>
+              <input type="password" class="form-input" id="int-zenodo-token"
+                value="${esc(zenodoCreds.token || '')}" placeholder="Token personal de Zenodo">
+            </div>
+            <label class="checkbox-item" style="margin-top:8px;">
+              <input type="checkbox" id="int-zenodo-sandbox" ${zenodoCreds.sandbox !== false ? 'checked' : ''}>
+              <span>Usar Sandbox (pruebas, recomendado)</span>
+            </label>
+            <button class="btn btn-primary btn-sm" id="btn-save-zenodo" style="margin-top:16px;width:100%;">
+              Guardar Zenodo
+            </button>
+          </div>
+        </div>
+
         <!-- Seguridad -->
         <div class="card glass-panel integration-card">
           <div class="integration-header">
@@ -170,6 +199,19 @@ function renderIntegrations(root) {
       syncManager.syncTodoist();
       showToast('Enviando tareas a Todoist...', 'info');
     }
+  });
+
+  root.querySelector('#btn-save-zenodo')?.addEventListener('click', () => {
+    const token = root.querySelector('#int-zenodo-token').value.trim();
+    const sandbox = root.querySelector('#int-zenodo-sandbox').checked;
+    if (window.zenodoApi?.setCredentials) {
+      zenodoApi.setCredentials(token, sandbox);
+    } else {
+      localStorage.setItem('zenodo_token', token);
+      localStorage.setItem('zenodo_sandbox', String(sandbox));
+    }
+    showToast(token ? `Zenodo guardado (${sandbox ? 'sandbox' : 'producción'}).` : 'Token eliminado.', token ? 'success' : 'info');
+    renderIntegrations(root);
   });
 
   root.querySelector('#btn-save-security')?.addEventListener('click', () => {
