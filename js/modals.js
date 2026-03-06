@@ -6,7 +6,7 @@
 // Modal helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-const STATUSES = ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
+const STATUSES = ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Pendiente Aprobación', 'Terminado', 'Archivado'];
 const TASK_TYPES = ['tarea', 'subtarea', 'entregable', 'hito', 'idea', 'decisión', 'recurso'];
 window.STATUSES = STATUSES;
 window.TASK_TYPES = TASK_TYPES;
@@ -1074,3 +1074,545 @@ function openSessionModal(id = null) {
 }
 
 window.openSessionModal = openSessionModal;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Admin Panel
+// ────────────────────────────────────────────────────────────────────────────
+
+// Hash helper using Web Crypto (SHA-256)
+async function _adminHashStr(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function openAdminLoginModal() {
+  const adminProfile = getAdminProfile();
+
+  if (!adminProfile.hasPassword) {
+    // First time: set up admin account
+    openAdminSetupModal();
+    return;
+  }
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="shield"></i> Acceso de Administrador</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary); margin-bottom:16px; font-size:0.9rem;">
+        Ingresa la contraseña de administrador para acceder al panel de gestión.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Contraseña de Administrador</label>
+        <input type="password" class="form-input" id="admin-pwd-input" placeholder="Contraseña de admin" autofocus>
+      </div>
+      <div id="admin-login-error" style="display:none; color:var(--accent-danger); font-size:0.85rem; margin-top:8px;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="admin-setup-link" style="color:var(--text-muted); font-size:0.8rem;">Cambiar contraseña admin</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="admin-login-submit"><i data-feather="log-in"></i> Entrar</button>
+      </div>
+    </div>`);
+
+  modal.querySelector('#modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+
+  const doLogin = async () => {
+    const pwd = modal.querySelector('#admin-pwd-input').value.trim();
+    const inputHash = await _adminHashStr(pwd);
+    const savedHash = localStorage.getItem('workspace_admin_hash');
+    if (inputHash === savedHash) {
+      setAdminSession(true);
+      closeModal();
+      showToast(`Bienvenido, ${adminProfile.name}`, 'success');
+      updateAdminBadge();
+      openAdminPanel();
+    } else {
+      const errEl = modal.querySelector('#admin-login-error');
+      errEl.textContent = 'Contraseña incorrecta.';
+      errEl.style.display = 'block';
+      modal.querySelector('#admin-pwd-input').value = '';
+    }
+  };
+
+  modal.querySelector('#admin-login-submit').addEventListener('click', doLogin);
+  modal.querySelector('#admin-pwd-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  modal.querySelector('#admin-setup-link').addEventListener('click', () => { closeModal(); openAdminSetupModal(); });
+
+  if (window.feather) feather.replace();
+}
+
+function openAdminSetupModal() {
+  const adminProfile = getAdminProfile();
+  const isFirstTime = !adminProfile.hasPassword;
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="shield"></i> ${isFirstTime ? 'Configurar Cuenta de Administrador' : 'Cambiar Contraseña de Admin'}</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      ${isFirstTime ? `
+      <div style="background:var(--accent-primary)15; border-left:3px solid var(--accent-primary); border-radius:6px; padding:12px 16px; margin-bottom:16px; font-size:0.85rem; color:var(--text-secondary);">
+        <strong style="color:var(--text-primary);">Cuenta de Administrador General</strong><br>
+        El administrador puede gestionar todos los usuarios, aprobar/rechazar tareas pendientes y supervisar la continuidad de cuentas. Esta contraseña es independiente de la contraseña maestra del workspace.
+      </div>` : ''}
+      <div class="form-group">
+        <label class="form-label">Nombre del Administrador</label>
+        <input class="form-input" id="admin-setup-name" value="${esc(adminProfile.name)}" placeholder="Administrador General">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo del Administrador</label>
+        <input type="email" class="form-input" id="admin-setup-email" value="${esc(adminProfile.email)}" placeholder="admin@empresa.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">${isFirstTime ? 'Contraseña de Administrador' : 'Nueva Contraseña de Administrador'}</label>
+        <input type="password" class="form-input" id="admin-setup-pwd" placeholder="Mínimo 6 caracteres" autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmar Contraseña</label>
+        <input type="password" class="form-input" id="admin-setup-pwd2" placeholder="Repetir contraseña">
+      </div>
+      <div id="admin-setup-error" style="display:none; color:var(--accent-danger); font-size:0.85rem; margin-top:4px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="admin-setup-save"><i data-feather="save"></i> ${isFirstTime ? 'Crear Cuenta Admin' : 'Guardar Cambios'}</button>
+    </div>`);
+
+  modal.querySelector('#modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+
+  modal.querySelector('#admin-setup-save').addEventListener('click', async () => {
+    const name = modal.querySelector('#admin-setup-name').value.trim() || 'Administrador General';
+    const email = modal.querySelector('#admin-setup-email').value.trim().toLowerCase();
+    const pwd = modal.querySelector('#admin-setup-pwd').value;
+    const pwd2 = modal.querySelector('#admin-setup-pwd2').value;
+    const errEl = modal.querySelector('#admin-setup-error');
+
+    if (pwd.length < 6) {
+      errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (pwd !== pwd2) {
+      errEl.textContent = 'Las contraseñas no coinciden.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    const hash = await _adminHashStr(pwd);
+    localStorage.setItem('workspace_admin_hash', hash);
+    localStorage.setItem('workspace_admin_name', name);
+    localStorage.setItem('workspace_admin_email', email);
+
+    closeModal();
+    showToast(isFirstTime ? `Cuenta de administrador "${name}" creada.` : 'Contraseña de administrador actualizada.', 'success');
+    updateAdminBadge();
+
+    if (isFirstTime) {
+      // Auto-login after setup
+      setAdminSession(true);
+      setTimeout(() => openAdminPanel(), 300);
+    }
+  });
+
+  if (window.feather) feather.replace();
+}
+
+function openAdminPanel() {
+  if (!isAdminSession()) {
+    openAdminLoginModal();
+    return;
+  }
+
+  const adminProfile = getAdminProfile();
+
+  const renderPanelContent = (tabId, container) => {
+    if (tabId === 'members') {
+      renderMembersTab(container);
+    } else if (tabId === 'continuity') {
+      renderContinuityTab(container);
+    } else if (tabId === 'approvals') {
+      renderApprovalsTab(container);
+    } else if (tabId === 'settings') {
+      renderAdminSettingsTab(container);
+    }
+    if (window.feather) feather.replace();
+  };
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="shield"></i> Panel de Administración — ${esc(adminProfile.name)}</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0; min-height:480px;">
+      <div id="admin-tabs" style="display:flex; gap:2px; padding:12px 20px 0; border-bottom:1px solid var(--border-color); flex-wrap:wrap;">
+        <button class="tab-btn active" data-atab="members" style="white-space:nowrap;"><i data-feather="users" style="width:14px;height:14px;"></i> Miembros</button>
+        <button class="tab-btn" data-atab="continuity" style="white-space:nowrap;"><i data-feather="link" style="width:14px;height:14px;"></i> Continuidad</button>
+        <button class="tab-btn" data-atab="approvals" style="white-space:nowrap;"><i data-feather="check-circle" style="width:14px;height:14px;"></i> Aprobaciones</button>
+        <button class="tab-btn" data-atab="settings" style="white-space:nowrap;"><i data-feather="settings" style="width:14px;height:14px;"></i> Ajustes Admin</button>
+      </div>
+      <div id="admin-tab-content" style="padding:20px; overflow-y:auto; max-height:60vh;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <button class="btn btn-ghost btn-sm" id="admin-logout" style="color:var(--accent-danger); font-size:0.82rem;"><i data-feather="log-out"></i> Cerrar sesión admin</button>
+      <button class="btn btn-secondary" id="modal-close2">Cerrar Panel</button>
+    </div>`);
+  modal.style.maxWidth = '740px';
+
+  const tabContent = modal.querySelector('#admin-tab-content');
+
+  modal.querySelector('#modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#modal-close2').addEventListener('click', closeModal);
+  modal.querySelector('#admin-logout').addEventListener('click', () => {
+    setAdminSession(false);
+    updateAdminBadge();
+    closeModal();
+    showToast('Sesión de administrador cerrada.', 'info');
+  });
+
+  modal.querySelectorAll('.tab-btn[data-atab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.tab-btn[data-atab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderPanelContent(btn.dataset.atab, tabContent);
+    });
+  });
+
+  // Render default tab
+  renderPanelContent('members', tabContent);
+  if (window.feather) feather.replace();
+}
+
+function renderMembersTab(container) {
+  const members = store.get.members();
+
+  const memberRows = members.map(m => `
+    <tr data-mid="${m.id}">
+      <td style="padding:10px 12px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--accent-primary)20;color:var(--accent-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;">${esc(m.avatar || '?')}</div>
+          <div>
+            <div style="font-weight:600; color:var(--text-primary);">${esc(m.name)}</div>
+            ${m.email ? `<div style="font-size:0.78rem; color:var(--text-muted);">${esc(m.email)}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td style="padding:10px 12px; color:var(--text-secondary); font-size:0.85rem;">${esc(m.role || '—')}</td>
+      <td style="padding:10px 12px;">
+        <span class="badge ${m.systemRole === 'admin' ? 'badge-info' : 'badge-neutral'}" style="font-size:0.75rem;">
+          ${m.systemRole === 'admin' ? 'Admin' : 'Usuario'}
+        </span>
+      </td>
+      <td style="padding:10px 12px; text-align:right;">
+        <button class="btn btn-sm btn-ghost member-edit-btn" data-mid="${m.id}" title="Editar"><i data-feather="edit-2" style="width:14px;height:14px;"></i></button>
+        <button class="btn btn-sm btn-ghost member-delete-btn" data-mid="${m.id}" title="Eliminar" style="color:var(--accent-danger);"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
+      </td>
+    </tr>`).join('');
+
+  container.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:1rem; font-weight:600;">Gestión de Miembros (${members.length})</h3>
+      <button class="btn btn-sm btn-primary" id="admin-add-member"><i data-feather="user-plus"></i> Nuevo Miembro</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border-color);">
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Nombre</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Rol</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Permisos</th>
+            <th style="text-align:right; padding:8px 12px; color:var(--text-muted); font-weight:500;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${memberRows || '<tr><td colspan="4" style="padding:24px; text-align:center; color:var(--text-muted);">Sin miembros registrados</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+
+  if (window.feather) feather.replace();
+
+  container.querySelector('#admin-add-member')?.addEventListener('click', () => openMemberEditModal(null, container));
+
+  container.querySelectorAll('.member-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openMemberEditModal(btn.dataset.mid, container));
+  });
+
+  container.querySelectorAll('.member-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const m = store.get.members().find(x => x.id === btn.dataset.mid);
+      if (!m) return;
+      if (!confirm(`¿Eliminar al miembro "${m.name}"? Esta acción no se puede deshacer.`)) return;
+      await store.dispatch('DELETE_MEMBER', { id: m.id });
+      renderMembersTab(container);
+    });
+  });
+}
+
+function openMemberEditModal(memberId, parentContainer) {
+  const isEdit = !!memberId;
+  const m = isEdit ? store.get.members().find(x => x.id === memberId) : null;
+
+  const innerModal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="${isEdit ? 'edit-2' : 'user-plus'}"></i> ${isEdit ? 'Editar Miembro' : 'Nuevo Miembro'}</h2>
+      <button class="btn btn-icon" id="member-modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nombre completo</label>
+        <input class="form-input" id="mem-name" value="${esc(m?.name || '')}" placeholder="Nombre del miembro" autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rol en el equipo</label>
+        <input class="form-input" id="mem-role" value="${esc(m?.role || '')}" placeholder="ej. Investigador, Supervisor">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Correo de identidad (para continuidad entre dispositivos)</label>
+        <input type="email" class="form-input" id="mem-email" value="${esc(m?.email || '')}" placeholder="correo@institucion.edu">
+        <small style="color:var(--text-secondary); display:block; margin-top:4px;">Si el usuario usa el mismo correo en perfil, se vinculan automáticamente.</small>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Avatar (1-2 letras)</label>
+        <input class="form-input" id="mem-avatar" value="${esc(m?.avatar || '')}" maxlength="2" style="max-width:80px;">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nivel de permisos</label>
+        <select class="form-select" id="mem-role-sys">
+          <option value="user" ${(!m?.systemRole || m.systemRole === 'user') ? 'selected' : ''}>Usuario — Acceso normal</option>
+          <option value="admin" ${m?.systemRole === 'admin' ? 'selected' : ''}>Administrador — Acceso completo</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="member-modal-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="member-modal-save"><i data-feather="save"></i> Guardar</button>
+    </div>`);
+
+  innerModal.querySelector('#member-modal-close').addEventListener('click', closeModal);
+  innerModal.querySelector('#member-modal-cancel').addEventListener('click', closeModal);
+
+  innerModal.querySelector('#member-modal-save').addEventListener('click', async () => {
+    const name = innerModal.querySelector('#mem-name').value.trim();
+    if (!name) { showToast('El nombre es requerido.', 'error'); return; }
+    const role = innerModal.querySelector('#mem-role').value.trim();
+    const email = innerModal.querySelector('#mem-email').value.trim().toLowerCase();
+    const avatar = (innerModal.querySelector('#mem-avatar').value.trim().toUpperCase() || name.charAt(0).toUpperCase()).slice(0, 2);
+    const systemRole = innerModal.querySelector('#mem-role-sys').value;
+
+    const payload = { name, role, email, avatar, systemRole };
+
+    if (isEdit) {
+      await store.dispatch('UPDATE_MEMBER', { id: memberId, ...payload });
+      showToast(`Miembro "${name}" actualizado.`, 'success');
+    } else {
+      await store.dispatch('ADD_MEMBER', payload);
+      showToast(`Miembro "${name}" creado.`, 'success');
+    }
+
+    closeModal();
+    // Re-render parent member list
+    if (parentContainer) renderMembersTab(parentContainer);
+  });
+
+  if (window.feather) feather.replace();
+}
+
+function renderContinuityTab(container) {
+  const members = store.get.members();
+  const tasks = store.get.allTasks();
+
+  const rows = members.map(m => {
+    const assignedCount = tasks.filter(t => t.assigneeId === m.id).length;
+    const emailKey = m.email ? `email:${m.email}` : null;
+    const memberKey = `member:${m.id}`;
+    const linkedBy = emailKey ? 'correo' : 'ID de miembro';
+
+    return `
+      <tr>
+        <td style="padding:10px 12px;">
+          <div style="font-weight:600;">${esc(m.name)}</div>
+          <div style="font-size:0.78rem; color:var(--text-muted);">${esc(m.role || '—')}</div>
+        </td>
+        <td style="padding:10px 12px; font-size:0.8rem; font-family:var(--font-mono); color:var(--text-secondary);">
+          ${emailKey ? `<div style="color:var(--accent-success);">✓ ${esc(m.email)}</div>` : `<div style="color:var(--accent-warning);">⚠ Sin correo</div>`}
+        </td>
+        <td style="padding:10px 12px; text-align:center; color:var(--text-secondary);">${assignedCount}</td>
+        <td style="padding:10px 12px;">
+          <span class="badge ${emailKey ? 'badge-success' : 'badge-warning'}" style="font-size:0.73rem;">
+            ${emailKey ? 'Por correo' : 'Por ID local'}
+          </span>
+        </td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <h3 style="margin:0 0 6px; font-size:1rem; font-weight:600;">Continuidad de Cuentas</h3>
+      <p style="color:var(--text-secondary); font-size:0.85rem; margin:0;">
+        Los miembros con <strong>correo de identidad</strong> mantienen su cuenta activa en cualquier dispositivo o sesión.<br>
+        Los miembros sin correo dependen del ID local (puede perderse si se resetea el workspace).
+      </p>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border-color);">
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Miembro</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Identidad</th>
+            <th style="text-align:center; padding:8px 12px; color:var(--text-muted); font-weight:500;">Tareas</th>
+            <th style="text-align:left; padding:8px 12px; color:var(--text-muted); font-weight:500;">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="4" style="padding:24px; text-align:center; color:var(--text-muted);">Sin miembros</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px; padding:12px 16px; background:var(--bg-surface); border-radius:8px; font-size:0.83rem; color:var(--text-secondary);">
+      <strong style="color:var(--text-primary);">Recomendación:</strong> Asigna un correo a cada miembro para garantizar continuidad entre sesiones y dispositivos. El correo vincula al miembro con el perfil de usuario cuando coinciden.
+    </div>`;
+}
+
+function renderApprovalsTab(container) {
+  const pendingTasks = store.get.allTasks().filter(t => t.status === 'Pendiente Aprobación');
+  const projects = store.get.projects();
+
+  if (!pendingTasks.length) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:40px 20px; color:var(--text-muted);">
+        <i data-feather="check-circle" style="width:40px;height:40px; margin-bottom:12px; color:var(--accent-success);"></i>
+        <p style="margin:0; font-weight:500;">Sin aprobaciones pendientes</p>
+        <p style="margin:8px 0 0; font-size:0.85rem;">Todas las tareas están al día.</p>
+      </div>`;
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  const rows = pendingTasks.map(t => {
+    const proj = projects.find(p => p.id === t.projectId);
+    const member = t.assigneeId ? store.get.memberById(t.assigneeId) : null;
+    return `
+      <div style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:14px 16px; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; color:var(--text-primary); margin-bottom:4px;">${esc(t.title)}</div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">
+              ${proj ? `<span style="margin-right:10px;">📁 ${esc(proj.name)}</span>` : ''}
+              ${member ? `<span>👤 ${esc(member.name)}</span>` : ''}
+              ${t.createdBy ? `<span style="margin-left:10px;">Solicitado por: ${esc(t.createdBy)}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button class="btn btn-sm" style="background:var(--accent-success)20; color:var(--accent-success); border:1px solid var(--accent-success)40;"
+              data-approve="${t.id}"><i data-feather="check" style="width:13px;height:13px;"></i> Aprobar</button>
+            <button class="btn btn-sm" style="background:var(--accent-danger)20; color:var(--accent-danger); border:1px solid var(--accent-danger)40;"
+              data-reject="${t.id}"><i data-feather="x" style="width:13px;height:13px;"></i> Rechazar</button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <h3 style="margin:0; font-size:1rem; font-weight:600;">Aprobaciones Pendientes (${pendingTasks.length})</h3>
+    </div>
+    ${rows}`;
+
+  if (window.feather) feather.replace();
+
+  container.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await store.dispatch('UPDATE_TASK', { id: btn.dataset.approve, status: 'En elaboración' });
+      showToast('Tarea aprobada.', 'success');
+      renderApprovalsTab(container);
+    });
+  });
+
+  container.querySelectorAll('[data-reject]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await store.dispatch('UPDATE_TASK', { id: btn.dataset.reject, status: 'Capturado' });
+      showToast('Tarea rechazada y devuelta a Capturado.', 'info');
+      renderApprovalsTab(container);
+    });
+  });
+}
+
+function renderAdminSettingsTab(container) {
+  const adminProfile = getAdminProfile();
+  container.innerHTML = `
+    <div style="max-width:480px;">
+      <h3 style="margin:0 0 16px; font-size:1rem; font-weight:600;">Cuenta de Administrador</h3>
+      <div style="background:var(--bg-surface); border:1px solid var(--border-color); border-radius:8px; padding:16px; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+          <div style="width:40px;height:40px;border-radius:50%;background:var(--accent-primary)20;color:var(--accent-primary);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1rem;">
+            ${esc((adminProfile.name || 'A').charAt(0).toUpperCase())}
+          </div>
+          <div>
+            <div style="font-weight:600; color:var(--text-primary);">${esc(adminProfile.name)}</div>
+            <div style="font-size:0.82rem; color:var(--text-muted);">${adminProfile.email ? esc(adminProfile.email) : 'Sin correo configurado'}</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="admin-change-pwd"><i data-feather="key"></i> Cambiar contraseña admin</button>
+      </div>
+      <div style="background:var(--accent-danger)10; border:1px solid var(--accent-danger)30; border-radius:8px; padding:16px;">
+        <h4 style="margin:0 0 8px; font-size:0.9rem; color:var(--accent-danger);">Zona de peligro</h4>
+        <p style="margin:0 0 12px; font-size:0.83rem; color:var(--text-secondary);">Cerrar sesión de administrador o eliminar la cuenta admin del sistema.</p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-sm" style="background:var(--accent-danger)15; color:var(--accent-danger); border:1px solid var(--accent-danger)40;" id="admin-session-close">
+            <i data-feather="log-out"></i> Cerrar sesión admin
+          </button>
+          <button class="btn btn-sm" style="background:var(--accent-danger)15; color:var(--accent-danger); border:1px solid var(--accent-danger)40;" id="admin-remove-account">
+            <i data-feather="trash-2"></i> Eliminar cuenta admin
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  if (window.feather) feather.replace();
+
+  container.querySelector('#admin-change-pwd').addEventListener('click', () => {
+    closeModal();
+    openAdminSetupModal();
+  });
+
+  container.querySelector('#admin-session-close').addEventListener('click', () => {
+    setAdminSession(false);
+    updateAdminBadge();
+    closeModal();
+    showToast('Sesión de administrador cerrada.', 'info');
+  });
+
+  container.querySelector('#admin-remove-account').addEventListener('click', () => {
+    if (!confirm('¿Eliminar la cuenta de administrador? Deberás crear una nueva para acceder al panel de admin.')) return;
+    localStorage.removeItem('workspace_admin_hash');
+    localStorage.removeItem('workspace_admin_name');
+    localStorage.removeItem('workspace_admin_email');
+    setAdminSession(false);
+    updateAdminBadge();
+    closeModal();
+    showToast('Cuenta de administrador eliminada.', 'info');
+  });
+}
+
+function updateAdminBadge() {
+  const btn = document.getElementById('btn-admin');
+  if (!btn) return;
+  if (isAdminSession()) {
+    btn.classList.add('admin-active');
+    btn.title = 'Panel de Administración (sesión activa)';
+  } else {
+    btn.classList.remove('admin-active');
+    btn.title = 'Panel de Administración';
+  }
+}
+
+window.openAdminLoginModal = openAdminLoginModal;
+window.openAdminSetupModal = openAdminSetupModal;
+window.openAdminPanel = openAdminPanel;
+window.updateAdminBadge = updateAdminBadge;

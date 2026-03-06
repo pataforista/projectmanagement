@@ -148,6 +148,7 @@ const STATUS_BADGE_CLASSES = {
     'En elaboración': 'badge-warning',
     'En revisión': 'badge-teal',
     'En espera': 'badge-danger',
+    'Pendiente Aprobación': 'badge-purple',
     'Terminado': 'badge-success',
     'Archivado': 'badge-neutral',
     'activo': 'badge-success',
@@ -228,6 +229,27 @@ export function generateUID() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
+// ── Admin Session ─────────────────────────────────────────────────────────────
+function isAdminSession() {
+    return sessionStorage.getItem('workspace_admin_active') === 'true';
+}
+
+function setAdminSession(active) {
+    if (active) {
+        sessionStorage.setItem('workspace_admin_active', 'true');
+    } else {
+        sessionStorage.removeItem('workspace_admin_active');
+    }
+}
+
+function getAdminProfile() {
+    return {
+        name: localStorage.getItem('workspace_admin_name') || 'Administrador General',
+        email: localStorage.getItem('workspace_admin_email') || '',
+        hasPassword: !!localStorage.getItem('workspace_admin_hash'),
+    };
+}
+
 // Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
@@ -244,5 +266,8 @@ window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
 window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
 window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
 window.getCurrentWorkspaceActor = getCurrentWorkspaceActor;
+window.isAdminSession = isAdminSession;
+window.setAdminSession = setAdminSession;
+window.getAdminProfile = getAdminProfile;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isAdminSession, setAdminSession, getAdminProfile };

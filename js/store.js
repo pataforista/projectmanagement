@@ -297,6 +297,25 @@ const store = (() => {
                 _notify(storeName);
                 return record;
             }
+            case 'UPDATE_MEMBER': {
+                storeName = 'members';
+                const idx = _state.members.findIndex(m => m.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.members[idx], ...payload, updatedAt: Date.now() };
+                    await dbAPI.put(storeName, updated);
+                    _state.members[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'DELETE_MEMBER': {
+                storeName = 'members';
+                await dbAPI.delete(storeName, payload.id);
+                _state.members = _state.members.filter(m => m.id !== payload.id);
+                _notify(storeName);
+                if (window.showToast) showToast('Miembro eliminado.', 'info');
+                break;
+            }
 
             // ── Library / Zotero ──
             case 'IMPORT_LIBRARY': {

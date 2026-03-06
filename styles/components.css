@@ -88,6 +88,12 @@
     border-color: var(--border-highlight);
 }
 
+.btn-icon.admin-active {
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    background: var(--accent-primary-bg, color-mix(in srgb, var(--accent-primary) 12%, transparent));
+}
+
 .btn-sm {
     padding: 4px 10px;
     font-size: 0.78rem;

@@ -377,6 +377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── 7. Load User Profile & Notifications ──────────────────────────────────
     if (window.updateUserProfileUI) updateUserProfileUI();
+    if (window.updateAdminBadge) updateAdminBadge();
     if (window.NotificationsManager) NotificationsManager.init();
     if (window.ChatManager) ChatManager.init();
 
@@ -403,6 +404,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-export')?.addEventListener('click', () => exportData());
     document.getElementById('btn-lock')?.addEventListener('click', () => {
         if (window.lockWorkspace) lockWorkspace();
+    });
+    document.getElementById('btn-admin')?.addEventListener('click', () => {
+        if (window.openAdminPanel) openAdminPanel();
     });
 
     document.getElementById('search-overlay')?.addEventListener('click', e => {
