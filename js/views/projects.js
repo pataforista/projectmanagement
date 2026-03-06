@@ -346,7 +346,7 @@ function showProjectTab(root, p, tab) {
       await store.dispatch('ADD_MESSAGE', {
         projectId: p.id,
         text,
-        author: localStorage.getItem('workspace_user_name') || 'Carlos',
+        author: getCurrentWorkspaceActor().label,
         from: 'me'
       });
       input.value = '';

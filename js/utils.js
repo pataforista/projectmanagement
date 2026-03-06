@@ -69,12 +69,39 @@ function normalizeWorkspaceName(name) {
         .trim();
 }
 
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
+
+function computeIdentityKey({ email, memberId, name }) {
+    const cleanEmail = normalizeEmail(email);
+    if (cleanEmail) return `email:${cleanEmail}`;
+    if (memberId) return `member:${memberId}`;
+    return `name:${normalizeWorkspaceName(name || 'usuario')}`;
+}
+
 function getCurrentWorkspaceUser() {
     const name = localStorage.getItem('workspace_user_name') || 'Carlos';
     const role = localStorage.getItem('workspace_user_role') || 'Owner';
     const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
     const memberId = localStorage.getItem('workspace_user_member_id') || '';
-    return { name, role, avatar, memberId };
+    const email = normalizeEmail(localStorage.getItem('workspace_user_email') || '');
+    const team = localStorage.getItem('workspace_team_label') || 'General';
+    const identityKey = computeIdentityKey({ email, memberId, name });
+    return { name, role, avatar, memberId, email, team, identityKey };
+}
+
+function getCurrentWorkspaceActor() {
+    const user = getCurrentWorkspaceUser();
+    const label = user.email ? `${user.name} <${user.email}>` : user.name;
+    return {
+        id: user.identityKey,
+        label,
+        name: user.name,
+        email: user.email,
+        memberId: user.memberId,
+        team: user.team,
+    };
 }
 
 function getCurrentWorkspaceMember() {
@@ -86,6 +113,11 @@ function getCurrentWorkspaceMember() {
     if (user.memberId) {
         const byId = members.find(m => m.id === user.memberId);
         if (byId) return byId;
+    }
+
+    if (user.email) {
+        const byEmail = members.find(m => normalizeEmail(m.email) === user.email);
+        if (byEmail) return byEmail;
     }
 
     const normalizedUserName = normalizeWorkspaceName(user.name);
@@ -211,5 +243,6 @@ window.generateUID = generateUID;
 window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
 window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
 window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
+window.getCurrentWorkspaceActor = getCurrentWorkspaceActor;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor };

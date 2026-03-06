@@ -44,12 +44,18 @@ function renderCollaboration(root) {
   }).sort((a, b) => b.inProgress - a.inProgress);
 
   const recentlyEditedByOthers = tasks
-    .filter(task => task.updatedAt && task.updatedBy && task.updatedBy !== currentUser.name)
+    .filter(task => {
+    if (!task.updatedAt || !task.updatedBy) return false;
+    if (task.updatedById && task.updatedById === currentUser.identityKey) return false;
+    return task.updatedBy !== currentUser.name;
+  })
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .slice(0, 6);
 
   const conflictRiskTasks = tasks.filter(task => {
-    if (!task.updatedAt || !task.updatedBy || task.updatedBy === currentUser.name) return false;
+    if (!task.updatedAt || !task.updatedBy) return false;
+    if (task.updatedById && task.updatedById === currentUser.identityKey) return false;
+    if (!task.updatedById && task.updatedBy === currentUser.name) return false;
     return (now - task.updatedAt) <= (15 * 60 * 1000);
   });
 
@@ -71,9 +77,10 @@ function renderCollaboration(root) {
               <div style="font-weight:600;">${esc(currentUser.name)}</div>
               <div style="font-size:0.82rem;color:var(--text-muted);">${esc(currentUser.role)}</div>
               <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${linkedMember ? `Miembro vinculado: ${esc(linkedMember.name)}` : 'Miembro sin vincular'}</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${currentUser.email ? esc(currentUser.email) : 'Sin correo de identidad'}</div>
             </div>
           </div>
-          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat. Vincula tu miembro para marcar con claridad qué tareas son tuyas.</p>
+          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat. Recomendación: define correo de identidad en Perfil para mantener continuidad aunque cambies de equipo o dispositivo.</p>
         </div>
 
         <div class="glass-panel" style="padding:16px;">

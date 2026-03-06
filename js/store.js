@@ -1,6 +1,6 @@
 import { dbAPI } from './db.js';
 import { createDelta, applyDelta } from './utils/versioning.js';
-import { generateUID as uid, esc } from './utils.js';
+import { generateUID as uid, esc, getCurrentWorkspaceActor } from './utils.js';
 
 const store = (() => {
     // ──────────────────────────────────────────────────────────────────────────
@@ -156,13 +156,15 @@ const store = (() => {
             // ── Tasks ──
             case 'ADD_TASK': {
                 storeName = 'tasks';
-                const actor = localStorage.getItem('workspace_user_name') || 'Carlos';
+                const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
                     createdAt: Date.now(),
-                    createdBy: actor,
+                    createdBy: actor.label,
+                    createdById: actor.id,
                     updatedAt: Date.now(),
-                    updatedBy: actor,
+                    updatedBy: actor.label,
+                    updatedById: actor.id,
                     cycleId: null,
                     subtasks: [],
                     tags: [],
@@ -176,13 +178,14 @@ const store = (() => {
             }
             case 'UPDATE_TASK': {
                 storeName = 'tasks';
-                const actor = localStorage.getItem('workspace_user_name') || 'Carlos';
+                const actor = getCurrentWorkspaceActor();
                 const idx = _state.tasks.findIndex(t => t.id === payload.id);
                 if (idx !== -1) {
                     const updated = {
                         ..._state.tasks[idx],
                         ...payload,
-                        updatedBy: actor,
+                        updatedBy: actor.label,
+                        updatedById: actor.id,
                         updatedAt: Date.now(),
                         dependencies: payload.dependencies || _state.tasks[idx].dependencies || []
                     };

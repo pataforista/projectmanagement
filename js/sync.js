@@ -1,4 +1,5 @@
 import { encryptRecord, decryptRecord, isLocked, hasKey } from './utils/crypto.js';
+import { getCurrentWorkspaceActor } from './utils.js';
 
 const syncManager = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -148,7 +149,7 @@ const syncManager = (() => {
             updatedAt: Date.now(),
             metadata: {
                 teamName: getConfig().teamName,
-                actor: localStorage.getItem('workspace_user_name') || 'owner-local',
+                actor: getCurrentWorkspaceActor().label,
             },
             projects: store.get.projects(),
             tasks: store.get.allTasks(),
