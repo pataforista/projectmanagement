@@ -605,23 +605,30 @@ function openDecisionModal(defaultProjectId) {
 // ────────────────────────────────────────────────────────────────────────────
 
 function updateUserProfileUI() {
-  const name = localStorage.getItem('workspace_user_name') || 'Carlos';
-  const role = localStorage.getItem('workspace_user_role') || 'Owner';
-  const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
+  const user = getCurrentWorkspaceUser();
+  const linkedMember = getCurrentWorkspaceMember();
+  const name = user.name;
+  const avatar = user.avatar;
+  const roleWithMember = linkedMember
+    ? `${user.role} · ${linkedMember.name}`
+    : user.role;
 
   const nameEl = document.getElementById('user-name');
   const roleEl = document.getElementById('user-role');
   const avatarEl = document.getElementById('user-avatar');
 
   if (nameEl) nameEl.textContent = name;
-  if (roleEl) roleEl.textContent = role;
+  if (roleEl) roleEl.textContent = roleWithMember;
   if (avatarEl) avatarEl.textContent = avatar;
 }
 
 function openProfileModal() {
-  const currentName = localStorage.getItem('workspace_user_name') || 'Carlos';
-  const currentRole = localStorage.getItem('workspace_user_role') || 'Owner';
-  const currentAvatar = localStorage.getItem('workspace_user_avatar') || currentName.charAt(0).toUpperCase();
+  const user = getCurrentWorkspaceUser();
+  const members = store.get.members();
+  const linkedMember = getCurrentWorkspaceMember();
+  const currentName = user.name;
+  const currentRole = user.role;
+  const currentAvatar = user.avatar;
 
   const modal = openModal(`
     <div class="modal-header">
@@ -636,6 +643,13 @@ function openProfileModal() {
       <div class="form-group">
         <label class="form-label">Rol en el equipo</label>
         <input class="form-input" id="profile-role" value="${esc(currentRole)}" placeholder="ej. Investigador Principal">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Miembro del workspace (para identificar "mis" tareas)</label>
+        <select class="form-select" id="profile-member-id">
+          <option value="">Sin vincular</option>
+          ${members.map(m => `<option value="${m.id}" ${linkedMember?.id === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+        </select>
       </div>
         <div class="form-group">
           <label class="form-label">Avatar (1 o 2 letras)</label>
@@ -663,11 +677,13 @@ function openProfileModal() {
   modal.querySelector('#profile-save').addEventListener('click', () => {
     const name = modal.querySelector('#profile-name').value.trim() || 'Usuario';
     const role = modal.querySelector('#profile-role').value.trim();
+    const memberId = modal.querySelector('#profile-member-id').value.trim();
     const avatar = modal.querySelector('#profile-avatar').value.trim().toUpperCase() || name.charAt(0);
 
     localStorage.setItem('workspace_user_name', name);
     localStorage.setItem('workspace_user_role', role);
     localStorage.setItem('workspace_user_avatar', avatar);
+    localStorage.setItem('workspace_user_member_id', memberId);
 
     const newPwd = modal.querySelector('#profile-pwd').value.trim();
     let recoveryCodeForDisplay = null;

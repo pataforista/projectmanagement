@@ -7,11 +7,8 @@ function renderCollaboration(root) {
   const tasks = store.get.allTasks();
   const messages = store.get.messages ? store.get.messages() : [];
 
-  const currentUser = {
-    name: localStorage.getItem('workspace_user_name') || 'Carlos',
-    role: localStorage.getItem('workspace_user_role') || 'Owner',
-    avatar: localStorage.getItem('workspace_user_avatar') || 'C'
-  };
+  const currentUser = getCurrentWorkspaceUser();
+  const linkedMember = getCurrentWorkspaceMember();
 
   const now = Date.now();
   const last24h = now - (24 * 60 * 60 * 1000);
@@ -36,6 +33,8 @@ function renderCollaboration(root) {
 
   const unassignedTasks = tasks.filter(t => !t.assigneeId).length;
   const inReviewTasks = tasks.filter(t => t.status === 'En revisión').length;
+  const myTasks = linkedMember ? tasks.filter(t => t.assigneeId === linkedMember.id).length : 0;
+  const teamTasks = linkedMember ? tasks.filter(t => t.assigneeId && t.assigneeId !== linkedMember.id).length : tasks.filter(t => t.assigneeId).length;
 
   const workloadRows = members.map(member => {
     const memberTasks = tasks.filter(t => t.assigneeId === member.id);
@@ -71,9 +70,10 @@ function renderCollaboration(root) {
             <div>
               <div style="font-weight:600;">${esc(currentUser.name)}</div>
               <div style="font-size:0.82rem;color:var(--text-muted);">${esc(currentUser.role)}</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${linkedMember ? `Miembro vinculado: ${esc(linkedMember.name)}` : 'Miembro sin vincular'}</div>
             </div>
           </div>
-          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat.</p>
+          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat. Vincula tu miembro para marcar con claridad qué tareas son tuyas.</p>
         </div>
 
         <div class="glass-panel" style="padding:16px;">
@@ -87,9 +87,26 @@ function renderCollaboration(root) {
               <div style="font-size:0.76rem;color:var(--text-muted);">En revisión</div>
               <div style="font-size:1.35rem;font-weight:700;">${inReviewTasks}</div>
             </div>
+            <div class="kpi-card" style="padding:10px;">
+              <div style="font-size:0.76rem;color:var(--text-muted);">Mis tareas</div>
+              <div style="font-size:1.35rem;font-weight:700;">${myTasks}</div>
+            </div>
+            <div class="kpi-card" style="padding:10px;">
+              <div style="font-size:0.76rem;color:var(--text-muted);">Tareas del equipo</div>
+              <div style="font-size:1.35rem;font-weight:700;">${teamTasks}</div>
+            </div>
           </div>
           <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Si hay tareas sin dueño, se recomienda asignarlas desde Backlog, Tablero o formularios médicos.</p>
         </div>
+      </div>
+
+      <div class="glass-panel" style="padding:16px; margin-top:16px;">
+        <h3 style="margin-bottom:12px;">Cómo distinguir "mío" vs "de todos"</h3>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px; color:var(--text-muted); font-size:0.83rem;">
+          <li><b>Mía</b>: la tarea tiene <b>assigneeId</b> igual a tu miembro vinculado.</li>
+          <li><b>Equipo</b>: está asignada a otra persona o no está asignada.</li>
+          <li>Backlog y Tablero muestran chips "Mía/Equipo" para revisar rápido antes de editar.</li>
+        </ul>
       </div>
 
       <div class="glass-panel" style="padding:16px; margin-top:16px;">

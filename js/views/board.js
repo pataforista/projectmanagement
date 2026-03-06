@@ -88,12 +88,16 @@ function renderBoardColumns(root, projectId) {
 function kanbanCard(t) {
   const proj = store.get.projectById(t.projectId);
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Terminado';
+  const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
   return `
     <div class="kanban-card" draggable="true" data-task-id="${t.id}" data-status="${t.status}">
       ${proj ? `<div style="font-size:0.68rem;display:flex;align-items:center;gap:4px;color:${proj.color || 'var(--accent-primary)'};">
         <span style="width:5px;height:5px;border-radius:50%;background:currentColor;"></span>${esc(proj.name)}
       </div>` : ''}
       <div class="kanban-card-title">${esc(t.title)}</div>
+      <div style="margin-top:6px;">
+        <span style="display:inline-block; padding:1px 7px; border-radius:999px; font-size:0.62rem; font-weight:700; ${ownershipLabel === 'Mía' ? 'background:rgba(16,185,129,0.14); color:#86efac;' : 'background:rgba(59,130,246,0.14); color:#93c5fd;'}">${ownershipLabel}</span>
+      </div>
       <div class="kanban-card-foot">
         <div class="kanban-card-date ${isOverdue ? 'overdue' : ''}">
           ${t.dueDate ? `<i data-feather="calendar"></i>${fmtDate(t.dueDate)}` : ''}

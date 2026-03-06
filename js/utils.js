@@ -61,6 +61,45 @@ function downloadFile(name, content) {
     URL.revokeObjectURL(url);
 }
 
+function normalizeWorkspaceName(name) {
+    return String(name || '')
+        .toLowerCase()
+        .replace(/\(.*?\)/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getCurrentWorkspaceUser() {
+    const name = localStorage.getItem('workspace_user_name') || 'Carlos';
+    const role = localStorage.getItem('workspace_user_role') || 'Owner';
+    const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
+    const memberId = localStorage.getItem('workspace_user_member_id') || '';
+    return { name, role, avatar, memberId };
+}
+
+function getCurrentWorkspaceMember() {
+    if (!window.store || !store.get || !store.get.members) return null;
+    const members = store.get.members();
+    const user = getCurrentWorkspaceUser();
+    if (!members.length) return null;
+
+    if (user.memberId) {
+        const byId = members.find(m => m.id === user.memberId);
+        if (byId) return byId;
+    }
+
+    const normalizedUserName = normalizeWorkspaceName(user.name);
+    return members.find(m => normalizeWorkspaceName(m.name) === normalizedUserName)
+        || members.find(m => normalizeWorkspaceName(m.name).includes(normalizedUserName))
+        || null;
+}
+
+function isTaskAssignedToCurrentUser(task) {
+    if (!task?.assigneeId) return false;
+    const member = getCurrentWorkspaceMember();
+    return !!member && task.assigneeId === member.id;
+}
+
 // ── Date formatting ───────────────────────────────────────────────────────────
 function fmtDate(dateStr) {
     if (!dateStr) return '';
@@ -169,5 +208,8 @@ window.getObsidianFileName = getObsidianFileName;
 window.downloadFile = downloadFile;
 window.PROJECT_TYPES = PROJECT_TYPES;
 window.generateUID = generateUID;
+window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
+window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
+window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser };

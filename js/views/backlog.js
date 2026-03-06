@@ -106,6 +106,10 @@ function backlogRow(t) {
   const proj = store.get.projectById(t.projectId);
   const isDone = t.status === 'Terminado' || t.status === 'Archivado';
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && !isDone;
+  const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
+  const ownershipStyle = isTaskAssignedToCurrentUser(t)
+    ? 'background:rgba(16,185,129,0.14); color:#86efac;'
+    : 'background:rgba(59,130,246,0.14); color:#93c5fd;';
   return `
     <tr data-task-id="${t.id}">
       <td>
@@ -132,6 +136,7 @@ function backlogRow(t) {
       </td>
       <td>
         ${t.assigneeId ? `<span class="badge badge-neutral" style="font-size:0.68rem; background:var(--bg-surface-2);">${esc(store.get.memberById(t.assigneeId)?.name || '—')}</span>` : '<span style="color:var(--text-muted); font-size:0.7rem;">—</span>'}
+        <span style="display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:0.62rem; font-weight:700; ${ownershipStyle}">${ownershipLabel}</span>
       </td>
       <td>
         <span style="display:inline-flex;align-items:center;gap:5px;">
