@@ -21,6 +21,7 @@ const ROUTES = {
     '/integrations': 'integrations',
     '/canvas': 'canvas',
     '/graph': 'graph',
+    '/collaboration': 'collaboration',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -39,6 +40,7 @@ const ROUTE_META = {
     medical: { label: 'Panel Médico', subtitle: 'Seguimiento de interconsultas y derivaciones.' },
     integrations: { label: 'Integraciones', subtitle: 'Conecta con Google, Zotero y Todoist.' },
     canvas: { label: 'Canvas', subtitle: 'Tablero visual de ideas y proyectos.' },
+    collaboration: { label: 'Colaboración', subtitle: 'Estado operativo del equipo, asignaciones y protocolos.' },
     project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
     document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
 };
