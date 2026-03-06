@@ -41,8 +41,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Brute-Force Protection ──
     const LOCKOUT_KEY = 'nexus_lockout';
     const ATTEMPT_KEY = 'nexus_attempts';
+    const LOCKOUT_ROUND_KEY = 'nexus_lockout_round';
     const MAX_ATTEMPTS = 5;
-    const LOCKOUT_MS = 30_000; // 30 seconds
+    // Progressive lockout: 30 s → 5 min → 30 min (stays at 30 min for subsequent rounds)
+    const LOCKOUT_DURATIONS = [30_000, 5 * 60_000, 30 * 60_000];
 
     const isLockedOut = () => {
         const lockoutUntil = Number(localStorage.getItem(LOCKOUT_KEY) || 0);
@@ -58,7 +60,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const attempts = Number(localStorage.getItem(ATTEMPT_KEY) || 0) + 1;
         localStorage.setItem(ATTEMPT_KEY, String(attempts));
         if (attempts >= MAX_ATTEMPTS) {
-            localStorage.setItem(LOCKOUT_KEY, String(Date.now() + LOCKOUT_MS));
+            const round = Number(localStorage.getItem(LOCKOUT_ROUND_KEY) || 0);
+            const duration = LOCKOUT_DURATIONS[Math.min(round, LOCKOUT_DURATIONS.length - 1)];
+            localStorage.setItem(LOCKOUT_KEY, String(Date.now() + duration));
+            localStorage.setItem(LOCKOUT_ROUND_KEY, String(round + 1));
             localStorage.setItem(ATTEMPT_KEY, '0');
         }
         return attempts;
@@ -67,6 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const clearAttempts = () => {
         localStorage.removeItem(ATTEMPT_KEY);
         localStorage.removeItem(LOCKOUT_KEY);
+        localStorage.removeItem(LOCKOUT_ROUND_KEY);
     };
 
     const generateRecoveryCode = () => {
@@ -116,9 +122,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             authCodeDone.onclick = onDone;
         };
 
+        // Helpers for hint input (only present in creation mode)
+        const authHintInput = document.getElementById('auth-hint-input');
+
         if (!savedHash) {
             authOverlay.classList.add('open');
             authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
+            // Show optional hint field during creation
+            if (authHintInput) authHintInput.style.display = '';
             authForm.onsubmit = async (e) => {
                 e.preventDefault();
                 const pwd = authPassword.value.trim();
@@ -127,12 +138,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setTimeout(() => authPassword.style.border = '', 1000);
                     return;
                 }
-                // Hash password with SHA-256 + salted PBKDF2-derived salt
                 const hash = await hashStr(pwd);
                 const recoveryCode = generateRecoveryCode();
                 const recoveryHash = await hashStr(normalizeCode(recoveryCode));
                 localStorage.setItem('workspace_lock_hash', hash);
                 localStorage.setItem('workspace_recovery_hash', recoveryHash);
+                // Save optional password hint (plaintext — intentionally not a secret)
+                const hint = authHintInput?.value.trim() || '';
+                if (hint) localStorage.setItem('workspace_pwd_hint', hint);
                 // Derive encryption key and activate the crypto layer
                 if (cryptoLayer) await cryptoLayer.unlock(pwd);
                 authForm.style.display = 'none';
@@ -155,7 +168,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (isLockedOut()) {
                     const secs = getRemainingLockout();
-                    authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
+                    const timeStr = secs >= 60 ? `${Math.ceil(secs / 60)} min` : `${secs}s`;
+                    authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${timeStr}.`;
                     authPassword.value = '';
                     return;
                 }
@@ -222,12 +236,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             };
 
+            // ── Hint display helpers ──────────────────────────────────────
+            const authHintBanner = document.getElementById('auth-hint-banner');
+            const authHintText   = document.getElementById('auth-hint-text');
+
+            const showHintBanner = () => {
+                const hint = localStorage.getItem('workspace_pwd_hint');
+                if (hint && authHintBanner && authHintText) {
+                    authHintText.textContent = hint;
+                    authHintBanner.style.display = 'block';
+                }
+            };
+            // ────────────────────────────────────────────────────────────────
+
             if (authForgotLink) {
                 authForgotLink.onclick = () => {
                     authForm.style.display = 'none';
                     if (authForgotContainer) authForgotContainer.style.display = 'none';
-                    authSubtitle.textContent = "Ingresa tu codigo de recuperacion.";
+                    authSubtitle.textContent = "Opciones de recuperación de contraseña.";
                     authRecoveryPanel.style.display = 'flex';
+                    showHintBanner();
                     authRecoveryCode.focus();
                 };
             }
@@ -236,6 +264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 authRecoveryBack.onclick = () => {
                     authRecoveryPanel.style.display = 'none';
                     authNewpwdPanel.style.display = 'none';
+                    if (authHintBanner) authHintBanner.style.display = 'none';
                     authRecoveryCode.value = '';
                     authRecoveryCode.style.border = '';
                     authForm.style.display = 'flex';
@@ -249,8 +278,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const savedRecoveryHash = localStorage.getItem('workspace_recovery_hash');
                     const entered = normalizeCode(authRecoveryCode.value.trim());
                     const inputHash = await hashStr(entered);
-                    if (savedRecoveryHash && inputHash === savedRecoveryHash) {
+                    // Also accept old SHA-256 recovery hash during migration window
+                    const inputHashLegacy = await hashStrLegacySHA256(entered);
+                    const isMatch = savedRecoveryHash && (
+                        inputHash === savedRecoveryHash ||
+                        (inputHashLegacy && inputHashLegacy === savedRecoveryHash)
+                    );
+                    if (isMatch) {
                         authRecoveryPanel.style.display = 'none';
+                        if (authHintBanner) authHintBanner.style.display = 'none';
                         authSubtitle.textContent = "Crea una nueva contraseña.";
                         authNewpwdPanel.style.display = 'flex';
                         authNewpwdInput.focus();
@@ -275,6 +311,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const newRecHash = await hashStr(normalizeCode(newRecoveryCode));
                     localStorage.setItem('workspace_lock_hash', newLockHash);
                     localStorage.setItem('workspace_recovery_hash', newRecHash);
+                    // Remove stale hint — it no longer applies to the new password
+                    localStorage.removeItem('workspace_pwd_hint');
                     authNewpwdPanel.style.display = 'none';
                     authSubtitle.textContent = "¡Contraseña restablecida! Guarda tu nuevo codigo.";
                     showCodeDisplay(newRecoveryCode, () => {
@@ -284,6 +322,77 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (cryptoLayer) await cryptoLayer.unlock(newPwd);
                 };
             }
+
+            // ── Import identity backup (.json) ────────────────────────────
+            const authImportBackup = document.getElementById('auth-import-backup');
+            const authImportBtn    = document.getElementById('auth-import-btn');
+
+            if (authImportBtn) {
+                authImportBtn.onclick = () => authImportBackup?.click();
+            }
+
+            if (authImportBackup) {
+                authImportBackup.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    try {
+                        const text = await file.text();
+                        const payload = JSON.parse(text);
+                        if (!payload?.nexus_salt) {
+                            authSubtitle.textContent = '⚠️ Archivo inválido: no contiene nexus_salt.';
+                            return;
+                        }
+                        // Restore cryptographic identity from the backup
+                        localStorage.setItem('nexus_salt', payload.nexus_salt);
+                        if (payload.workspace_lock_hash) {
+                            localStorage.setItem('workspace_lock_hash', payload.workspace_lock_hash);
+                        }
+                        authRecoveryPanel.style.display = 'none';
+                        authSubtitle.textContent = '✓ Identidad restaurada. Ingresa tu contraseña original.';
+                        authForm.style.display = 'flex';
+                        authPassword.value = '';
+                        authPassword.focus();
+                        // Update savedHash so the login check uses the restored value
+                        savedHash = localStorage.getItem('workspace_lock_hash');
+                    } catch {
+                        authSubtitle.textContent = '⚠️ No se pudo leer el archivo. Asegúrate de que sea un JSON válido.';
+                    }
+                    // Reset file input so the same file can be selected again if needed
+                    authImportBackup.value = '';
+                };
+            }
+            // ─────────────────────────────────────────────────────────────
+
+            // ── Nuclear reset (last resort) ───────────────────────────────
+            const authNuclearReset = document.getElementById('auth-nuclear-reset');
+            if (authNuclearReset) {
+                authNuclearReset.onclick = () => {
+                    const confirmed = window.confirm(
+                        '⚠️ ADVERTENCIA DESTRUCTIVA\n\n' +
+                        'Esto borrará TODOS los datos locales (proyectos, tareas, documentos, mensajes) ' +
+                        'y eliminará la contraseña maestra.\n\n' +
+                        'Los datos cifrados NO se pueden recuperar sin la contraseña original.\n\n' +
+                        '¿Estás seguro de que quieres continuar?'
+                    );
+                    if (!confirmed) return;
+                    const doubleConfirmed = window.confirm(
+                        'Última confirmación: esta acción es IRREVERSIBLE.\n\n' +
+                        '¿Confirmar borrado completo de datos locales?'
+                    );
+                    if (!doubleConfirmed) return;
+
+                    // Wipe all auth keys
+                    ['workspace_lock_hash', 'workspace_recovery_hash', 'workspace_pwd_hint',
+                     'nexus_salt', 'nexus_attempts', 'nexus_lockout', 'nexus_lockout_round',
+                     'last_sync_local', 'gdrive_file_id'].forEach(k => localStorage.removeItem(k));
+
+                    // Delete IndexedDB entirely
+                    indexedDB.deleteDatabase('WorkspaceProduccionDB');
+
+                    location.reload();
+                };
+            }
+            // ─────────────────────────────────────────────────────────────
         }
     });
 

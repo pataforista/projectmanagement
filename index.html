@@ -71,6 +71,11 @@
 
       <form id="auth-form" style="display:flex; flex-direction:column; gap:16px;">
         <input type="password" id="auth-password" class="form-input" placeholder="Contraseña" required autofocus>
+        <!-- Hint input — only shown during first-time creation -->
+        <input type="text" id="auth-hint-input" class="form-input"
+          placeholder="Pista para recordar tu contraseña (opcional)"
+          autocomplete="off" maxlength="120"
+          style="display:none; font-size:0.85rem;">
         <button type="submit" class="btn btn-primary" style="justify-content:center;">Desbloquear</button>
       </form>
 
@@ -84,6 +89,15 @@
 
       <!-- Recovery code input panel -->
       <div id="auth-recovery-panel" style="display:none; flex-direction:column; gap:12px; margin-top:8px;">
+
+        <!-- Hint banner (shown if user set a hint at creation) -->
+        <div id="auth-hint-banner" style="display:none; padding:8px 12px; background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.22); border-radius:8px; font-size:0.8rem; color:var(--text-secondary); text-align:center; line-height:1.5;">
+          <strong style="color:var(--text-primary);">Pista:</strong> <span id="auth-hint-text"></span>
+        </div>
+
+        <p style="font-size:0.8rem; color:var(--text-muted); margin:0; text-align:center;">
+          Ingresa tu código de recuperación de 16 caracteres.
+        </p>
         <input type="text" id="auth-recovery-code" class="form-input" placeholder="XXXX-XXXX-XXXX-XXXX"
           autocomplete="off"
           style="text-transform:uppercase; font-family:var(--font-mono); letter-spacing:2px; text-align:center;">
@@ -91,8 +105,33 @@
           <button type="button" id="auth-recovery-back" class="btn btn-secondary"
             style="flex:1; justify-content:center;">Volver</button>
           <button type="button" id="auth-recovery-submit" class="btn btn-primary"
-            style="flex:1; justify-content:center;">Verificar</button>
+            style="flex:1; justify-content:center;">Verificar código</button>
         </div>
+
+        <!-- Divider -->
+        <div style="display:flex; align-items:center; gap:8px; margin:4px 0;">
+          <div style="flex:1; height:1px; background:var(--border-subtle, rgba(255,255,255,0.08));"></div>
+          <span style="font-size:0.72rem; color:var(--text-muted);">otras opciones</span>
+          <div style="flex:1; height:1px; background:var(--border-subtle, rgba(255,255,255,0.08));"></div>
+        </div>
+
+        <!-- Import identity backup file -->
+        <label style="display:block; cursor:pointer;">
+          <input type="file" id="auth-import-backup" accept=".json" style="display:none;">
+          <div class="btn btn-secondary" id="auth-import-btn"
+            style="width:100%; justify-content:center; text-align:center; font-size:0.82rem;">
+            Importar respaldo de identidad (.json)
+          </div>
+        </label>
+        <p style="font-size:0.72rem; color:var(--text-muted); margin:-6px 0 0; text-align:center; line-height:1.4;">
+          Usa el archivo exportado desde Integraciones → Google Cloud para restaurar tu acceso sin cambiar contraseña.
+        </p>
+
+        <!-- Nuclear reset (absolute last resort) -->
+        <button type="button" id="auth-nuclear-reset"
+          style="background:none; border:none; color:var(--accent-danger, #ef4444); font-size:0.72rem; cursor:pointer; text-decoration:underline; text-align:center; padding:6px; font-family:inherit; margin-top:4px;">
+          Borrar todos los datos locales y empezar de cero
+        </button>
       </div>
 
       <!-- New password panel (after code verified) -->
