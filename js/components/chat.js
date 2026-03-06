@@ -180,10 +180,12 @@ export const ChatManager = (() => {
         const text = input.value.trim();
         if (!text) return;
 
-        const user = localStorage.getItem('workspace_user_name') || 'Usuario';
+        const actor = getCurrentWorkspaceActor();
 
         await store.dispatch('ADD_MESSAGE', {
-            sender: user,
+            sender: actor.label,
+            senderId: actor.id,
+            author: actor.label,
             text: text,
             projectId: window.router?.current?.params?.projectId || null
         });
@@ -195,7 +197,7 @@ export const ChatManager = (() => {
         const list = document.getElementById('chat-messages');
         if (!list) return;
 
-        const currentUser = localStorage.getItem('workspace_user_name') || 'Usuario';
+        const currentUser = getCurrentWorkspaceActor();
         const lastCount = list.children.length;
 
         // Color helper: Hash string to HSL color
@@ -211,7 +213,7 @@ export const ChatManager = (() => {
         list.innerHTML = messages
             .sort((a, b) => a.timestamp - b.timestamp)
             .map(m => {
-                const isMe = m.sender === currentUser;
+                const isMe = (m.senderId && m.senderId === currentUser.id) || m.sender === currentUser.label || m.sender === currentUser.name;
                 const userColor = stringToColor(m.sender);
                 return `
                     <div class="chat-msg ${isMe ? 'sent' : 'received'}" style="${!isMe ? `--sender-color:${userColor}` : '--sender-color:rgba(255,255,255,0.8)'}">

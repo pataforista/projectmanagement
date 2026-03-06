@@ -609,9 +609,14 @@ function updateUserProfileUI() {
   const linkedMember = getCurrentWorkspaceMember();
   const name = user.name;
   const avatar = user.avatar;
-  const roleWithMember = linkedMember
-    ? `${user.role} · ${linkedMember.name}`
-    : user.role;
+  const identity = user.email || user.team
+    ? [user.email || null, user.team ? `Equipo: ${user.team}` : null].filter(Boolean).join(' · ')
+    : null;
+  const roleWithMember = [
+    user.role,
+    linkedMember ? linkedMember.name : null,
+    identity,
+  ].filter(Boolean).join(' · ');
 
   const nameEl = document.getElementById('user-name');
   const roleEl = document.getElementById('user-role');
@@ -629,6 +634,8 @@ function openProfileModal() {
   const currentName = user.name;
   const currentRole = user.role;
   const currentAvatar = user.avatar;
+  const currentEmail = user.email || '';
+  const currentTeam = user.team || 'General';
 
   const modal = openModal(`
     <div class="modal-header">
@@ -645,11 +652,20 @@ function openProfileModal() {
         <input class="form-input" id="profile-role" value="${esc(currentRole)}" placeholder="ej. Investigador Principal">
       </div>
       <div class="form-group">
+        <label class="form-label">Correo de identidad (recomendado para continuidad entre equipos/dispositivos)</label>
+        <input class="form-input" id="profile-email" value="${esc(currentEmail)}" placeholder="tu.nombre@institucion.edu">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Etiqueta de equipo actual</label>
+        <input class="form-input" id="profile-team" value="${esc(currentTeam)}" placeholder="ej. Laboratorio Cognición">
+      </div>
+      <div class="form-group">
         <label class="form-label">Miembro del workspace (para identificar "mis" tareas)</label>
         <select class="form-select" id="profile-member-id">
           <option value="">Sin vincular</option>
           ${members.map(m => `<option value="${m.id}" ${linkedMember?.id === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
         </select>
+        <small style="color:var(--text-secondary);display:block;margin-top:6px;">Si usas el mismo correo en otro equipo/dispositivo, tu identidad se mantiene aunque cambies el miembro local.</small>
       </div>
         <div class="form-group">
           <label class="form-label">Avatar (1 o 2 letras)</label>
@@ -678,12 +694,16 @@ function openProfileModal() {
     const name = modal.querySelector('#profile-name').value.trim() || 'Usuario';
     const role = modal.querySelector('#profile-role').value.trim();
     const memberId = modal.querySelector('#profile-member-id').value.trim();
+    const email = modal.querySelector('#profile-email').value.trim().toLowerCase();
+    const team = modal.querySelector('#profile-team').value.trim() || 'General';
     const avatar = modal.querySelector('#profile-avatar').value.trim().toUpperCase() || name.charAt(0);
 
     localStorage.setItem('workspace_user_name', name);
     localStorage.setItem('workspace_user_role', role);
     localStorage.setItem('workspace_user_avatar', avatar);
     localStorage.setItem('workspace_user_member_id', memberId);
+    localStorage.setItem('workspace_user_email', email);
+    localStorage.setItem('workspace_team_label', team);
 
     const newPwd = modal.querySelector('#profile-pwd').value.trim();
     let recoveryCodeForDisplay = null;
