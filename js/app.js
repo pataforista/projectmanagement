@@ -265,8 +265,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // ── 0.1. Auto-Lock & Global Lock ───────────────────────────────────────────
+    // Default to enabled for new installations (key absent = enabled)
+    if (localStorage.getItem('autolock_enabled') === null) {
+        localStorage.setItem('autolock_enabled', 'true');
+    }
+
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && localStorage.getItem('autolock_enabled') === 'true') {
+        if (document.visibilityState === 'hidden' && localStorage.getItem('autolock_enabled') !== 'false') {
             if (localStorage.getItem('workspace_lock_hash')) {
                 location.reload();
             }

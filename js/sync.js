@@ -143,6 +143,14 @@ const syncManager = (() => {
         updateSyncUI('offline');
     }
 
+    function handleTokenExpiry() {
+        console.warn('[Sync] Access token expired or rejected (401). Clearing session.');
+        accessToken = null;
+        localStorage.setItem(STATUS_KEY, 'false');
+        updateSyncUI('error');
+        if (window.showToast) showToast('Sesión de Google expirada. Vuelve a conectar en Sync.', 'warning', 8000);
+    }
+
     async function getSnapshot() {
         const data = {
             version: '1.2',
@@ -190,7 +198,7 @@ const syncManager = (() => {
 
         try {
             const cfg = getConfig();
-            const data = getSnapshot();
+            const data = await getSnapshot();
 
             let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
             if (!fileId) fileId = await findFile(cfg.fileName);
@@ -230,7 +238,8 @@ const syncManager = (() => {
 
         try {
             const cfg = getConfig();
-            const fileId = cfg.sharedFileId || await findFile(cfg.fileName);
+            // Use cached file ID first to avoid an extra Drive API call on every pull
+            const fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id') || await findFile(cfg.fileName);
             if (!fileId) {
                 updateSyncUI('online');
                 return;
@@ -306,14 +315,19 @@ const syncManager = (() => {
     }
 
     async function updateFile(id, content) {
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(content),
+            timeout: 20000,
         });
+        if (resp.status === 401) {
+            handleTokenExpiry();
+            throw new Error('[Sync] Token expired during updateFile');
+        }
     }
 
     async function getFileContent(id) {
@@ -321,6 +335,10 @@ const syncManager = (() => {
             headers: { Authorization: `Bearer ${accessToken}` },
             timeout: 15000
         });
+        if (resp.status === 401) {
+            handleTokenExpiry();
+            throw new Error('[Sync] Token expired during getFileContent');
+        }
         if (!resp.ok) throw new Error("File not found or no permissions");
         return resp.json();
     }

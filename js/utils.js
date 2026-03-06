@@ -77,13 +77,14 @@ function computeIdentityKey({ email, memberId, name }) {
     const cleanEmail = normalizeEmail(email);
     if (cleanEmail) return `email:${cleanEmail}`;
     if (memberId) return `member:${memberId}`;
-    return `name:${normalizeWorkspaceName(name || 'usuario')}`;
+    const cleanName = normalizeWorkspaceName(name || '');
+    return cleanName ? `name:${cleanName}` : 'name:usuario';
 }
 
 function getCurrentWorkspaceUser() {
-    const name = localStorage.getItem('workspace_user_name') || 'Carlos';
+    const name = localStorage.getItem('workspace_user_name') || '';
     const role = localStorage.getItem('workspace_user_role') || 'Owner';
-    const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
+    const avatar = localStorage.getItem('workspace_user_avatar') || (name ? name.charAt(0).toUpperCase() : '?');
     const memberId = localStorage.getItem('workspace_user_member_id') || '';
     const email = normalizeEmail(localStorage.getItem('workspace_user_email') || '');
     const team = localStorage.getItem('workspace_team_label') || 'General';

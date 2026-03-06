@@ -3,12 +3,15 @@
  * Caches shell assets and provides an always-responding fetch handler.
  */
 
-const CACHE_NAME = 'workspace-v12';
+const CACHE_NAME = 'workspace-v13';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/css/index.css',
+    '/styles/main.css',
+    '/styles/components.css',
+    '/styles/animations.css',
+    '/styles/skeletons.css',
     '/js/db.js',
     '/js/utils.js',
     '/js/utils/crypto.js',
