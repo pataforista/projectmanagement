@@ -44,6 +44,16 @@ function renderCollaboration(root) {
     return { member, total: memberTasks.length, inProgress, done };
   }).sort((a, b) => b.inProgress - a.inProgress);
 
+  const recentlyEditedByOthers = tasks
+    .filter(task => task.updatedAt && task.updatedBy && task.updatedBy !== currentUser.name)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    .slice(0, 6);
+
+  const conflictRiskTasks = tasks.filter(task => {
+    if (!task.updatedAt || !task.updatedBy || task.updatedBy === currentUser.name) return false;
+    return (now - task.updatedAt) <= (15 * 60 * 1000);
+  });
+
   root.innerHTML = `
     <div class="view-inner">
       <div class="view-header">
@@ -93,6 +103,42 @@ function renderCollaboration(root) {
       </div>
 
       <div class="glass-panel" style="padding:16px; margin-top:16px;">
+        <h3 style="margin-bottom:12px;">Estrategia de sincronización recomendada (PWA)</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;">
+          <div class="kpi-card" style="padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);">Resolución de conflictos</div>
+            <div style="font-weight:700;margin-top:4px;">CRDT (Yjs / Automerge)</div>
+            <p style="margin:8px 0 0;font-size:0.78rem;color:var(--text-muted);">Ideal para trabajo offline + merge automático al reconectar.</p>
+          </div>
+          <div class="kpi-card" style="padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);">Presencia</div>
+            <div style="font-weight:700;margin-top:4px;">Cursores + "está escribiendo"</div>
+            <p style="margin:8px 0 0;font-size:0.78rem;color:var(--text-muted);">Reduce colisiones al editar campos o nodos simultáneos.</p>
+          </div>
+          <div class="kpi-card" style="padding:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);">Arquitectura</div>
+            <div style="font-weight:700;margin-top:4px;">WebSocket + UI optimista</div>
+            <p style="margin:8px 0 0;font-size:0.78rem;color:var(--text-muted);">Actualizar primero en UI/IndexedDB y sincronizar en segundo plano.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-panel" style="padding:16px; margin-top:16px;">
+        <h3 style="margin-bottom:12px;">Semáforo de edición (últimos 15 min)</h3>
+        ${conflictRiskTasks.length ? `
+          <p style="margin:0 0 10px;color:var(--accent-warning);font-size:0.82rem;">Hay ${conflictRiskTasks.length} tarea(s) editada(s) por otra persona recientemente. Se recomienda avisar por chat antes de editar.</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${conflictRiskTasks.slice(0, 5).map(task => `
+              <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;">
+                <span style="font-size:0.82rem;">${esc(task.title)}</span>
+                <span class="badge badge-warning">${esc(task.updatedBy)} · ${timeAgo(task.updatedAt)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p style="color:var(--text-muted);margin:0;">Sin riesgo alto de colisión en este momento.</p>`}
+      </div>
+
+      <div class="glass-panel" style="padding:16px; margin-top:16px;">
         <h3 style="margin-bottom:12px;">Usuarios activos (últimas 24h)</h3>
         ${activeUsers.length ? `
           <div style="display:flex; flex-direction:column; gap:8px;">
@@ -104,6 +150,23 @@ function renderCollaboration(root) {
             `).join('')}
           </div>
         ` : `<p style="color:var(--text-muted);margin:0;">Sin actividad reciente registrada en tareas o chat.</p>`}
+      </div>
+
+      <div class="glass-panel" style="padding:16px; margin-top:16px;">
+        <h3 style="margin-bottom:12px;">Últimas tareas tocadas por otros</h3>
+        ${recentlyEditedByOthers.length ? `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${recentlyEditedByOthers.map(task => `
+              <div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-color);border-radius:10px;padding:8px 10px;">
+                <div style="display:flex;flex-direction:column;gap:2px;">
+                  <span style="font-size:0.82rem;">${esc(task.title)}</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);">Estado: ${esc(task.status || '—')}</span>
+                </div>
+                <span class="badge badge-neutral">${esc(task.updatedBy)} · ${timeAgo(task.updatedAt)}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p style="color:var(--text-muted);margin:0;">Aún no hay historial de edición por otros usuarios.</p>`}
       </div>
 
       <div class="glass-panel" style="padding:16px; margin-top:16px;">
@@ -136,6 +199,18 @@ function renderCollaboration(root) {
     </div>`;
 
   feather.replace();
+}
+
+function timeAgo(timestamp) {
+  if (!timestamp) return 'sin fecha';
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  const mins = Math.floor(elapsed / 60000);
+  if (mins < 1) return 'justo ahora';
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `hace ${days} d`;
 }
 
 window.renderCollaboration = renderCollaboration;
