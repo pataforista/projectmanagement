@@ -36,6 +36,30 @@ const SLASH_MENU_CSS = `
   }
 `;
 
+window.quickAIAction = async function (action) {
+  const editor = document.getElementById('wr-editor');
+  const text = editor.value;
+  const selection = text.slice(editor.selectionStart, editor.selectionEnd) || text;
+
+  let prompt = "";
+  if (action === 'revisar-gramatica') prompt = `Revisa la gramática y ortografía del siguiente texto de investigación, manteniendo el contenido original pero corrigiendo errores:\n\n${selection}`;
+  if (action === 'sugerir-referencias') prompt = `Basado en este fragmento de manuscrito, sugiere 3 temas o palabras clave para buscar artículos científicos relacionados:\n\n${selection}`;
+  if (action === 'mejorar-academicismo') prompt = `Reescribe el siguiente texto con un tono más formal, académico y preciso, adecuado para una publicación científica de alto impacto:\n\n${selection}`;
+
+  document.getElementById('ai-chat-input').value = prompt;
+  document.getElementById('ai-chat-send').click();
+};
+
+window.addAIChatMessage = function (text, type = 'system') {
+  const container = document.getElementById('ai-chat-messages');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = `ai-msg ai-msg-${type}`;
+  div.textContent = text;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+};
+
 function renderWriting(root) {
   // Include all project types that involve text work
   const projects = store.get.projects().filter(p =>
@@ -92,9 +116,12 @@ function renderWriting(root) {
             </div>
           </div>
           
-          <div style="padding:12px; border-top:1px solid var(--border-color); margin-top:auto;">
+          <div style="padding:12px; border-top:1px solid var(--border-color); margin-top:auto; display:flex; flex-direction:column; gap:8px;">
             <button class="btn btn-secondary btn-sm" style="width:100%;" id="wr-gen-bib">
               <i data-feather="book"></i> Generar Bibliografía
+            </button>
+            <button class="btn btn-secondary btn-sm" style="width:100%; color: #e11d48; border-color: rgba(225, 29, 72, 0.2);" id="wr-elabftw-export">
+              <i data-feather="activity"></i> Exportar a eLabFTW
             </button>
           </div>
           
@@ -119,11 +146,13 @@ function renderWriting(root) {
             </div>
             <div class="editor-actions" style="display:flex; gap:8px;">
               <button class="btn btn-icon btn-sm" title="Usar Plantilla Académica" id="wr-template-btn"><i data-feather="file-plus"></i></button>
+              <button class="btn btn-icon btn-sm" title="Asistente AI" id="wr-ai-toggle" style="color:var(--accent-teal);"><i data-feather="cpu"></i></button>
               <button class="btn btn-icon btn-sm" title="Metadatos YAML (Propiedades)" id="wr-properties-btn"><i data-feather="settings"></i></button>
               <button class="btn btn-icon btn-sm" title="Vista Previa Markdown" id="wr-preview-btn"><i data-feather="eye"></i></button>
               <button class="btn btn-icon btn-sm" title="Crear Snapshot (Versión)" id="wr-snapshot"><i data-feather="camera"></i></button>
               <button class="btn btn-icon btn-sm" title="Exportar Markdown plano" id="wr-export"><i data-feather="download"></i></button>
               <button class="btn btn-icon btn-sm" title="Exportar Pandoc (.md con frontmatter YAML + bibliografía)" id="wr-export-pandoc"><i data-feather="file-text"></i></button>
+              <button class="btn btn-icon btn-sm" id="wr-export-quarto" title="Exportar Quarto (.qmd)"><i data-feather="share"></i></button>
               <button class="btn btn-primary btn-sm" id="wr-save">Guardar</button>
             </div>
           </header>
@@ -143,10 +172,89 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
           </div>
         </main>
 
+        <!-- AI Assistant Sidebar -->
+        <aside class="writing-ai-sidebar glass-panel" id="wr-ai-sidebar" style="display:none;">
+          <div class="writing-sidebar-header" style="justify-content:space-between;">
+            <h3>Asistente de Investigación</h3>
+            <button class="btn btn-ghost btn-xs" onclick="document.getElementById('wr-ai-sidebar').style.display='none'">✕</button>
+          </div>
+          <div class="ai-chat-container">
+            <div class="ai-messages" id="ai-chat-messages">
+                <div class="ai-msg ai-msg-system">
+                    Hola Carlos. Soy tu asistente de investigación local. ¿En qué puedo ayudarte con este manuscrito?
+                </div>
+            </div>
+            <div class="ai-input-wrap">
+                <textarea id="ai-chat-input" class="form-textarea" placeholder="Pregunta algo sobre el texto..." rows="2"></textarea>
+                <div style="display:flex; gap:6px; margin-top:8px;">
+                    <button class="btn btn-primary btn-xs flex-1" id="ai-chat-send">Consultar AI</button>
+                    <button class="btn btn-secondary btn-xs" id="ai-gen-summary" title="Resumir sección">Resumir</button>
+                </div>
+            </div>
+          </div>
+          
+          <div class="ai-shortcuts" style="padding:12px; border-top:1px solid var(--border-color);">
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:8px; font-weight:700;">ACCIONES RÁPIDAS</p>
+            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('revisar-gramatica')">Revisar gramática</button>
+            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('sugerir-referencias')">Sugerir referencias bibliográficas</button>
+            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('mejorar-academicismo')">Aumentar tono académico</button>
+          </div>
+        </aside>
+
       </div>
     `;
 
     feather.replace();
+
+    // AI & ELN Listeners
+    root.querySelector('#wr-ai-toggle')?.addEventListener('click', () => {
+      const sidebar = root.querySelector('#wr-ai-sidebar');
+      sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
+      root.querySelector('.writing-layout').style.gridTemplateColumns = sidebar.style.display === 'none' ? '240px 1fr' : '240px 1fr 280px';
+    });
+
+    root.querySelector('#ai-chat-send')?.addEventListener('click', async () => {
+      const input = root.querySelector('#ai-chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      addAIChatMessage(text, 'user');
+      input.value = '';
+
+      try {
+        const response = await ollamaApi.generate(text, "Eres un asistente de investigación científica experto. Ayudas al usuario a redactar, revisar y mejorar su manuscrito académico.");
+        addAIChatMessage(response, 'system');
+      } catch (err) {
+        addAIChatMessage("Error al conectar con Ollama. Asegúrate de que el servidor esté activo.", 'system');
+      }
+    });
+
+    root.querySelector('#ai-gen-summary')?.addEventListener('click', async () => {
+      const content = root.querySelector('#wr-editor').value;
+      if (!content) return showToast('El editor está vacío', 'warning');
+
+      addAIChatMessage("Generando resumen ejecutivo...", 'system');
+      try {
+        const summary = await ollamaApi.generate(`Resume el siguiente manuscrito en 3 puntos clave:\n\n${content}`, "Eres un asistente de síntesis científica.");
+        addAIChatMessage(summary, 'system');
+      } catch (err) {
+        addAIChatMessage("Error al resumir.", 'system');
+      }
+    });
+
+    root.querySelector('#wr-elabftw-export')?.addEventListener('click', async () => {
+      const p = store.get.projectById(activeProjectId);
+      const content = root.querySelector('#wr-editor').value;
+      const title = (root.querySelector('#wr-section-title').value || p?.name || 'Experimento').trim();
+
+      try {
+        showToast('Exportando a eLabFTW...', 'info');
+        const result = await elabftwApi.createExperiment(title, content);
+        showToast(`Experimento creado: #${result.id}`, 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
 
     // Count words on load
     const editor = root.querySelector('#wr-editor');
@@ -259,7 +367,7 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
             if (action === 'cita') insert = '> "Texto de la cita" (Autor, Año)';
             if (action === 'img') insert = '![Descripción](url)';
             if (action === 'title') insert = '## ';
-            if (action === 'quarto') insert = '```{r}\n\n```';
+            if (action === 'quarto') insert = '```{r}\n#| label: block-name\n#| echo: true\n\n\n```';
             if (action === 'ref') {
               // Show library picker
               const lib = store.get.library() || [];
@@ -608,6 +716,23 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
       const pandocMd = frontmatter + content + bibSection;
       downloadFile(`${title}-pandoc.md`, pandocMd);
       showToast('Exportado con frontmatter Pandoc. Usa: pandoc archivo.md --citeproc -o salida.pdf', 'success');
+    });
+
+    // Export Quarto (.qmd)
+    root.querySelector('#wr-export-quarto')?.addEventListener('click', () => {
+      const title = root.querySelector('#wr-section-title').value.trim() || p?.name || 'manuscrito';
+      const content = editor.value;
+
+      // If content doesn't have YAML, add a basic one
+      let qmdContent = content;
+      if (!content.startsWith('---')) {
+        const author = (store.get.members ? store.get.members()[0]?.name : '') || 'Autor';
+        const yaml = `---\ntitle: "${title.replace(/"/g, "'")}"\nauthor: "${author}"\nformat: html\n---\n\n`;
+        qmdContent = yaml + content;
+      }
+
+      downloadFile(`${title}.qmd`, qmdContent);
+      showToast('Archivo Quarto (.qmd) exportado.', 'success');
     });
 
     // Preview and Dataview parser

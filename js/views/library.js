@@ -7,16 +7,17 @@
 let currentLibraryViewMode = 'grid'; // 'grid' | 'table'
 let currentLibraryTab = 'zotero'; // 'zotero' | 'drive'
 let currentLibrarySearch = ''; // Search query
+let currentLibraryGroup = 'all'; // 'all' | 'none' | groupName
 
 function renderLibrary(root) {
   const libraryItems = store.get.library() || [];
 
   root.innerHTML = `
-    <div class="view-inner">
+    <div class="view-inner" style="display:flex; flex-direction:column; height:100%;">
       <div class="view-header">
         <div class="view-header-text">
           <h1>Biblioteca de Recursos</h1>
-          <p class="view-subtitle">Gestión del conocimiento, investigación y docencia.</p>
+          <p class="view-subtitle">Gestión del conocimiento e investigación.</p>
         </div>
         
         <div class="view-actions">
@@ -36,37 +37,26 @@ function renderLibrary(root) {
              <!-- Search -->
              <div style="position:relative; display:flex; align-items:center;">
                <i data-feather="search" style="position:absolute; left:8px; width:13px; height:13px; color:var(--text-muted);"></i>
-               <input type="text" id="lib-search" class="form-input" placeholder="Buscar por título, autor..." value="${esc(currentLibrarySearch)}"
-                 style="padding-left:28px; height:32px; font-size:0.82rem; width:220px;"
+               <input type="text" id="lib-search" class="form-input" placeholder="Buscar..." value="${esc(currentLibrarySearch)}"
+                 style="padding-left:28px; height:32px; font-size:0.82rem; width:180px;"
                  oninput="setLibrarySearch(this.value)">
              </div>
 
              <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
-               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
+               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" onclick="setLibraryViewMode('grid')" title="Mosaico">
                  <i data-feather="grid" style="width: 14px; height: 14px;"></i>
                </button>
-               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'table' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('table')" title="Vista Tabla (Dataview)">
+               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'table' ? 'active' : ''}" onclick="setLibraryViewMode('table')" title="Tabla">
                  <i data-feather="list" style="width: 14px; height: 14px;"></i>
                </button>
              </div>
 
              <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
              <div class="dropdown-wrapper" style="display:flex; gap:8px;">
-               <button class="btn btn-secondary" onclick="exportLibraryAsBibTeX()" title="Exportar biblioteca como BibTeX">
-                 <i data-feather="download"></i> BibTeX
-               </button>
-               <button class="btn btn-secondary" onclick="exportLibraryAsCSL()" title="Exportar biblioteca como CSL-JSON">
-                 <i data-feather="download"></i> CSL-JSON
-               </button>
-               <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()" title="Importar CSL JSON manual">
-                 <i data-feather="upload-cloud"></i> Importar
-               </button>
-               <button class="btn btn-primary" id="btn-zotero-sync" title="Sincronizar en vivo con API">
-                 <i data-feather="refresh-cw"></i> Sincronizar Zotero
-               </button>
-               <button class="btn btn-icon" id="btn-zotero-config" title="Configurar Zotero API">
-                 <i data-feather="settings"></i>
-               </button>
+               <button class="btn btn-secondary btn-sm" onclick="exportLibraryAsBibTeX()" title="BibTeX"><i data-feather="download"></i></button>
+               <button class="btn btn-primary btn-sm" id="btn-zotero-sync"><i data-feather="refresh-cw"></i> Sincronizar</button>
+               <button class="btn btn-icon btn-sm" id="btn-zotero-config"><i data-feather="settings"></i></button>
+               <button class="btn btn-icon btn-sm" id="btn-doi-resolver" title="Resolver DOI"><i data-feather="link-2"></i></button>
              </div>
            ` : `
              <button class="btn btn-secondary" onclick="syncManager.openPanel()">
@@ -76,8 +66,27 @@ function renderLibrary(root) {
         </div>
       </div>
 
-      <div class="library-container" id="library-content-area" style="flex:1; display:flex; flex-direction:column;">
-        ${currentLibraryTab === 'zotero' ? renderZoteroContent(libraryItems) : '<div class="loader-wrap"><i data-feather="loader" class="spin"></i> Cargando Drive...</div>'}
+      <div class="library-layout" style="flex:1; display:flex; gap:20px; overflow:hidden;">
+        ${currentLibraryTab === 'zotero' ? `
+          <aside class="library-sidebar glass-panel" style="width:200px; display:flex; flex-direction:column; padding:15px; border-radius:var(--radius-md); background:var(--bg-surface-1);">
+            <h3 style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
+              <i data-feather="folder" style="width:12px;"></i> Grupos
+            </h3>
+            <div id="library-groups-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
+              ${renderGroupsList(libraryItems)}
+            </div>
+            <button class="btn btn-ghost btn-xs" style="margin-top:10px; justify-content:flex-start; color:var(--text-muted);" onclick="createNewGroup()">
+              <i data-feather="plus" style="width:12px;"></i> Nuevo grupo
+            </button>
+          </aside>
+          <div class="library-main" id="library-content-area" style="flex:1; overflow-y:auto; display:flex; flex-direction:column;">
+            ${renderZoteroContent(libraryItems)}
+          </div>
+        ` : `
+          <div id="library-content-area" style="flex:1; overflow-y:auto;">
+            <div class="loader-wrap"><i data-feather="loader" class="spin"></i> Cargando Drive...</div>
+          </div>
+        `}
       </div>
     </div>`;
 
@@ -90,32 +99,80 @@ function renderLibrary(root) {
   }
 }
 
+function renderGroupsList(items) {
+  const groupsCount = {};
+  let total = items.length;
+  let noGroup = 0;
+
+  items.forEach(i => {
+    if (!i.groups || i.groups.length === 0) {
+      noGroup++;
+    } else {
+      i.groups.forEach(g => {
+        groupsCount[g] = (groupsCount[g] || 0) + 1;
+      });
+    }
+  });
+
+  const sortedGroups = Object.keys(groupsCount).sort();
+
+  return `
+    <button class="btn-sidebar ${currentLibraryGroup === 'all' ? 'active' : ''}" onclick="setLibraryGroup('all')">
+      <i data-feather="layers"></i> <span>Todos</span> <span class="count">${total}</span>
+    </button>
+    <button class="btn-sidebar ${currentLibraryGroup === 'none' ? 'active' : ''}" onclick="setLibraryGroup('none')">
+      <i data-feather="slash"></i> <span>Sin grupo</span> <span class="count">${noGroup}</span>
+    </button>
+    <hr style="margin:8px 0; border:none; border-top:1px solid var(--border-color); opacity:0.3;">
+    ${sortedGroups.map(g => `
+      <button class="btn-sidebar ${currentLibraryGroup === g ? 'active' : ''}" onclick="setLibraryGroup('${esc(g)}')">
+        <i data-feather="hash"></i> <span>${esc(g)}</span> <span class="count">${groupsCount[g]}</span>
+      </button>
+    `).join('')}
+  `;
+}
+
+window.setLibraryGroup = function (group) {
+  currentLibraryGroup = group;
+  renderLibrary(document.getElementById('app-root'));
+};
+
 function renderZoteroContent(allItems) {
-  // Apply search filter
+  // 1. Filter by Group
+  let items = allItems;
+  if (currentLibraryGroup === 'none') {
+    items = allItems.filter(i => !i.groups || i.groups.length === 0);
+  } else if (currentLibraryGroup !== 'all') {
+    items = allItems.filter(i => i.groups && i.groups.includes(currentLibraryGroup));
+  }
+
+  // 2. Filter by Search
   const q = currentLibrarySearch.toLowerCase().trim();
-  const items = q
-    ? allItems.filter(i =>
-        (i.title || '').toLowerCase().includes(q) ||
-        (i.author || '').toLowerCase().includes(q) ||
-        (i.publicationTitle || '').toLowerCase().includes(q) ||
-        (i.tags || []).some(t => t.toLowerCase().includes(q))
-      )
-    : allItems;
+  if (q) {
+    items = items.filter(i =>
+      (i.title || '').toLowerCase().includes(q) ||
+      (i.author || '').toLowerCase().includes(q) ||
+      (i.publicationTitle || '').toLowerCase().includes(q) ||
+      (i.tags || []).some(t => t.toLowerCase().includes(q))
+    );
+  }
 
   const withDOI = items.filter(i => i.doi);
 
   return `
-    <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-      ${statPill(allItems.length, 'Referencias Totales', 'book')}
+    <div style="display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
+      <div style="background:var(--bg-surface-2); padding:4px 10px; border-radius:20px; font-size:0.75rem; border:1px solid var(--border-color);">
+        <span style="color:var(--text-muted); font-weight:600;">Grupo:</span> ${esc(currentLibraryGroup === 'all' ? 'Todos' : currentLibraryGroup === 'none' ? 'Sin grupo' : currentLibraryGroup)}
+      </div>
+      <div style="flex:1;"></div>
+      ${statPill(items.length, 'Referencias', 'book')}
       ${statPill(items.filter(i => i.itemType === 'article-journal').length, 'Artículos', 'file-text')}
-      ${statPill(withDOI.length, 'Con DOI', 'link')}
-      ${q ? statPill(items.length, 'Resultados', 'search') : ''}
     </div>
     <div style="flex:1;">
       ${items.length === 0
       ? emptyState('book-open', allItems.length === 0
-          ? 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar.'
-          : 'No hay resultados para esa búsqueda.')
+        ? 'Tu biblioteca está vacía_ Sincroniza con Zotero para empezar.'
+        : 'No hay resultados que coincidan con los filtros.')
       : (currentLibraryViewMode === 'table' ? renderLibraryTable(items) : renderLibraryGrid(items))}
     </div>
   `;
@@ -249,6 +306,30 @@ function bindZoteroEvents() {
       }
     });
   }
+
+  const btnDoiResolver = document.getElementById('btn-doi-resolver');
+  if (btnDoiResolver) {
+    btnDoiResolver.addEventListener('click', async () => {
+      const doi = prompt('Introduce el DOI de la referencia (ej: 10.1038/s41586-020-2012-7):');
+      if (!doi) return;
+
+      try {
+        btnDoiResolver.innerHTML = '<i data-feather="loader" class="spin"></i> Resolviendo...';
+        feather.replace();
+
+        const item = await crossrefApi.fetchMetadata(doi);
+        await store.dispatch('IMPORT_LIBRARY', { items: [item] });
+
+        showToast('Referencia importada con éxito', 'success');
+        renderLibrary(document.getElementById('app-root'));
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btnDoiResolver.innerHTML = '<i data-feather="link-2"></i> Resolver DOI';
+        feather.replace();
+      }
+    });
+  }
 }
 
 window.deleteLibraryItem = async function (id) {
@@ -274,7 +355,7 @@ function renderLibraryTable(items) {
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Título</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Autores</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Año</th>
-                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Clave / DOI</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Grupos/Tags</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Acción</th>
                 </tr>
             </thead>
@@ -288,20 +369,27 @@ function renderLibraryTable(items) {
                     </td>
                     <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${esc(item.author || '---')}</td>
                     <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${item.year || (item.date ? escaAño(item.date) : '---')}</td>
-                    <td style="padding: 12px; font-size: 0.75rem;">
-                      ${item.citeKey ? `<code style="background:var(--bg-surface-2); padding:2px 5px; border-radius:4px; color:var(--accent-teal);">${esc(item.citeKey)}</code>` : ''}
-                      ${item.doi
-                        ? `<a href="https://doi.org/${esc(item.doi)}" target="_blank" rel="noopener noreferrer"
-                             style="display:block; margin-top:3px; color:var(--accent-primary); font-size:0.7rem;"
-                             title="Abrir DOI: ${esc(item.doi)}">
-                             <i data-feather="link-2" style="width:10px;height:10px;"></i> DOI
-                           </a>`
-                        : ''}
+                    <td style="padding: 12px;">
+                      <div style="display:flex; flex-direction:column; gap:6px;">
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; max-width:150px;">
+                          ${(item.groups || []).map(g => `
+                            <span class="badge badge-primary" style="font-size:0.65rem; padding:1px 6px; cursor:pointer;" onclick="removeFromGroup('${item.id}', '${esc(g)}')">
+                              ${esc(g)} &times;
+                            </span>
+                          `).join('')}
+                          <button class="btn btn-ghost btn-xs" style="padding:0 4px; font-size:0.65rem;" onclick="addToGroup('${item.id}')" title="Añadir a grupo">
+                            <i data-feather="plus" style="width:10px; height:10px;"></i>
+                          </button>
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:2px;">
+                           ${(item.tags || []).map(t => `<span style="font-size:0.6rem; color:var(--text-muted);">#${esc(t)}</span>`).join(' ')}
+                        </div>
+                      </div>
                     </td>
                     <td style="padding: 12px; display:flex; gap:8px;">
-                        <a href="${item.uri}" class="btn btn-sm btn-ghost" title="Abrir en Zotero" style="color:var(--accent-primary);">
-                          <i data-feather="external-link" style="width: 14px; height: 14px;"></i>
-                        </a>
+                        <button class="btn btn-sm btn-ghost" title="Auto-etiquetar con AI Local" onclick="autoTagItem('${item.id}')">
+                          <i data-feather="cpu" style="width: 14px; height: 14px; color:var(--accent-teal);"></i>
+                        </button>
                         <button class="btn btn-sm btn-ghost" title="Copiar clave de cita [@${esc(item.citeKey || item.id)}]"
                           onclick="navigator.clipboard.writeText('[@${esc(item.citeKey || item.id)}]').then(()=>showToast('Clave copiada','success'))">
                           <i data-feather="copy" style="width: 14px; height: 14px;"></i>
@@ -315,6 +403,89 @@ function renderLibraryTable(items) {
             </tbody>
         </table>
     </div>`;
+}
+
+window.addToGroup = async function (itemId) {
+  const group = prompt('Nombre del grupo para añadir (JabRef-style):');
+  if (!group) return;
+  const item = store.get.library().find(i => i.id === itemId);
+  if (!item) return;
+
+  const groups = [...(item.groups || [])];
+  if (!groups.includes(group)) {
+    groups.push(group);
+    await store.dispatch('UPDATE_LIBRARY_ITEM', { id: itemId, groups });
+    renderLibrary(document.getElementById('app-root'));
+  }
+};
+
+window.removeFromGroup = async function (itemId, groupName) {
+  const item = store.get.library().find(i => i.id === itemId);
+  if (!item) return;
+
+  const groups = (item.groups || []).filter(g => g !== groupName);
+  await store.dispatch('UPDATE_LIBRARY_ITEM', { id: itemId, groups });
+  renderLibrary(document.getElementById('app-root'));
+};
+
+window.createNewGroup = function () {
+  const group = prompt('Nombre del nuevo grupo:');
+  if (group) {
+    showToast(`Grupo "${group}" creado. Añade referencias a este grupo usando el botón "+" en la lista.`, 'info');
+    // Groups are virtual until an item is assigned, so we just prompt
+  }
+};
+
+function renderLibraryGrid(items) {
+  return `
+    <div class="library-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:20px;">
+      ${items.map(item => `
+        <div class="card glass-panel" style="padding:16px; display:flex; flex-direction:column; gap:12px; position:relative;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <span class="badge badge-neutral" style="font-size:0.65rem;">${esc(item.itemType || 'document')}</span>
+            <div style="display:flex; gap:4px;">
+              <button class="btn btn-icon btn-xs" onclick="navigator.clipboard.writeText('[@${esc(item.citeKey || item.id)}]').then(()=>showToast('Clave copiada','success'))" title="Copiar clave">
+                <i data-feather="copy" style="width:12px; height:12px;"></i>
+              </button>
+              <button class="btn btn-icon btn-xs" title="Auto-etiquetar con AI" onclick="autoTagItem('${item.id}')">
+                <i data-feather="cpu" style="width:12px; height:12px; color:var(--accent-teal);"></i>
+              </button>
+              <button class="btn btn-icon btn-xs" style="color:var(--accent-danger);" onclick="deleteLibraryItem('${item.id}')">
+                <i data-feather="trash-2" style="width:12px; height:12px;"></i>
+              </button>
+            </div>
+          </div>
+          <div>
+            <h4 style="font-size:0.9rem; margin:0 0 4px 0; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${esc(item.title)}">${esc(item.title)}</h4>
+            <p style="font-size:0.75rem; color:var(--text-muted); margin:0;">${esc(item.author || '---')}</p>
+          </div>
+          
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              ${(item.groups || []).map(g => `
+                <span class="badge badge-primary" style="font-size:0.6rem; padding:1px 5px;">${esc(g)}</span>
+              `).join('')}
+            </div>
+            <div style="display:flex; flex-wrap:wrap; gap:2px;">
+              ${(item.tags || []).map(t => `<span style="font-size:0.55rem; color:var(--text-muted);">#${esc(t)}</span>`).join(' ')}
+            </div>
+          </div>
+
+          <div style="margin-top:auto; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.75rem; font-weight:600; color:var(--text-secondary);">${item.year || escaAño(item.date)}</span>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-ghost btn-xs" onclick="addToGroup('${item.id}')" title="Añadir a grupo">
+                <i data-feather="folder-plus" style="width:12px; height:12px;"></i>
+              </button>
+              <a href="${item.uri}" class="btn btn-ghost btn-xs" style="color:var(--accent-primary);">
+                <i data-feather="external-link" style="width:12px; height:12px;"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function escaAño(dateString) {
@@ -382,10 +553,33 @@ function processZoteroItem(raw) {
     abstract: raw.abstract || raw.abstractNote || '',
     date: raw.issued && raw.issued['date-parts'] ? raw.issued['date-parts'][0][0] : (raw.date || ''),
     itemType: raw.type || raw.itemType || 'document',
+    tags: raw.tags || [],
+    groups: [], // Initialize for JabRef-style groups
     uri: zoteroUri,
     importedAt: Date.now()
   };
 }
+
+window.autoTagItem = async function (itemId) {
+  const item = store.get.library().find(i => i.id === itemId);
+  if (!item) return;
+
+  try {
+    showToast('Generando etiquetas con AI local...', 'info');
+    const tags = await ollamaApi.suggestTags(item.title, item.abstractNote || item.abstract || '');
+    if (tags && tags.length > 0) {
+      const existingTags = item.tags || [];
+      const newTags = [...new Set([...existingTags, ...tags])];
+      await store.dispatch('UPDATE_LIBRARY_ITEM', { id: itemId, tags: newTags });
+      showToast('Etiquetas generadas y añadidas.', 'success');
+      renderLibrary(document.getElementById('app-root'));
+    } else {
+      showToast('No se pudieron generar etiquetas. Revisa Ollama.', 'warning');
+    }
+  } catch (err) {
+    showToast('Error al conectar con Ollama.', 'error');
+  }
+};
 
 window.renderLibrary = renderLibrary;
 

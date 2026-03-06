@@ -19,9 +19,13 @@ export const renderGraph = (root) => {
             <header class="view-header" style="padding:15px 20px;">
                 <div class="view-title">
                     <h1>Grafo de Conocimiento</h1>
-                    <p>Visualiza las conexiones entre tus ideas, proyectos y referencias.</p>
+                    <p>Visualiza y vincula tus proyectos y referencias.</p>
                 </div>
                 <div class="header-actions" style="display:flex; gap:8px;">
+                    <button class="btn btn-primary btn-sm" id="btn-toggle-link" title="Vincular proyectos manualmente">
+                        <i data-feather="link"></i> <span id="text-toggle-link">Modo Vincular</span>
+                    </button>
+                    <div style="width:1px; background:var(--border-color); margin:0 4px;"></div>
                     <button class="btn btn-secondary btn-sm" id="btn-export-graphml" title="Exportar grafo como GraphML (Gephi / Cytoscape)">
                         <i data-feather="share-2"></i> GraphML
                     </button>
@@ -62,6 +66,12 @@ export const renderGraph = (root) => {
         if (p.parentId) {
             data.links.push({ source: p.parentId, target: p.id, type: 'hierarchy' });
         }
+        // Custom semantic links
+        if (p.related && Array.isArray(p.related)) {
+            p.related.forEach(targetId => {
+                data.links.push({ source: p.id, target: targetId, type: 'custom_link' });
+            });
+        }
     });
 
     // 2. Add Documents
@@ -96,6 +106,28 @@ export const renderGraph = (root) => {
     const overlay = root.querySelector('#graph-container > div:first-child');
     if (overlay) overlay.style.display = 'none';
 
+    // Link Mode State
+    let linkModeActive = false;
+    let linkSourceNode = null;
+
+    root.querySelector('#btn-toggle-link').addEventListener('click', (e) => {
+        linkModeActive = !linkModeActive;
+        const btn = e.currentTarget;
+        if (linkModeActive) {
+            btn.classList.replace('btn-primary', 'btn-danger'); // Use red/danger to denote active status safely
+            root.querySelector('#text-toggle-link').textContent = 'Cancelar Vinculación';
+            if (window.showToast) showToast('Modo Vincular Activado. Haz clic en el proyecto de origen.', 'info');
+        } else {
+            btn.classList.replace('btn-danger', 'btn-primary');
+            root.querySelector('#text-toggle-link').textContent = 'Modo Vincular';
+            if (linkSourceNode) {
+                linkSourceNode.color = linkSourceNode._originalColor;
+                linkSourceNode = null;
+                Graph.nodeColor('color'); // trigger re-render
+            }
+        }
+    });
+
     // Render Graph
     const Graph = ForceGraph()(container)
         .graphData(data)
@@ -107,13 +139,73 @@ export const renderGraph = (root) => {
         .linkColor(link => {
             if (link.type === 'hierarchy') return '#6366f1';
             if (link.type === 'crosslink') return '#14b8a6';
+            if (link.type === 'custom_link') return '#f59e0b';
             return 'rgba(255,255,255,0.1)';
         })
-        .linkWidth(link => link.type === 'hierarchy' ? 3 : 1)
+        .linkWidth(link => link.type === 'hierarchy' ? 3 : link.type === 'custom_link' ? 2 : 1)
         .linkDirectionalArrowLength(link => link.type === 'hierarchy' ? 4 : 0)
-        .linkDirectionalParticles(link => link.type === 'crosslink' ? 3 : 0)
+        .linkDirectionalParticles(link => (link.type === 'crosslink' || link.type === 'custom_link') ? 3 : 0)
         .linkDirectionalParticleSpeed(0.005)
         .onNodeClick(node => {
+            if (linkModeActive) {
+                if (node.type !== 'project') {
+                    if (window.showToast) showToast('Solo puedes vincular proyectos en esta versión.', 'warning');
+                    return;
+                }
+
+                if (!linkSourceNode) {
+                    // Start link
+                    linkSourceNode = node;
+                    linkSourceNode._originalColor = node.color;
+                    node.color = '#f59e0b'; // Amber for selected
+                    Graph.nodeColor('color'); // Re-evaluate colors
+                    if (window.showToast) showToast(`Origen: ${node.name}. Ahora selecciona el destino.`, 'info');
+                } else {
+                    // Complete link
+                    if (node.id === linkSourceNode.id) {
+                        linkSourceNode.color = linkSourceNode._originalColor;
+                        linkSourceNode = null;
+                        Graph.nodeColor('color');
+                        if (window.showToast) showToast('Vinculación cancelada.', 'info');
+                        return;
+                    }
+
+                    const targetNode = node;
+                    const sourceProj = store.get.projects().find(p => p.id === linkSourceNode.id);
+                    if (sourceProj) {
+                        const related = sourceProj.related || [];
+                        if (!related.includes(targetNode.id)) {
+                            related.push(targetNode.id);
+
+                            // Update store (this will persist it)
+                            store.dispatch('UPDATE_PROJECT', { id: sourceProj.id, related });
+
+                            // Visually update the graph immediately
+                            const { nodes, links } = Graph.graphData();
+                            links.push({ source: sourceProj.id, target: targetNode.id, type: 'custom_link' });
+                            Graph.graphData({ nodes, links });
+
+                            if (window.showToast) showToast(`Vínculo creado: ${sourceProj.name} ➔ ${targetNode.name}`, 'success');
+                        } else {
+                            if (window.showToast) showToast('Estos proyectos ya están vinculados.', 'warning');
+                        }
+                    }
+
+                    // Reset
+                    linkSourceNode.color = linkSourceNode._originalColor;
+                    linkSourceNode = null;
+                    Graph.nodeColor('color');
+
+                    // Automatically turn off link mode for convenience
+                    const toggleBtn = root.querySelector('#btn-toggle-link');
+                    linkModeActive = false;
+                    toggleBtn.classList.replace('btn-danger', 'btn-primary');
+                    root.querySelector('#text-toggle-link').textContent = 'Modo Vincular';
+                }
+                return;
+            }
+
+            // Normal node click logic
             if (node.type === 'doc') {
                 const doc = documents.find(d => d.id === node.id);
                 if (doc && doc.projectId) {
@@ -199,9 +291,9 @@ export const renderGraph = (root) => {
         xmlLines.push('  </graph>', '</graphml>');
 
         const blob = new Blob([xmlLines.join('\n')], { type: 'application/xml' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
         a.download = `workspace-graph-${new Date().toISOString().slice(0, 10)}.graphml`;
         a.click();
         URL.revokeObjectURL(url);

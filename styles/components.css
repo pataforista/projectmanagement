@@ -93,6 +93,12 @@
     font-size: 0.78rem;
 }
 
+.btn-xs {
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    border-radius: 4px;
+}
+
 /* ── Badges ─────────────────────────────────────────────────────────────────── */
 .badge {
     padding: 3px 8px;
@@ -1571,6 +1577,68 @@
     outline: none;
     scrollbar-width: thin;
 }
+
+.writing-ai-sidebar {
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border-color);
+    background: var(--bg-surface);
+}
+
+.ai-chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scrollbar-width: thin;
+}
+
+.ai-msg {
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    max-width: 90%;
+    box-shadow: var(--shadow-sm);
+}
+
+.ai-msg-system {
+    background: var(--bg-surface-2);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+}
+
+.ai-msg-user {
+    background: var(--accent-primary-bg);
+    color: var(--text-primary);
+    border: 1px solid rgba(94, 106, 210, 0.4);
+    align-self: flex-end;
+    border-bottom-right-radius: 4px;
+}
+
+.ai-input-wrap {
+    padding: 12px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-surface);
+}
+
+#ai-chat-input {
+    font-size: 0.82rem;
+    min-height: 40px;
+}
+
 
 /* ── Integrations Hub ────────────────────────────────────────────────────────── */
 .integrations-grid {

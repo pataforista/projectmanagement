@@ -105,10 +105,22 @@ class Router {
     _render(viewName, params) {
         const root = document.getElementById('app-root');
         if (!root) return;
+
+        // Teardown previous view to prevent runaway memory leaks
+        if (typeof this._currentCleanup === 'function') {
+            try {
+                this._currentCleanup();
+            } catch (e) {
+                console.error(`[Router] Error cleaning up view:`, e);
+            }
+        }
+        this._currentCleanup = null;
+
         root.innerHTML = '';
         const handler = this._handlers[viewName];
         if (handler) {
-            handler(root, params);
+            // If the handler returns a function, we assume it's a cleanup/teardown function
+            this._currentCleanup = handler(root, params);
         } else {
             // ✅ SECURITY FIX: viewName derives from the URL hash (user-controlled).
             // Using innerHTML here was an XSS vector. textContent is always safe.

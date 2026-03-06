@@ -26,9 +26,16 @@ const store = (() => {
 
     const _subscribers = {};
 
+    // Hardening: Debounce UI updates to prevent CPU thrashing during bulk operations (like Sync)
+    const _notifyTimeouts = {};
     function _notify(key) {
-        if (_subscribers['*']) _subscribers['*'].forEach(fn => fn(_state));
-        if (_subscribers[key]) _subscribers[key].forEach(fn => fn(_state[key]));
+        if (_notifyTimeouts[key]) {
+            cancelAnimationFrame(_notifyTimeouts[key]);
+        }
+        _notifyTimeouts[key] = requestAnimationFrame(() => {
+            if (_subscribers['*']) _subscribers['*'].forEach(fn => fn(_state));
+            if (key !== '*' && _subscribers[key]) _subscribers[key].forEach(fn => fn(_state[key]));
+        });
     }
 
     // ── Load from DB ──────────────────────────────────────────────────────────
@@ -315,6 +322,17 @@ const store = (() => {
 
                 _state.library = await dbAPI.getAll(storeName);
                 _notify(storeName);
+                break;
+            }
+            case 'UPDATE_LIBRARY_ITEM': {
+                storeName = 'library';
+                const idx = _state.library.findIndex(i => i.id === payload.id);
+                if (idx !== -1) {
+                    const updated = { ..._state.library[idx], ...payload };
+                    await dbAPI.put(storeName, updated);
+                    _state.library[idx] = updated;
+                    _notify(storeName);
+                }
                 break;
             }
 

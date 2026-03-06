@@ -261,9 +261,22 @@ const syncManager = (() => {
         }, ms);
     }
 
+    // Hardening: Network Timeout Wrapper to prevent infinite hanging
+    async function fetchWithTimeout(resource, options = {}) {
+        const { timeout = 12000 } = options;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    }
+
     async function findFile(name) {
         const q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
         const result = await resp.json();
@@ -276,10 +289,11 @@ const syncManager = (() => {
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
 
-        const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+        const resp = await fetchWithTimeout('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
             method: 'POST',
             headers: { Authorization: `Bearer ${accessToken}` },
             body: form,
+            timeout: 15000
         });
         const result = await resp.json();
         return result.id;
@@ -297,8 +311,9 @@ const syncManager = (() => {
     }
 
     async function getFileContent(id) {
-        const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 15000
         });
         if (!resp.ok) throw new Error("File not found or no permissions");
         return resp.json();

@@ -81,6 +81,7 @@ const zoteroApi = (() => {
                 publisher: data.publisher || '',
                 place: data.place || '',
                 tags: (data.tags || []).map(t => t.tag),
+                groups: [], // Initialize for JabRef-style groups
                 uri: uri,
                 importedAt: Date.now()
             };
@@ -110,19 +111,19 @@ const zoteroApi = (() => {
             const key = item.citeKey || item.id;
 
             const fields = [];
-            if (item.title)            fields.push(`  title     = {${item.title}}`);
-            if (item.author)           fields.push(`  author    = {${item.author}}`);
+            if (item.title) fields.push(`  title     = {${item.title}}`);
+            if (item.author) fields.push(`  author    = {${item.author}}`);
             if (item.year || item.date) fields.push(`  year      = {${item.year || item.date}}`);
             if (item.publicationTitle) fields.push(`  journal   = {${item.publicationTitle}}`);
             if (item.journalAbbreviation) fields.push(`  journaltitle = {${item.journalAbbreviation}}`);
-            if (item.volume)           fields.push(`  volume    = {${item.volume}}`);
-            if (item.issue)            fields.push(`  number    = {${item.issue}}`);
-            if (item.pages)            fields.push(`  pages     = {${item.pages}}`);
-            if (item.publisher)        fields.push(`  publisher = {${item.publisher}}`);
-            if (item.place)            fields.push(`  address   = {${item.place}}`);
-            if (item.doi)              fields.push(`  doi       = {${item.doi}}`);
-            if (item.url)              fields.push(`  url       = {${item.url}}`);
-            if (item.abstractNote)     fields.push(`  abstract  = {${item.abstractNote.replace(/[{}]/g, '')}}`);
+            if (item.volume) fields.push(`  volume    = {${item.volume}}`);
+            if (item.issue) fields.push(`  number    = {${item.issue}}`);
+            if (item.pages) fields.push(`  pages     = {${item.pages}}`);
+            if (item.publisher) fields.push(`  publisher = {${item.publisher}}`);
+            if (item.place) fields.push(`  address   = {${item.place}}`);
+            if (item.doi) fields.push(`  doi       = {${item.doi}}`);
+            if (item.url) fields.push(`  url       = {${item.url}}`);
+            if (item.abstractNote) fields.push(`  abstract  = {${item.abstractNote.replace(/[{}]/g, '')}}`);
 
             return `@${bibType}{${key},\n${fields.join(',\n')}\n}`;
         }).join('\n\n');

@@ -30,7 +30,9 @@ function renderIntegrations(root) {
             </div>
           </div>
           <div class="integration-body">
-            <p>Sincroniza tus datos, calendario y tareas con Google.</p>
+             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Sincroniza tus datos de equipo mediante Drive Workspace.
+            </p>
             <div class="integration-services">
               <label class="checkbox-item">
                 <input type="checkbox" checked disabled> 
@@ -63,18 +65,21 @@ function renderIntegrations(root) {
             </div>
           </div>
           <div class="integration-body">
-            <p>Gestiona tus referencias bibliográficas e investigación.</p>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Obtén tu <strong>User ID</strong> y crea una nueva <strong>API Key</strong> desde <a href="https://www.zotero.org/settings/keys" target="_blank" style="color:var(--accent-primary);">zotero.org/settings/keys</a>.
+            </p>
             <div class="form-group" style="margin-top:12px;">
                 <label style="font-size:0.75rem; color:var(--text-muted);">Zotero User ID</label>
-                <input type="text" class="form-input" id="int-zot-uid" value="${esc(zoteroCreds.userId || '')}" placeholder="ID de usuario">
+                <input type="text" class="form-input" id="int-zot-uid" value="${esc(zoteroCreds.userId || '')}" placeholder="ID de usuario (Ej: 1234567)">
             </div>
             <div class="form-group" style="margin-top:8px;">
                 <label style="font-size:0.75rem; color:var(--text-muted);">API Key</label>
-                <input type="password" class="form-input" id="int-zot-key" value="${esc(zoteroCreds.apiKey || '')}" placeholder="Skey...">
+                <input type="password" class="form-input" id="int-zot-key" value="${esc(zoteroCreds.apiKey || '')}" placeholder="Tu clave secreta...">
             </div>
-            <button class="btn btn-primary btn-sm" id="btn-save-zotero" style="margin-top:16px;width:100%;">
-              Guardar Zotero
-            </button>
+            <div style="display:flex; gap:8px; margin-top:16px;">
+              <button class="btn btn-primary btn-sm flex-1" id="btn-save-zotero" style="flex:1;">Guardar</button>
+              <button class="btn btn-secondary btn-sm" id="btn-test-zotero" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
+            </div>
           </div>
         </div>
 
@@ -88,19 +93,20 @@ function renderIntegrations(root) {
             </div>
           </div>
           <div class="integration-body">
-            <p>Importa y exporta tareas con Todoist.</p>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Encuentra tu API Token personal en <a href="https://todoist.com/prefs/integrations" target="_blank" style="color:var(--accent-primary);">Configuración > Integraciones > Developer</a>.
+            </p>
             <div class="form-group" style="margin-top:12px;">
                 <label style="font-size:0.75rem; color:var(--text-muted);">API Token</label>
-                <input type="password" class="form-input" id="int-todoist-token" value="${esc(localStorage.getItem('todoist_token') || '')}" placeholder="Token de Todoist">
+                <input type="password" class="form-input" id="int-todoist-token" value="${esc(localStorage.getItem('todoist_token') || '')}" placeholder="API Token v2">
             </div>
             <div style="display:flex; gap:8px; margin-top:16px;">
-              <button class="btn btn-primary btn-sm flex-1" id="btn-save-todoist" style="flex:1;">
-                Guardar Token
-              </button>
-              <button class="btn btn-ghost btn-sm" id="btn-sync-todoist" ${!localStorage.getItem('todoist_token') ? 'disabled' : ''}>
-                <i data-feather="refresh-cw"></i> Sincronizar
-              </button>
+              <button class="btn btn-primary btn-sm flex-1" id="btn-save-todoist" style="flex:1;">Guardar</button>
+              <button class="btn btn-secondary btn-sm" id="btn-test-todoist" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
             </div>
+            <button class="btn btn-ghost btn-sm" id="btn-sync-todoist" style="margin-top:8px;width:100%;" ${!localStorage.getItem('todoist_token') ? 'disabled' : ''}>
+              <i data-feather="refresh-cw"></i> Sincronizar Tareas Ahora
+            </button>
           </div>
         </div>
 
@@ -116,19 +122,86 @@ function renderIntegrations(root) {
             </div>
           </div>
           <div class="integration-body">
-            <p>Publica proyectos con DOI permanente en Zenodo (CERN).</p>
+             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Genera tu token en <a href="https://zenodo.org/account/settings/applications/tokens/new" target="_blank" style="color:var(--accent-primary);">Applications > Personal access tokens</a>.
+            </p>
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Access Token</label>
               <input type="password" class="form-input" id="int-zenodo-token"
-                value="${esc(zenodoCreds.token || '')}" placeholder="Token personal de Zenodo">
+                value="${esc(zenodoCreds.token || '')}" placeholder="Token personal">
             </div>
             <label class="checkbox-item" style="margin-top:8px;">
               <input type="checkbox" id="int-zenodo-sandbox" ${zenodoCreds.sandbox !== false ? 'checked' : ''}>
-              <span>Usar Sandbox (pruebas, recomendado)</span>
+              <span>Usar Sandbox (entorno de pruebas)</span>
             </label>
-            <button class="btn btn-primary btn-sm" id="btn-save-zenodo" style="margin-top:16px;width:100%;">
-              Guardar Zenodo
-            </button>
+            <div style="display:flex; gap:8px; margin-top:16px;">
+              <button class="btn btn-primary btn-sm flex-1" id="btn-save-zenodo" style="flex:1;">Guardar</button>
+              <button class="btn btn-secondary btn-sm" id="btn-test-zenodo" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ollama (IA Local) -->
+        <div class="card glass-panel integration-card">
+          <div class="integration-header">
+            <div class="integration-icon" style="background:var(--accent-teal);"><i data-feather="cpu"></i></div>
+            <div class="integration-title">
+              <h3>Ollama (IA Local)</h3>
+              <span class="badge ${localStorage.getItem('ollama_url') ? 'badge-success' : 'badge-neutral'}">
+                ${localStorage.getItem('ollama_url') ? 'Habilitado' : 'No configurado'}
+              </span>
+            </div>
+          </div>
+          <div class="integration-body">
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Asegúrate de que Ollama esté ejecutándose localmente. P ej: <code>OLLAMA_ORIGINS="*" ollama serve</code>
+            </p>
+            <div class="form-group" style="margin-top:12px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">Servidor URL</label>
+              <input type="text" class="form-input" id="int-ollama-url"
+                value="${esc(localStorage.getItem('ollama_url') || 'http://localhost:11434')}" placeholder="http://localhost:11434">
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">Modelo Base</label>
+              <input type="text" class="form-input" id="int-ollama-model"
+                value="${esc(localStorage.getItem('ollama_model') || 'llama3')}" placeholder="Ej: mistral, llama3">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:16px;">
+              <button class="btn btn-primary btn-sm flex-1" id="btn-save-ollama" style="flex:1;">Guardar</button>
+              <button class="btn btn-secondary btn-sm" id="btn-test-ollama" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- eLabFTW -->
+        <div class="card glass-panel integration-card">
+          <div class="integration-header">
+            <div class="integration-icon" style="background:#e11d48;"><i data-feather="activity"></i></div>
+            <div class="integration-title">
+              <h3>eLabFTW</h3>
+              <span class="badge ${localStorage.getItem('elabftw_api_key') ? 'badge-success' : 'badge-neutral'}">
+                ${localStorage.getItem('elabftw_api_key') ? 'Conectado' : 'No conectado'}
+              </span>
+            </div>
+          </div>
+          <div class="integration-body">
+             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+              Crea tu API Key desde el panel de usuario de tu instancia institucional de eLabFTW.
+            </p>
+            <div class="form-group" style="margin-top:12px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">Instancia URL</label>
+              <input type="text" class="form-input" id="int-elab-url"
+                value="${esc(localStorage.getItem('elabftw_url') || '')}" placeholder="https://elab.tu-institucion.edu">
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">API Key</label>
+              <input type="password" class="form-input" id="int-elab-key"
+                value="${esc(localStorage.getItem('elabftw_api_key') || '')}" placeholder="Tu clave API">
+            </div>
+            <div style="display:flex; gap:8px; margin-top:16px;">
+              <button class="btn btn-primary btn-sm flex-1" id="btn-save-elab" style="flex:1;">Guardar</button>
+              <button class="btn btn-secondary btn-sm" id="btn-test-elab" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
+            </div>
           </div>
         </div>
 
@@ -142,14 +215,14 @@ function renderIntegrations(root) {
             </div>
           </div>
           <div class="integration-body">
-            <p>Protege el acceso al Workspace con contraseña.</p>
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">Protege el acceso local al Workspace usando un código PIN o contraseña.</p>
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Nueva Contraseña</label>
               <input type="password" class="form-input" id="int-new-pwd" placeholder="Mínimo 4 caracteres">
             </div>
             <label class="checkbox-item" style="margin-top:8px;">
               <input type="checkbox" id="int-autolock" ${localStorage.getItem('autolock_enabled') === 'true' ? 'checked' : ''}>
-              <span>Bloquear al minimizar</span>
+              <span>Bloquear al minimizar pantalla</span>
             </label>
             <button class="btn btn-primary btn-sm" id="btn-save-security" style="margin-top:16px;width:100%;">
               Guardar Seguridad
@@ -229,6 +302,109 @@ function renderIntegrations(root) {
     showToast('Configuración de seguridad guardada.', 'success');
     renderIntegrations(root);
   });
+
+  root.querySelector('#btn-save-ollama')?.addEventListener('click', () => {
+    const url = root.querySelector('#int-ollama-url').value.trim();
+    const model = root.querySelector('#int-ollama-model').value.trim();
+    if (window.ollamaApi?.setSettings) {
+      ollamaApi.setSettings(url, model);
+    } else {
+      localStorage.setItem('ollama_url', url);
+      localStorage.setItem('ollama_model', model);
+    }
+    showToast('Ollama configurado correctamente', 'success');
+    renderIntegrations(root);
+  });
+
+  root.querySelector('#btn-save-elab')?.addEventListener('click', () => {
+    const url = root.querySelector('#int-elab-url').value.trim();
+    const key = root.querySelector('#int-elab-key').value.trim();
+    if (window.elabftwApi?.setCredentials) {
+      elabftwApi.setCredentials(url, key);
+    } else {
+      localStorage.setItem('elabftw_url', url);
+      localStorage.setItem('elabftw_api_key', key);
+    }
+    showToast('eLabFTW configurado correctamente', 'success');
+    renderIntegrations(root);
+  });
+
+  // ------------------------------------------------------------------
+  // TEST CONNECTIONS
+  // ------------------------------------------------------------------
+
+  async function testApi(buttonSelector, textTarget, fetchFn) {
+    const btn = root.querySelector(buttonSelector);
+    if (!btn) return;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i data-feather="loader" class="spin" style="width:14px;height:14px;margin-right:4px;"></i> Probando`;
+    feather.replace();
+
+    try {
+      await fetchFn();
+      btn.innerHTML = `<i data-feather="check" style="width:14px;height:14px;margin-right:4px;"></i> Conectado`;
+      btn.style.color = "var(--accent-teal)";
+      setTimeout(() => { btn.innerHTML = originalText; btn.style.color = ""; }, 3000);
+    } catch (err) {
+      btn.innerHTML = `<i data-feather="x" style="width:14px;height:14px;margin-right:4px;"></i> Error`;
+      btn.style.color = "var(--accent-danger)";
+      showToast(`Error de conexión: ${err.message}`, 'error');
+      setTimeout(() => { btn.innerHTML = originalText; btn.style.color = ""; }, 5000);
+    }
+  }
+
+  root.querySelector('#btn-test-zotero')?.addEventListener('click', () => {
+    testApi('#btn-test-zotero', 'Probar', async () => {
+      const uid = root.querySelector('#int-zot-uid').value.trim();
+      const key = root.querySelector('#int-zot-key').value.trim();
+      if (!uid || !key) throw new Error("Faltan credenciales");
+      const res = await fetch(`https://api.zotero.org/users/${uid}/items/top?v=3&limit=1`, { headers: { 'Zotero-API-Key': key } });
+      if (!res.ok) throw new Error("Acceso denegado o usuario inválido");
+    });
+  });
+
+  root.querySelector('#btn-test-todoist')?.addEventListener('click', () => {
+    testApi('#btn-test-todoist', 'Probar', async () => {
+      const token = root.querySelector('#int-todoist-token').value.trim();
+      if (!token) throw new Error("Falta el API Token");
+      const res = await fetch('https://api.todoist.com/rest/v2/projects', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Token revocado o inválido");
+    });
+  });
+
+  root.querySelector('#btn-test-zenodo')?.addEventListener('click', () => {
+    testApi('#btn-test-zenodo', 'Probar', async () => {
+      const token = root.querySelector('#int-zenodo-token').value.trim();
+      const sandbox = root.querySelector('#int-zenodo-sandbox').checked;
+      if (!token) throw new Error("Falta el API Token");
+      const base = sandbox ? 'https://sandbox.zenodo.org/api' : 'https://zenodo.org/api';
+      const res = await fetch(`${base}/deposit/depositions?size=1`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) throw new Error("Token incorrecto o cuenta restringida");
+    });
+  });
+
+  root.querySelector('#btn-test-ollama')?.addEventListener('click', () => {
+    testApi('#btn-test-ollama', 'Probar', async () => {
+      let url = root.querySelector('#int-ollama-url').value.trim();
+      if (!url) throw new Error("Falta la URL del servidor local");
+      url = url.endsWith('/') ? url.slice(0, -1) : url;
+      const res = await fetch(`${url}/api/tags`);
+      if (!res.ok) throw new Error(`El servidor respondió con error ${res.status}`);
+      await res.json();
+    });
+  });
+
+  root.querySelector('#btn-test-elab')?.addEventListener('click', () => {
+    testApi('#btn-test-elab', 'Probar', async () => {
+      let url = root.querySelector('#int-elab-url').value.trim();
+      const key = root.querySelector('#int-elab-key').value.trim();
+      if (!url || !key) throw new Error("Falta la URL o la API Key");
+      url = url.endsWith('/') ? url.slice(0, -1) : url;
+      const res = await fetch(`${url}/api/v2/experiments?limit=1`, { headers: { 'Authorization': key } });
+      if (!res.ok) throw new Error(`Credenciales denegadas en ${url}`);
+    });
+  });
+
 }
 
 window.renderIntegrations = renderIntegrations;
