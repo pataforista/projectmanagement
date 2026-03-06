@@ -8,6 +8,8 @@
 
 const STATUSES = ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
 const TASK_TYPES = ['tarea', 'subtarea', 'entregable', 'hito', 'idea', 'decisión', 'recurso'];
+window.STATUSES = STATUSES;
+window.TASK_TYPES = TASK_TYPES;
 
 function openModal(html) {
   closeModal();

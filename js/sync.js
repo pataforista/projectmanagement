@@ -15,7 +15,7 @@ const syncManager = (() => {
         fileName: 'workspace-team-data.json',
         sharedFileId: '',
         teamName: 'Equipo pequeño',
-        autoSyncMinutes: 5,
+        autoSyncMinutes: 1,
     };
 
     function getConfig() {
@@ -255,9 +255,14 @@ const syncManager = (() => {
 
     function configureAutoSync(minutes) {
         if (autoSyncTimer) clearInterval(autoSyncTimer);
-        const ms = Math.max(1, Number(minutes) || 5) * 60 * 1000;
-        autoSyncTimer = setInterval(() => {
-            if (accessToken) push();
+        // Default to a somewhat faster sync for chat/collaboration (e.g. 1 min default if not set otherwise)
+        const ms = Math.max(1, Number(minutes) || 1) * 60 * 1000;
+        autoSyncTimer = setInterval(async () => {
+            if (accessToken && !isSyncing) {
+                // Auto-sync sequence: Try to pull new changes first, then push our own changes
+                await pull();
+                if (!isSyncing) await push();
+            }
         }, ms);
     }
 
@@ -462,7 +467,7 @@ const syncManager = (() => {
           <button class="btn btn-icon" id="sync-close"><i data-feather="x"></i></button>
         </div>
         <div class="modal-body">
-          <p style="margin:0;color:var(--text-muted);font-size:0.9rem;">Enfocado para equipos pequeños: un archivo compartido en Drive + importación rápida de tareas desde Notion (CSV) u Obsidian (Markdown checklist).</p>
+          <p style="margin:0;color:var(--text-muted);font-size:0.9rem;">Enfocado para equipos pequeños: un archivo compartido en Drive + importación rápida de tareas desde Notion (CSV) u Obsidian (Markdown checklist).<br><b>Para asegurar cambios importantes, usa los botones "Subir" o "Bajar" que están al fondo.</b></p>
           <div class="form-group">
             <label class="form-label">Google OAuth Client ID</label>
             <input class="form-input" id="sync-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${esc(cfg.clientId)}">
@@ -504,10 +509,11 @@ const syncManager = (() => {
             </label>
           </div>
         </div>
-        <div class="modal-footer" style="justify-content:space-between;">
-          <button class="btn btn-secondary" id="sync-disconnect">Desconectar</button>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-secondary" id="sync-pull">Traer cambios</button>
+        <div class="modal-footer" style="justify-content:space-between; flex-wrap: wrap; gap: 8px;">
+          <button class="btn btn-ghost" id="sync-disconnect" style="color:var(--accent-danger);">Desconectar</button>
+          <div style="display:flex;gap:8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="sync-pull" title="Descargar de la nube al equipo (Pulsa esto si dejas la app abierta mucho tiempo)"><i data-feather="download-cloud" style="width:14px;height:14px;"></i> Bajar (Pull)</button>
+            <button class="btn btn-secondary" id="sync-push-manual" title="Subir tus cambios a la nube ahora mismo"><i data-feather="upload-cloud" style="width:14px;height:14px;"></i> Subir (Push)</button>
             <button class="btn btn-primary" id="sync-save-connect">Guardar y conectar</button>
           </div>
         </div>
@@ -539,6 +545,16 @@ const syncManager = (() => {
         overlay.querySelector('#sync-pull').addEventListener('click', async () => {
             await pull();
             overlay.remove();
+        });
+
+        overlay.querySelector('#sync-push-manual')?.addEventListener('click', async () => {
+            if (!accessToken) {
+                showToast('Primero asegúrate de estar conectado a Google Drive.', 'warning');
+                return;
+            }
+            await push();
+            overlay.remove();
+            showToast('Sincronización manual completada: cambios subidos a Drive.', 'success');
         });
 
         overlay.querySelector('#trello-file').addEventListener('change', async (e) => {

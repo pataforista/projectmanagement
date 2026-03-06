@@ -79,7 +79,7 @@ export const renderCanvas = (root) => {
     ctx = canvasEl.getContext('2d');
 
     // Load available canvases
-    refreshCanvasList();
+    refreshCanvasList(root);
 
     // Resize handler
     const resizeCanvas = () => {
@@ -201,7 +201,7 @@ export const renderCanvas = (root) => {
         canvasState.title = title;
         canvasState.strokes = [];
         await saveCanvasState();
-        await refreshCanvasList();
+        await refreshCanvasList(root);
         selector.value = id;
         redrawCanvas();
         showToast('Pizarra creada', 'success');
@@ -212,7 +212,7 @@ export const renderCanvas = (root) => {
         if (!title || title === canvasState.title) return;
         canvasState.title = title;
         await saveCanvasState();
-        await refreshCanvasList();
+        await refreshCanvasList(root);
         selector.value = canvasState.id;
     });
 
@@ -251,34 +251,39 @@ export const renderCanvas = (root) => {
 function redrawCanvas() {
     if (!ctx || !canvasEl) return;
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-    canvasState.strokes.forEach(s => {
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = s.color;
-        ctx.lineWidth = s.width;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (const stroke of canvasState.strokes) {
+        if (stroke.points.length === 0) continue;
+
         ctx.beginPath();
-        if (s.points.length > 0) {
-            ctx.moveTo(s.points[0].x, s.points[0].y);
-            for (let i = 1; i < s.points.length; i++) {
-                ctx.lineTo(s.points[i].x, s.points[i].y);
-            }
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width;
+
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+            ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
         }
         ctx.stroke();
-    });
+    }
 }
 
 function setMode(mode, rootEl) {
     canvasState.mode = mode;
-    rootEl.querySelector('#btn-draw').classList.toggle('active', mode === 'draw');
-    rootEl.querySelector('#btn-erase').classList.toggle('active', mode === 'erase');
-    const container = rootEl.querySelector('#canvas-container');
-    if (container) {
-        container.style.cursor = mode === 'draw' ? 'crosshair' : 'cell';
+    if (rootEl) {
+        rootEl.querySelector('#btn-draw').classList.toggle('active', mode === 'draw');
+        rootEl.querySelector('#btn-erase').classList.toggle('active', mode === 'erase');
+        const container = rootEl.querySelector('#canvas-container');
+        if (container) container.style.cursor = mode === 'draw' ? 'crosshair' : 'cell';
     }
 }
 
-async function refreshCanvasList() {
+async function refreshCanvasList(root) {
+    if (!root) return;
     const selector = root.querySelector('#canvas-selector');
+    if (!selector) return;
     try {
         const data = await window.dbAPI.getAll('documents');
         const canvases = data.filter(d => d.type === 'canvas' || d.id === 'canvas_global');
@@ -301,34 +306,6 @@ async function refreshCanvasList() {
         });
     } catch (e) {
         console.error(e);
-    }
-}
-
-// Clean up memory on view change
-return () => {
-    window.removeEventListener('resize', resizeCanvas);
-};
-}
-
-function redrawCanvas() {
-    if (!ctx || !canvasEl) return;
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    for (const stroke of canvasState.strokes) {
-        if (stroke.points.length === 0) continue;
-
-        ctx.beginPath();
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.width;
-
-        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-        for (let i = 1; i < stroke.points.length; i++) {
-            ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-        }
-        ctx.stroke();
     }
 }
 
