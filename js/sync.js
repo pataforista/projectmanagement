@@ -673,7 +673,14 @@ const syncManager = (() => {
     async function listDriveFiles() {
         if (!accessToken) return [];
         try {
-            const resp = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=20&fields=files(id,name,mimeType,thumbnailLink,webViewLink,iconLink,size)&q=trashed=false', {
+            const params = new URLSearchParams({
+                pageSize: '40',
+                q: 'trashed=false',
+                supportsAllDrives: 'true',
+                includeItemsFromAllDrives: 'true',
+                fields: 'files(id,name,mimeType,thumbnailLink,webViewLink,iconLink,size,driveId,ownedByMe,owners(displayName,emailAddress),shared)',
+            });
+            const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             const result = await resp.json();
