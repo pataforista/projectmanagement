@@ -38,6 +38,12 @@ const STORES = {
   notifications: 'notifications'
 };
 
+/**
+ * Inicializa la base de datos IndexedDB.
+ * Maneja la creación de object stores e índices en el evento onupgradeneeded.
+ * Incluye un mecanismo de recuperación en caso de errores de versión.
+ * @returns {Promise<IDBDatabase>} Promesa que resuelve la instancia de la base de datos.
+ */
 export const initDB = () => new Promise(async (resolve, reject) => {
   const openDB = () => new Promise((res, rej) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -242,6 +248,15 @@ function _showSaveIndicator() {
   }, 1500);
 }
 
+/**
+ * Ejecuta una operación IndexedDB manejando los eventos onsuccess y onerror automáticamente,
+ * devolviendo una Promesa estándar.
+ * 
+ * @param {string} storeName - El nombre del ObjectStore sobre el que operar.
+ * @param {IDBTransactionMode} mode - Tipo de transacción ('readonly' o 'readwrite').
+ * @param {Function} fn - Callback que recibe el store para ejecutar un request de la IDB.
+ * @returns {Promise<any>} Promesa que se resuelve con el resultado de la transacción.
+ */
 function tx(storeName, mode, fn) {
   return new Promise((resolve, reject) => {
     if (!db) return reject('DB not initialized');

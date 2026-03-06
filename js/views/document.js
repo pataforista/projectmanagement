@@ -28,7 +28,10 @@ function renderDocumentView(root, params) {
             ${projects.map(p => `
               <div class="project-card" style="--project-color:${p.color || 'var(--accent-primary)'}; cursor:pointer;"
                 onclick="router.navigate('/project/${p.id}/document')">
-                <div class="project-card-name">${esc(p.name)}</div>
+                <div class="project-card-name">
+                  ${p.visibility === 'local' ? '<i data-feather="lock" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>' : '<i data-feather="cloud" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>'}
+                  ${esc(p.name)}
+                </div>
                 <div style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;">Abrir documento vivo</div>
               </div>`).join('')}
           </div>

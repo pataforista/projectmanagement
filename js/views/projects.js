@@ -71,10 +71,18 @@ function renderProjectCards(projects) {
           <div class="project-icon" style="--project-color:${p.color || meta.color};">
             <i data-feather="${meta.icon}"></i>
           </div>
-          <span class="badge badge-neutral">${meta.label}</span>
+          <div style="display:flex; gap:4px;">
+            <span class="badge ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'badge-primary' : 'badge-neutral'}" style="font-size:0.6rem;">
+              ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'Tuyo' : 'Equipo'}
+            </span>
+            <span class="badge badge-neutral">${meta.label}</span>
+          </div>
         </div>
         <div>
-          <div class="project-card-name">${esc(p.name)}</div>
+          <div class="project-card-name">
+            ${p.visibility === 'local' ? '<i data-feather="lock" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>' : '<i data-feather="cloud" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>'}
+            ${esc(p.name)}
+          </div>
           ${p.goal ? `<div class="project-card-goal" style="margin-top:6px;">${esc(p.goal)}</div>` : ''}
         </div>
         <div>

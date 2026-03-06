@@ -1,5 +1,5 @@
-import { encryptRecord, decryptRecord, isLocked, hasKey } from './utils/crypto.js';
-import { getCurrentWorkspaceActor } from './utils.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './utils/crypto.js';
+import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -109,6 +109,10 @@ const syncManager = (() => {
         return true;
     }
 
+    /**
+     * Inicializa el estado de la sincronización en la UI e intenta inicializar 
+     * el cliente de token de Google si existe el Client ID persistido.
+     */
     async function init() {
         updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
         const cfg = getConfig();
@@ -122,6 +126,10 @@ const syncManager = (() => {
         }
     }
 
+    /**
+     * Fuerza la petición de un token de acceso OAuth (abriendo el consent screen 
+     * de Google si es necesario) para iniciar la sincronización activa.
+     */
     async function authenticate() {
         if (!tokenClient) {
             const initialized = await initTokenClient();
@@ -144,6 +152,10 @@ const syncManager = (() => {
     }
 
     async function getSnapshot() {
+        const sharedProjects = store.get.projects().filter(p => p.visibility !== 'local');
+        const sharedProjectIds = new Set(sharedProjects.map(p => p.id));
+        const isShared = item => !item.projectId || sharedProjectIds.has(item.projectId);
+
         const data = {
             version: '1.2',
             updatedAt: Date.now(),
@@ -151,16 +163,21 @@ const syncManager = (() => {
                 teamName: getConfig().teamName,
                 actor: getCurrentWorkspaceActor().label,
             },
-            projects: store.get.projects(),
-            tasks: store.get.allTasks(),
-            cycles: store.get.cycles(),
-            decisions: store.get.decisions(),
-            documents: store.get.documents ? store.get.documents() : [],
+            projects: sharedProjects,
+            tasks: store.get.allTasks().filter(isShared).filter(t => t.visibility !== 'local'),
+            cycles: store.get.cycles().filter(isShared),
+            decisions: store.get.decisions().filter(isShared),
+            documents: (store.get.documents ? store.get.documents() : []).filter(isShared),
             members: store.get.members(),
             logs: store.get.logs ? store.get.logs() : [],
-            messages: store.get.messages ? store.get.messages() : [],
-            annotations: store.get.annotations ? store.get.annotations() : [],
-            snapshots: store.get.snapshots ? store.get.snapshots() : [],
+            messages: (store.get.messages ? store.get.messages() : []).filter(isShared),
+            annotations: (store.get.annotations ? store.get.annotations() : []).filter(isShared),
+            snapshots: (store.get.snapshots ? store.get.snapshots() : []).filter(isShared),
+            settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
+                const val = localStorage.getItem(key);
+                if (val !== null) acc[key] = val;
+                return acc;
+            }, {})
         };
 
         // E2EE Layer: Encrypt sensitive stores if key is available
@@ -183,6 +200,11 @@ const syncManager = (() => {
         return data;
     }
 
+    /**
+     * Sube (Push) el snapshot del estado local hacio el archivo JSON en Google Drive.
+     * Cifra los datos sensibles si Nexus Fortress está activado y advierte sobre sobrescrituras
+     * accidentales si el archivo remoto es más nuevo.
+     */
     async function push() {
         if (!accessToken || isSyncing) return;
         isSyncing = true;
@@ -200,12 +222,12 @@ const syncManager = (() => {
                 const remoteData = await getFileContentMetadata(fileId);
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
-                if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate + 60000) {
-                    // Remote is NEWER — abort push safely (no lock release required)
-                    // Show non-blocking notification instead of confirm() to avoid race window
-                    if (window.showToast) showToast('⚠️ Drive tiene cambios más recientes. Usa "Traer cambios" antes de guardar.', 'warning', 6000);
-                    console.warn('[Sync] Push aborted: remote is newer. Pull first.');
-                    return; // isSyncing is reset in finally
+                if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate) {
+                    // STRICT CONFLICT RESOLUTION: If remote is newer than our LAST PULL/PUSH, we MUST pull first.
+                    // No more 60-second grace period that allowed data loss.
+                    if (window.showToast) showToast('⚠️ Hay cambios remotos más recientes. Por favor, "Traer cambios" primero.', 'warning', true);
+                    console.warn('[Sync] Push blocked: remote is newer than last local sync point.');
+                    return;
                 }
                 await updateFile(fileId, data);
             } else {
@@ -223,6 +245,11 @@ const syncManager = (() => {
         }
     }
 
+    /**
+     * Descarga (Pull) el archivo JSON desde Google Drive. 
+     * Si la versión remota es más nueva que la local, actualiza la base de datos 
+     * mediante la hidratación global del Store.
+     */
     async function pull() {
         if (!accessToken || isSyncing) return;
         isSyncing = true;
@@ -333,7 +360,34 @@ const syncManager = (() => {
     }
 
     async function seedFromRemote(data) {
-        if (store.dispatch) await store.dispatch('HYDRATE_STORE', data);
+        if (data.settings) {
+            syncSettingsToLocalStorage(data.settings);
+        }
+
+        let hydrationData = data;
+
+        // Pillar 1: Atomic Decryption Flow
+        // If the incoming data is encrypted, we must decrypt it BEFORE hydration
+        // to avoid storing double-encrypted or raw blobs in the store memory.
+        if (data.e2ee && hasKey() && !isLocked()) {
+            console.log('[Sync] Decrypting remote snapshot for hydration...');
+            try {
+                hydrationData = {
+                    ...data,
+                    projects: await decryptAll(data.projects || []),
+                    tasks: await decryptAll(data.tasks || []),
+                    cycles: await decryptAll(data.cycles || []),
+                    decisions: await decryptAll(data.decisions || []),
+                    documents: await decryptAll(data.documents || []),
+                };
+            } catch (e) {
+                console.error('[Sync] Pull decryption failed. Data might be corrupted or key is wrong.', e);
+                showToast('Error al descifrar datos remotos. Verifica tu contraseña maestra.', 'error', true);
+                return;
+            }
+        }
+
+        if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
     }
 
     function parseNotionCsv(text) {
@@ -453,6 +507,10 @@ const syncManager = (() => {
         showToast(`Importadas ${tasks.length} tareas`, 'success');
     }
 
+    /**
+     * Construye y muestra dinámicamente el modal de configuración de sincronización 
+     * en pantalla, incluyendo accesos para configurar Drive e importar desde otras apps (CSV/MD).
+     */
     function openPanel() {
         const cfg = getConfig();
         const members = store.get.members();

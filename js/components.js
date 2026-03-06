@@ -3,6 +3,14 @@
  */
 
 // ── Stat Pill (Dashboard) ────────────────────────────────────────────────────
+/**
+ * Renderiza una pequeña "píldora" estadística para tableros de resumen.
+ * @param {number|string} count - El valor numérico o texto a destacar.
+ * @param {string} label - La etiqueta descriptiva.
+ * @param {string} icon - Nombre del icono Feather.
+ * @param {string} color - Código de color opcional (hex, rgb o var).
+ * @returns {string} HTML generado.
+ */
 function statPill(count, label, icon, color) {
   return `<div class="stat-pill" style="${color ? `color:${color};` : ''}">
     <i data-feather="${icon}" style="width:13px;height:13px;"></i>
@@ -11,6 +19,12 @@ function statPill(count, label, icon, color) {
 }
 
 // ── Task Item (Dashboard, Project Detail, etc.) ──────────────────────────────
+/**
+ * Genera el HTML para un elemento individual de Tarea (ListItem).
+ * Evalúa internamente el estado de urgencia basado en las fechas límites (dueDate).
+ * @param {Object} t - El objeto de la Tarea.
+ * @returns {string} HTML generado representando la fila de la tarea.
+ */
 function taskItem(t) {
   const proj = store.get.projectById(t.projectId);
   const isDone = t.status === 'Terminado' || t.status === 'Archivado';
@@ -40,6 +54,12 @@ function taskItem(t) {
 }
 
 // ── Cycle Widget (Dashboard) ─────────────────────────────────────────────────
+/**
+ * Genera un widget compacto iterativo con la barra de progreso de un ciclo específico.
+ * Mapea visualmente el porcentaje completado vs el planeado temporalmente.
+ * @param {Object} c - El objeto lógico del Ciclo.
+ * @returns {string} Tarjeta HTML compilada.
+ */
 function cycleWidget(c) {
   const proj = store.get.projectById(c.projectId);
   const pct = store.get.cycleProgress(c.id);
@@ -58,6 +78,11 @@ function cycleWidget(c) {
 }
 
 // ── Mini Project Card (Dashboard) ────────────────────────────────────────────
+/**
+ * Crea la representación visual simplificada de los datos de un Proyecto.
+ * @param {Object} p - El objeto Proyecto extraído de store.
+ * @returns {string} HTML a inyectar en grillas.
+ */
 function miniProjectCard(p) {
   const pTasks = store.get.tasksByProject(p.id);
   const done = pTasks.filter(t => t.status === 'Terminado').length;
@@ -65,13 +90,22 @@ function miniProjectCard(p) {
   return `
     <div class="project-card" style="--project-color:${p.color || 'var(--accent-primary)'}; cursor:pointer;"
          onclick="router.navigate('/project/${p.id}')">
-      <div class="project-card-name" style="font-size:0.82rem;">${esc(p.name)}</div>
+      <div class="project-card-name" style="font-size:0.82rem;">
+        ${p.visibility === 'local' ? '<i data-feather="lock" style="width:12px;height:12px;margin-right:4px;vertical-align:text-bottom;"></i>' : '<i data-feather="cloud" style="width:12px;height:12px;margin-right:4px;vertical-align:text-bottom;"></i>'}
+        ${esc(p.name)}
+      </div>
       <div class="progress-bar" style="margin-top:4px;"><div class="progress-fill" style="width:${pct}%"></div></div>
       <div style="font-size:0.7rem;color:var(--text-muted);">${done}/${pTasks.length} tareas · ${pct}%</div>
     </div>`;
 }
 
 // ── Cycle Card (Cycles View, Project Detail) ─────────────────────────────────
+/**
+ * Renderiza una tarjeta ampliada y detallada de un Ciclo, enumerando
+ * internamente la progresión actual, tareas finalizadas y atajos rápidos. 
+ * @param {Object} c - Entidad de estado "Ciclo".
+ * @returns {string} Cadena HTML para inyección.
+ */
 function cycleCard(c) {
   const proj = store.get.projectById(c.projectId);
   const pct = store.get.cycleProgress(c.id);
@@ -126,6 +160,12 @@ function cycleCard(c) {
 }
 
 // ── Decision Card (Decisions View, Project Detail) ───────────────────────────
+/**
+ * Construye el renderizado visual (tarjeta de lectura) de una Decisión Registrada.
+ * Da formato de alerta semántica al nivel de impacto.
+ * @param {Object} d - El registro original de la Decisión.
+ * @returns {string} HTML formateado.
+ */
 function decisionCard(d) {
   const proj = store.get.projectById(d.projectId);
   const impactColor = d.impact === 'alta' ? 'badge-danger' : d.impact === 'media' ? 'badge-warning' : 'badge-neutral';

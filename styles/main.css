@@ -16,7 +16,8 @@
 
     --text-primary: #efefef;
     --text-secondary: #94949e;
-    --text-muted: #5a5a68;
+    --text-muted: #828291;
+    /* Improved contrast from #5a5a68 */
 
     --accent-primary: #5e6ad2;
     --accent-primary-glow: rgba(94, 106, 210, 0.3);
@@ -77,7 +78,8 @@
 
     --text-primary: #1a1d23;
     --text-secondary: #4b5563;
-    --text-muted: #9ca3af;
+    --text-muted: #6b7280;
+    /* Improved contrast from #9ca3af */
 
     --accent-primary: #5e6ad2;
     --accent-primary-glow: rgba(94, 106, 210, 0.15);
@@ -100,7 +102,8 @@
     /* Standard Outrun Cyan */
     --text-secondary: #FF00FF;
     /* Standard Outrun Magenta */
-    --text-muted: #800080;
+    --text-muted: #B300B3;
+    /* Improved contrast from #800080 */
 
     --accent-primary: #FF00FF;
     --accent-primary-glow: rgba(255, 0, 255, 0.6);
@@ -142,7 +145,8 @@
 
     --text-primary: #fdf4ff;
     --text-secondary: #fbcfe8;
-    --text-muted: #c084fc;
+    --text-muted: #d8b4fe;
+    /* Improved contrast from #c084fc */
 
     --accent-primary: #f472b6;
     --accent-primary-glow: rgba(244, 114, 182, 0.4);
@@ -189,12 +193,15 @@
 
     --text-primary: #1a1a1a;
     --text-secondary: #3d3d3d;
-    --text-muted: #706b64;
+    --text-muted: #5c5852;
+    /* Improved contrast from #706b64 */
 
-    --accent-primary: #bc4749; /* Cinnabar Red */
+    --accent-primary: #bc4749;
+    /* Cinnabar Red */
     --accent-primary-glow: rgba(188, 71, 73, 0.2);
     --accent-primary-hover: #a23c3e;
-    --accent-teal: #2a6f97; /* Indigo wash */
+    --accent-teal: #2a6f97;
+    /* Indigo wash */
 
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
     --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -214,7 +221,7 @@
     z-index: 0;
 }
 
-[data-theme="zen"] h1, 
+[data-theme="zen"] h1,
 [data-theme="zen"] h2,
 [data-theme="zen"] .brand-text {
     font-family: 'Nunito', serif;
@@ -325,7 +332,8 @@ body::before {
     height: var(--topbar-height);
     display: flex;
     align-items: center;
-    padding: 0 20px;
+    padding: 0 10px;
+    /* Reduced by 10px each side to account for toggle margin */
     border-bottom: 1px solid var(--border-color);
     gap: 8px;
     justify-content: space-between;
@@ -341,6 +349,8 @@ body::before {
     color: var(--text-muted);
     transition: all var(--dur-fast);
     cursor: pointer;
+    margin: 10px;
+    /* Expand touch area */
 }
 
 .btn-sidebar-toggle:hover {
@@ -990,6 +1000,12 @@ body::before {
     .sidebar-overlay.open {
         opacity: 1;
         visibility: visible;
+        pointer-events: auto;
+    }
+
+    /* Prevent closed overlay from blocking clicks */
+    .sidebar-overlay {
+        pointer-events: none;
     }
 
     .view-inner {
@@ -1030,6 +1046,14 @@ body::before {
     .card:hover,
     .project-card:hover {
         transform: none;
+    }
+
+    /* Force visibility of quick actions on touch devices */
+    .task-quick-delete {
+        opacity: 1 !important;
+        background: var(--bg-surface-hover);
+        border: 1px solid var(--border-color);
+        padding: 4px !important;
     }
 }
 

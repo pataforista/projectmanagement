@@ -269,6 +269,8 @@
     .btn {
         padding: 10px 16px;
         font-size: 0.9rem;
+        min-height: 44px;
+        /* Ensure accessible tap target */
     }
 
     .form-input,
@@ -276,6 +278,8 @@
         padding: 10px 14px;
         font-size: 1rem;
         /* Prevents iOS auto-zoom */
+        min-height: 44px;
+        /* Ensure accessible tap target */
     }
 }
 

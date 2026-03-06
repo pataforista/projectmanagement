@@ -14,6 +14,11 @@ const PROJECT_TYPES = {
  */
 
 // ── Escaping ──────────────────────────────────────────────────────────────────
+/**
+ * Escapa caracteres HTML especiales para prevenir ataques XSS (Cross-Site Scripting).
+ * @param {string} str - La cadena de texto de entrada.
+ * @returns {string} Cadena de texto sanitizada.
+ */
 function esc(str) {
     if (!str) return '';
     return String(str)
@@ -21,6 +26,12 @@ function esc(str) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+/**
+ * Parsea un documento en formato CSV manejando correctamente las comillas 
+ * y los saltos de línea internos en cada celda.
+ * @param {string} text - Contenido crudo del archivo CSV.
+ * @returns {Array<Array<string>>} Matriz bidimensional con los datos parseados.
+ */
 function parseCsv(text) {
     const result = [];
     let row = [];
@@ -122,7 +133,6 @@ function getCurrentWorkspaceMember() {
 
     const normalizedUserName = normalizeWorkspaceName(user.name);
     return members.find(m => normalizeWorkspaceName(m.name) === normalizedUserName)
-        || members.find(m => normalizeWorkspaceName(m.name).includes(normalizedUserName))
         || null;
 }
 
@@ -168,7 +178,17 @@ function emptyState(icon, text) {
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
-function showToast(message, type = 'info') {
+/**
+ * Genera y muestra un elemento visual "Toast" temporal en la interfaz 
+ * para dar retroalimentación de las acciones del usuario.
+ * @param {string} message - Texto principal a mostrar.
+ * @param {string} type - Variantes de estilo ('info', 'success', 'warning', 'error').
+ * @param {boolean} force - Si es true, ignora el modo de poca retroalimentación.
+ */
+function showToast(message, type = 'info', force = false) {
+    if (!force && (type === 'info' || type === 'success') && localStorage.getItem('low_feedback_enabled') === 'true') {
+        return;
+    }
     const container = document.getElementById('toast-container');
     if (!container) return;
     const el = document.createElement('div');
@@ -223,6 +243,58 @@ function getObsidianFileName(uri) {
     }
 }
 
+// ── Settings Sync ────────────────────────────────────────────────────────────
+export const SYNCABLE_SETTINGS_KEYS = [
+    'workspace_user_name',
+    'workspace_user_role',
+    'workspace_user_avatar',
+    'workspace_user_member_id',
+    'workspace_user_email',
+    'workspace_team_label',
+    'nexus_salt',
+    'autolock_enabled',
+    'low_feedback_enabled'
+];
+
+/**
+ * Persiste los ajustes recibidos desde el cloud en el almacenamiento local.
+ * Filtra solo las claves autorizadas para evitar inyecciones de configuración.
+ * @param {Object} settings - Diccionario de ajustes clave-valor.
+ */
+function syncSettingsToLocalStorage(settings) {
+    if (!settings || typeof settings !== 'object') return;
+
+    let changed = false;
+    let securityChanged = false;
+
+    SYNCABLE_SETTINGS_KEYS.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(settings, key)) {
+            const oldValue = localStorage.getItem(key);
+            const newValue = String(settings[key]);
+            if (oldValue !== newValue) {
+                localStorage.setItem(key, newValue);
+                changed = true;
+                if (key === 'nexus_salt' || key === 'workspace_lock_hash') {
+                    securityChanged = true;
+                }
+            }
+        }
+    });
+
+    if (securityChanged) {
+        console.warn('[Utils] Security context changed from remote. Forcing relock.');
+        if (window.lockWorkspace) {
+            window.lockWorkspace();
+            showToast('Ajustes de seguridad actualizados desde otro dispositivo. Sesion bloqueada.', 'warning', true);
+        } else {
+            location.reload();
+        }
+    } else if (changed) {
+        console.log('[Utils] Settings synchronized from remote.');
+        if (window.updateUserProfileUI) window.updateUserProfileUI();
+    }
+}
+
 // ── UUID ─────────────────────────────────────────────────────────────────────
 export function generateUID() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
@@ -244,5 +316,7 @@ window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
 window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
 window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
 window.getCurrentWorkspaceActor = getCurrentWorkspaceActor;
+window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
+window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage };

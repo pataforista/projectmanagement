@@ -39,6 +39,10 @@ const store = (() => {
     }
 
     // ── Load from DB ──────────────────────────────────────────────────────────
+    /**
+     * Carga de forma asíncrona todos los datos almacenados en IndexedDB hacia la
+     * memoria RAM interna (_state), permitiendo lecturas síncronas rápidas (Selectors).
+     */
     async function load() {
         _state.projects = await dbAPI.getAll('projects');
         _state.tasks = await dbAPI.getAll('tasks');
@@ -59,6 +63,10 @@ const store = (() => {
     }
 
     // ── Seed if empty ─────────────────────────────────────────────────────────
+    /**
+     * Si no hay proyectos existentes, crea un conjunto de datos inicial (semilla)
+     * e inserta estos valores por defecto en la base de datos y la memoria RAM.
+     */
     async function seedIfEmpty() {
         if (_state.projects.length > 0) return;
 
@@ -90,6 +98,13 @@ const store = (() => {
     }
 
     // ── Subscription ──────────────────────────────────────────────────────────
+    /**
+     * Registra un callback que se llamará automáticamente cada vez que los datos 
+     * en el `key` especificado cambien. Devuelve una función para de-suscribirse.
+     * @param {string} key - Clave del estado (ej. 'tasks', 'projects', o '*' para todo).
+     * @param {Function} fn - Función a ejecutar con el nuevo estado.
+     * @returns {Function} Función para cancelar la suscripción.
+     */
     function subscribe(key, fn) {
         if (!_subscribers[key]) _subscribers[key] = [];
         _subscribers[key].push(fn);
@@ -105,6 +120,17 @@ const store = (() => {
     // Actions — each mutates DB + memory + notifies
     // ──────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Función centralizadora para despachar ('dispatch') mutaciones de estado.
+     * Gestiona 3 pasos para toda acción: 
+     * 1) Modificación en IndexedDB
+     * 2) Mutación del _state en memoria
+     * 3) Disparo de la notificación a suscriptores UI y sincronización con Drive.
+     * 
+     * @param {string} action - Nombre del tipo de evento (ADD_TASK, UPDATE_PROJECT...).
+     * @param {Object} payload - Datos de la entidad asociados al tipo de evento.
+     * @returns {Promise<any>}
+     */
     async function dispatch(action, payload) {
         const _uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let storeName;
@@ -113,7 +139,16 @@ const store = (() => {
             // ── Projects ──
             case 'ADD_PROJECT': {
                 storeName = 'projects';
-                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                const actor = getCurrentWorkspaceActor();
+                const record = {
+                    id: _uid,
+                    createdAt: Date.now(),
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    ownerId: actor.memberId,
+                    visibility: payload.visibility || 'shared',
+                    ...payload
+                };
                 await dbAPI.put(storeName, record);
                 _state.projects.push(record);
                 _notify(storeName);
@@ -128,6 +163,7 @@ const store = (() => {
                     await dbAPI.put(storeName, updated);
                     _state.projects[idx] = updated;
                     _notify(storeName);
+                    if (window.showToast) showToast('Proyecto actualizado.', 'success');
                 }
                 break;
             }
@@ -148,8 +184,29 @@ const store = (() => {
                 storeName = 'projects';
                 await dbAPI.delete(storeName, payload.id);
                 _state.projects = _state.projects.filter(p => p.id !== payload.id);
+
+                // CASCADING DELETES
+                const cascadeDeletes = async (collectionName, filterFn) => {
+                    const itemsToDelete = _state[collectionName].filter(filterFn);
+                    for (const item of itemsToDelete) {
+                        await dbAPI.delete(collectionName, item.id);
+                    }
+                    _state[collectionName] = _state[collectionName].filter(item => !filterFn(item));
+                    if (itemsToDelete.length > 0) _notify(collectionName);
+                };
+
+                await cascadeDeletes('tasks', t => t.projectId === payload.id);
+                await cascadeDeletes('cycles', c => c.projectId === payload.id);
+                await cascadeDeletes('decisions', d => d.projectId === payload.id);
+                await cascadeDeletes('documents', d => d.projectId === payload.id);
+                await cascadeDeletes('snapshots', s => s.projectId === payload.id);
+                await cascadeDeletes('annotations', a => a.projectId === payload.id);
+                await cascadeDeletes('messages', m => m.projectId === payload.id);
+                await cascadeDeletes('interconsultations', i => i.projectId === payload.id);
+                await cascadeDeletes('sessions', s => s.projectId === payload.id);
+
                 _notify(storeName);
-                if (window.showToast) showToast('Proyecto eliminado.', 'info');
+                if (window.showToast) showToast('Proyecto y dependencias eliminados.', 'info');
                 break;
             }
 
@@ -168,6 +225,7 @@ const store = (() => {
                     cycleId: null,
                     subtasks: [],
                     tags: [],
+                    visibility: payload.visibility || 'shared',
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
@@ -192,6 +250,7 @@ const store = (() => {
                     await dbAPI.put(storeName, updated);
                     _state.tasks[idx] = updated;
                     _notify(storeName);
+                    if (window.showToast) showToast('Tarea actualizada.', 'success');
                 }
                 break;
             }
@@ -200,13 +259,22 @@ const store = (() => {
                 await dbAPI.delete(storeName, payload.id);
                 _state.tasks = _state.tasks.filter(t => t.id !== payload.id);
                 _notify(storeName);
+                if (window.showToast) showToast('Tarea eliminada.', 'info');
                 break;
             }
 
             // ── Cycles ──
             case 'ADD_CYCLE': {
                 storeName = 'cycles';
-                const record = { id: _uid, createdAt: Date.now(), status: 'activo', ...payload };
+                const actor = getCurrentWorkspaceActor();
+                const record = {
+                    id: _uid,
+                    createdAt: Date.now(),
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    status: 'activo',
+                    ...payload
+                };
                 await dbAPI.put(storeName, record);
                 _state.cycles.push(record);
                 _notify(storeName);
@@ -342,7 +410,16 @@ const store = (() => {
             // ── Interconsultations ──
             case 'ADD_INTERCONSULTATION': {
                 storeName = 'interconsultations';
-                const record = { id: _uid, createdAt: Date.now(), status: 'Solicitada', ...payload };
+                const actor = getCurrentWorkspaceActor();
+                const record = {
+                    id: _uid,
+                    createdAt: Date.now(),
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    ownerId: actor.memberId,
+                    status: 'Solicitada',
+                    ...payload
+                };
                 await dbAPI.put(storeName, record);
                 _state.interconsultations.push(record);
                 _notify(storeName);
@@ -371,7 +448,15 @@ const store = (() => {
             // ── Sessions ──
             case 'ADD_SESSION': {
                 storeName = 'sessions';
-                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                const actor = getCurrentWorkspaceActor();
+                const record = {
+                    id: _uid,
+                    createdAt: Date.now(),
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    ownerId: actor.memberId,
+                    ...payload
+                };
                 await dbAPI.put(storeName, record);
                 _state.sessions.push(record);
                 _notify(storeName);
@@ -553,8 +638,9 @@ const store = (() => {
                 console.warn('Unknown action:', action);
         }
 
-        // Trigger Google Drive sync push if connected
-        if (window.syncManager) {
+        // Pillar 2: Reactive Sync Push
+        // Trigger Google Drive sync push if connected and not currently syncing
+        if (window.syncManager && !syncManager.isSyncing) {
             syncManager.push();
         }
     }

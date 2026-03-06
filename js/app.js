@@ -451,6 +451,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── Global Helper Functions ──────────────────────────────────────────────────
 
+/**
+ * Inicializa los controladores de eventos para los botones de la interfaz
+ * de usuario, como el menú lateral (sidebar), cambio de tema, y perfil de usuario.
+ */
 function initUIToggles() {
     const container = document.querySelector('.app-container');
     const sidebarBtn = document.getElementById('btn-sidebar-toggle');
@@ -507,6 +511,10 @@ function initUIToggles() {
     });
 }
 
+/**
+ * Refresca la lista de proyectos mostrados en el menú lateral.
+ * Renderiza los proyectos jerárquicamente anidados según su `parentId`.
+ */
 function refreshSidebarProjects() {
     // ✅ FIX: The HTML element is id="sidebar-projects" — no "-list" suffix.
     const container = document.getElementById('sidebar-projects');
@@ -590,6 +598,9 @@ function handleProjectDragEnd() {
 }
 
 // Search Logic
+/**
+ * Abre el overlay de búsqueda rápida global.
+ */
 function openSearch() {
     document.getElementById('search-overlay')?.classList.add('open');
     document.getElementById('search-input')?.focus();
@@ -599,6 +610,11 @@ function closeSearch() {
     document.getElementById('search-overlay')?.classList.remove('open');
     if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
 }
+/**
+ * Ejecuta la búsqueda en tiempo real sobre proyectos y tareas en el estado actual.
+ * Modifica el DOM para renderizar los resultados coincidentes.
+ * @param {string} q - El texto o consulta de búsqueda.
+ */
 function handleSearch(q) {
     const results = document.getElementById('search-results');
     if (!results) return;
@@ -672,11 +688,16 @@ async function exportData() {
 document.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn');
     if (!btn) return;
+
+    // Support both mouse and touch events for coords
+    const x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+
     const rect = btn.getBoundingClientRect();
     const size = Math.max(rect.width, rect.height) * 1.5;
     const ripple = document.createElement('span');
     ripple.className = 'ripple';
-    ripple.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - rect.left - size / 2}px;top:${e.clientY - rect.top - size / 2}px;`;
+    ripple.style.cssText = `width:${size}px;height:${size}px;left:${x - rect.left - size / 2}px;top:${y - rect.top - size / 2}px;`;
     btn.appendChild(ripple);
     ripple.addEventListener('animationend', () => ripple.remove());
 });

@@ -16,6 +16,10 @@ const BOARD_STATUSES = [
 let _dragTaskId = null;
 let _dragSourceStatus = null;
 
+/**
+ * Inicializa y renderiza el cascarón principal de la vista Tablero Kanban.
+ * @param {HTMLElement} root - El nodo DOM donde se inyectará la vista.
+ */
 function renderBoard(root) {
   root.innerHTML = `
     <div class="view-inner" style="padding-bottom:0;">
@@ -54,6 +58,11 @@ function renderBoard(root) {
   root.querySelector('#board-new-btn').addEventListener('click', () => openTaskModal());
 }
 
+/**
+ * Renderiza las columnas del tablero y ubica las tareas según su estado.
+ * @param {HTMLElement|Object} root - El nodo contenedor del tablero.
+ * @param {string} projectId - Filtro opcional para mostrar solo tareas de un proyecto.
+ */
 function renderBoardColumns(root, projectId) {
   const container = root.querySelector('#board-columns') || document.getElementById('board-columns');
   let tasks = store.get.allTasks();
@@ -85,6 +94,11 @@ function renderBoardColumns(root, projectId) {
   });
 }
 
+/**
+ * Crea el HTML individual para una tarjeta arrastrable en el tablero Kanban.
+ * @param {Object} t - El objeto de la Tarea.
+ * @returns {string} Cadena HTML de la tarjeta.
+ */
 function kanbanCard(t) {
   const proj = store.get.projectById(t.projectId);
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Terminado';
@@ -104,6 +118,7 @@ function kanbanCard(t) {
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
           ${t.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}" style="width:18px;height:18px;font-size:0.6rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">${(store.get.memberById(t.assigneeId)?.avatar || '?')}</div>` : ''}
+          <button class="btn btn-icon btn-sm task-move-btn d-mobile-only" title="Mover estado" style="padding:2px; color:var(--text-muted);"><i data-feather="more-horizontal" style="width:14px;height:14px;"></i></button>
           <span class="priority-pip ${t.priority || 'baja'}"></span>
           <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="padding:2px; margin-left:4px; opacity:0; transition:opacity 0.2s; color:var(--text-muted);"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>
         </div>
@@ -111,8 +126,14 @@ function kanbanCard(t) {
     </div>`;
 }
 
+/**
+ * Configura los event listeners para el pipeline de "Drag and Drop"
+ * permitiendo mover las tarjetas Kanban entre columnas de estado.
+ * @param {HTMLElement} container - El contenedor padre del tablero.
+ */
 function bindDragDrop(container) {
   container.querySelectorAll('.kanban-card').forEach(card => {
+    // Show/hide quick delete on hover (for mouse users)
     card.addEventListener('mouseenter', () => {
       const btn = card.querySelector('.task-quick-delete');
       if (btn) btn.style.opacity = '1';
@@ -122,26 +143,37 @@ function bindDragDrop(container) {
       if (btn) btn.style.opacity = '0';
     });
 
+    // Handle clicks for different actions
     card.addEventListener('click', async e => {
       // Don't open if dragging
       if (card.classList.contains('dragging')) return;
 
+      const taskId = card.dataset.taskId;
+      const task = store.get.allTasks().find(t => t.id === taskId);
+      if (!task) return;
+
+      // 1. Handle Quick Delete
       if (e.target.closest('.task-quick-delete')) {
-        const taskId = card.dataset.taskId;
-        const task = store.get.allTasks().find(t => t.id === taskId);
-        if (task && confirm(`¿Eliminar la tarea "${task.title}"?`)) {
-          await store.dispatch('DELETE_TASK', { id: taskId });
-          const projFilter = document.getElementById('board-proj-filter');
-          renderBoardColumns(document.getElementById('board-view'), projFilter?.value || '');
+        e.stopPropagation();
+        if (confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+          store.dispatch('DELETE_TASK', taskId);
+          showToast('Tarea eliminada');
         }
         return;
       }
 
-      const tId = card.dataset.taskId;
-      const task = store.get.allTasks().find(t => t.id === tId);
-      if (task) openTaskModal(task);
+      // 2. Handle Status Move (Touch alternative to Drag)
+      if (e.target.closest('.task-move-btn')) {
+        e.stopPropagation();
+        openStatusPicker(task, e.target.closest('.task-move-btn'));
+        return;
+      }
+
+      // 3. Open full task modal
+      openTaskModal(task);
     });
 
+    // Drag support
     card.addEventListener('dragstart', e => {
       _dragTaskId = card.dataset.taskId;
       _dragSourceStatus = card.dataset.status;
@@ -186,6 +218,74 @@ function bindDragDrop(container) {
         }
       }
       _dragTaskId = null;
+    });
+  });
+}
+
+/**
+ * Abre un selector de estado compacto para mover tareas en dispositivos táctiles.
+ * @param {Object} task - La tarea a mover.
+ * @param {HTMLElement} anchor - El botón que disparó el selector.
+ */
+function openStatusPicker(task, anchor) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.background = 'transparent';
+  overlay.style.zIndex = '1000';
+
+  const rect = anchor.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.className = 'status-picker-menu';
+  menu.style.cssText = `
+    position: fixed;
+    top: ${Math.min(rect.bottom + 5, window.innerHeight - 300)}px;
+    left: ${Math.max(10, Math.min(rect.left, window.innerWidth - 170))}px;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-highlight);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xl);
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 1001;
+    min-width: 160px;
+    animation: fadeIn var(--dur-fast) ease;
+  `;
+
+  menu.innerHTML = `
+    <div style="font-size:0.75rem; font-weight:700; color:var(--text-muted); padding:4px 8px; margin-bottom:4px; border-bottom:1px solid var(--border-color);">MOVER A...</div>
+    ${BOARD_STATUSES.map(s => `
+      <button class="status-opt-btn" data-id="${s.id}" style="
+        display:flex; align-items:center; gap:8px; padding:6px 8px; border:none; background:none; color:var(--text-secondary); cursor:pointer; font-size:0.8rem; border-radius:4px; transition:background 0.2s;
+        ${task.status === s.id ? 'background:rgba(94,106,210, 0.1); color:var(--accent-primary); font-weight:600;' : ''}
+      ">
+        <span style="width:8px; height:8px; border-radius:50%; background:${s.color};"></span>
+        ${s.id}
+      </button>
+    `).join('')}
+  `;
+
+  overlay.appendChild(menu);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', () => overlay.remove());
+  menu.querySelectorAll('.status-opt-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newStatus = btn.dataset.id;
+      if (newStatus !== task.status) {
+        store.dispatch('UPDATE_TASK', { id: task.id, status: newStatus });
+        showToast(`Tarea movida a ${newStatus}`);
+        // Refresh board
+        const projFilter = document.getElementById('board-proj-filter');
+        renderBoardColumns(document.getElementById('app-root'), projFilter?.value || '');
+      }
+      overlay.remove();
+    });
+    btn.addEventListener('mouseenter', () => btn.style.background = 'var(--bg-surface-hover)');
+    btn.addEventListener('mouseleave', () => {
+      if (task.status !== btn.dataset.id) btn.style.background = 'none';
+      else btn.style.background = 'rgba(94,106,210, 0.1)';
     });
   });
 }

@@ -11,6 +11,13 @@ const TASK_TYPES = ['tarea', 'subtarea', 'entregable', 'hito', 'idea', 'decisió
 window.STATUSES = STATUSES;
 window.TASK_TYPES = TASK_TYPES;
 
+/**
+ * Crea e inyecta dinámicamente un overlay modal con el HTML suministrado.
+ * Automáticamente reemplaza los logos SVG correspondientes a "Feather Icons".
+ * 
+ * @param {string} html - HTML que contiene la estructura interna (header, body, footer) del modal.
+ * @returns {HTMLElement} Elemento DOM activo que representa este modal.
+ */
 function openModal(html) {
   closeModal();
   const overlay = document.createElement('div');
@@ -23,6 +30,10 @@ function openModal(html) {
   return overlay.querySelector('.modal');
 }
 
+/**
+ * Cierra inmediatamente el modal actual destruyendo su nodo de overlay en el DOM.
+ * No requiere parámetros.
+ */
 function closeModal() {
   document.getElementById('modal-overlay')?.remove();
 }
@@ -34,6 +45,14 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); 
 // Task Modal
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Despliega un formulario modal dinámico para Crear o Editar una tarea.
+ * Determina el modo (edición vs creación) basándose en si se recibe un 
+ * objecto tipo Tarea literal o sólo parámetros por defecto.
+ * 
+ * @param {Object|string} defaultProjectIdOrTask - Si es objeto Tarea carga modo Edición. Si es string, precarga ese proyecto.
+ * @param {string} defaultStatus - Define el estado seleccionado por defecto (opcional).
+ */
 function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
   const isEdit = !!defaultProjectIdOrTask && typeof defaultProjectIdOrTask === 'object' && !('clientX' in defaultProjectIdOrTask);
   const task = isEdit ? defaultProjectIdOrTask : null;
@@ -246,6 +265,13 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
 // Project Modal
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Construye el modal de Creación o Edición de Proyectos. 
+ * Incluye la renderización de opciones de color, control de estados 
+ * y advertencias previas de eliminación de dependencias vinculadas.
+ * 
+ * @param {Object} p - El objeto Proyecto en modo edición. Null para modo creación.
+ */
 function openProjectModal(p = null) {
   const isEdit = !!p && typeof p === 'object' && !('clientX' in p);
   const modal = openModal(`
@@ -259,6 +285,13 @@ function openProjectModal(p = null) {
         <input class="form-input" id="proj-name" placeholder="ej. Artículo: Cognición y Memoria" value="${isEdit ? esc(p.name) : ''}" autofocus>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Visibilidad (Sincronización)</label>
+          <select class="form-select" id="proj-visibility" style="border-color: var(--accent-primary);">
+            <option value="shared" ${(!isEdit || p?.visibility === 'shared') ? 'selected' : ''}>☁️ Compartido (Equipo)</option>
+            <option value="local" ${isEdit && p?.visibility === 'local' ? 'selected' : ''}>🔒 Privado (Solo local)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Tipo</label>
           <select class="form-select" id="proj-type">
@@ -330,7 +363,9 @@ function openProjectModal(p = null) {
 
   if (isEdit) {
     modal.querySelector('#proj-delete').addEventListener('click', async () => {
-      const msg = '¿Estás seguro? Se borrarán también las tareas, ciclos y decisiones asociadas a este proyecto de forma permanente.';
+      const msg = p.visibility === 'local'
+        ? '¿Estás seguro? Se borrarán también las tareas, ciclos y decisiones asociadas de forma permanente solo en tu dispositivo.'
+        : '¿Estás seguro? Se borrarán también las tareas, ciclos y decisiones asociadas de forma permanente.\n\n⚠️ Este es un PROYECTO COMPARTIDO. Eliminarlo afectará al Google Drive de todo el equipo.';
       if (confirm(msg)) {
         await store.dispatch('DELETE_PROJECT', { id: p.id });
         closeModal();
@@ -353,12 +388,13 @@ function openProjectModal(p = null) {
       startDate: modal.querySelector('#proj-start').value || null,
       endDate: modal.querySelector('#proj-end').value || null,
       color: modal.querySelector('#proj-color').value,
+      visibility: modal.querySelector('#proj-visibility').value,
     };
 
     if (isEdit) {
       await store.dispatch('UPDATE_PROJECT', { id: p.id, ...data });
     } else {
-      await store.dispatch('ADD_PROJECT', { ...data, ownerId: 'u1' });
+      await store.dispatch('ADD_PROJECT', { ...data, ownerId: getCurrentWorkspaceUser().memberId });
     }
 
     closeModal();
@@ -371,6 +407,12 @@ function openProjectModal(p = null) {
 // Cycle Modal
 // ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Muestra el modal de Ciclos (iteraciones / timeboxing). 
+ * Se encarga de mapear automáticamente el proyecto dependiente asociado.
+ * 
+ * @param {Object|string} defaultProjectIdOrCycle - ID inicial de proyecto o el Objeto Ciclo propiamente en edición.
+ */
 function openCycleModal(defaultProjectIdOrCycle) {
   const isEdit = typeof defaultProjectIdOrCycle === 'object' && defaultProjectIdOrCycle !== null && !('clientX' in defaultProjectIdOrCycle);
   const cycle = isEdit ? defaultProjectIdOrCycle : null;
@@ -420,9 +462,14 @@ function openCycleModal(defaultProjectIdOrCycle) {
     </div>`);
 
   if (isEdit) {
-    modal.querySelector('#cycle-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de wanting de eliminar el ciclo "${cycle.name}"?`)) {
-        await store.dispatch('DELETE_CYCLE', { id: cycle.id }); // WE WILL NEED TO CREATE THIS DISPATCH ACTION IF IT DOESNT EXIST
+    modal.querySelector('#cycle-delete')?.addEventListener('click', async () => {
+      const proj = store.get.projectById(cycle.projectId);
+      const isLocal = proj && proj.visibility === 'local';
+      const msg = isLocal
+        ? '¿Eliminar este ciclo de forma permanente de tu dispositivo?'
+        : '¿Eliminar este ciclo?\n\n⚠️ Este ciclo pertenece a un PROYECTO COMPARTIDO. Afectará al Google Drive del equipo.';
+      if (confirm(msg)) {
+        await store.dispatch('DELETE_CYCLE', { id: cycle.id });
         closeModal();
         refreshCurrentView();
       }
@@ -460,16 +507,17 @@ function openCycleModal(defaultProjectIdOrCycle) {
 // Decision Modal
 // ────────────────────────────────────────────────────────────────────────────
 
-function openDecisionModal(defaultProjectId) {
-  function openDecisionModal(defaultProjectIdOrDecision) {
-    const isEdit = typeof defaultProjectIdOrDecision === 'object' && defaultProjectIdOrDecision !== null && !('clientX' in defaultProjectIdOrDecision);
-    const decision = isEdit ? defaultProjectIdOrDecision : null;
-    const defProjectId = isEdit ? decision.projectId : defaultProjectIdOrDecision;
-    const today = new Date().toISOString().slice(0, 10);
+// End of Decision Modal
 
-    const projects = store.get.projects();
+function openDecisionModal(defaultProjectIdOrDecision) {
+  const isEdit = typeof defaultProjectIdOrDecision === 'object' && defaultProjectIdOrDecision !== null && !('clientX' in defaultProjectIdOrDecision);
+  const decision = isEdit ? defaultProjectIdOrDecision : null;
+  const defProjectId = isEdit ? decision.projectId : defaultProjectIdOrDecision;
+  const today = new Date().toISOString().slice(0, 10);
 
-    const modal = openModal(`
+  const projects = store.get.projects();
+
+  const modal = openModal(`
     <div class="modal-header">
       <h2><i data-feather="zap"></i> ${isEdit ? 'Editar Decisión' : 'Nueva Decisión'}</h2>
       <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
@@ -479,7 +527,6 @@ function openDecisionModal(defaultProjectId) {
         <label class="form-label">Título de la decisión *</label>
         <input class="form-input" id="dec-title" placeholder="ej. Enfocar artículo en adultos mayores" autofocus value="${isEdit ? esc(decision.title) : ''}">
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Proyecto</label>
@@ -520,51 +567,14 @@ function openDecisionModal(defaultProjectId) {
       </div>
     </div>`);
 
-    if (isEdit) {
-      modal.querySelector('#dec-delete').addEventListener('click', async () => {
-        if (confirm(`¿Estás seguro de eliminar la decisión "${decision.title}"?`)) {
-          await store.dispatch('DELETE_DECISION', { id: decision.id });
-          closeModal();
-          refreshCurrentView();
-        }
-      });
-    }
-
-    modal.querySelector('#modal-close').addEventListener('click', closeModal);
-    modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
-    modal.querySelector('#dec-save').addEventListener('click', async () => {
-      const title = modal.querySelector('#dec-title').value.trim();
-      const decText = modal.querySelector('#dec-decision').value.trim();
-      if (!title || !decText) { showToast('Título y decisión son obligatorios.', 'error'); return; }
-
-      const payload = {
-        title,
-        projectId: modal.querySelector('#dec-project').value || null,
-        context: modal.querySelector('#dec-context').value,
-        decision: decText,
-        impact: modal.querySelector('#dec-impact').value,
-        date: modal.querySelector('#dec-date').value,
-        ownerId: 'u1',
-      };
-
-      if (isEdit) {
-        payload.id = decision.id;
-        await store.dispatch('UPDATE_DECISION', payload);
-      } else {
-        await store.dispatch('ADD_DECISION', payload);
-      }
-      closeModal();
-      refreshCurrentView();
-    });
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Profile Modal
-  // ────────────────────────────────────────────────────────────────────────────
-
   if (isEdit) {
     modal.querySelector('#dec-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de eliminar la decisión "${decision.title}"?`)) {
+      const proj = store.get.projectById(decision.projectId);
+      const isLocal = proj && proj.visibility === 'local';
+      const msg = isLocal
+        ? `¿Estás seguro de eliminar la decisión "${decision.title}" de tu dispositivo local?`
+        : `¿Estás seguro de eliminar la decisión "${decision.title}"?\n\n⚠️ Pertenece a un PROYECTO COMPARTIDO. Esto afectará al Google Drive del equipo.`;
+      if (confirm(msg)) {
         await store.dispatch('DELETE_DECISION', { id: decision.id });
         closeModal();
         refreshCurrentView();
@@ -586,7 +596,7 @@ function openDecisionModal(defaultProjectId) {
       decision: decText,
       impact: modal.querySelector('#dec-impact').value,
       date: modal.querySelector('#dec-date').value,
-      ownerId: 'u1',
+      ownerId: getCurrentWorkspaceUser().memberId,
     };
 
     if (isEdit) {
@@ -599,6 +609,7 @@ function openDecisionModal(defaultProjectId) {
     refreshCurrentView();
   });
 }
+
 
 // ────────────────────────────────────────────────────────────────────────────
 // Profile Modal
@@ -627,6 +638,10 @@ function updateUserProfileUI() {
   if (avatarEl) avatarEl.textContent = avatar;
 }
 
+/**
+ * Despliega el panel principal de personalización y opciones de seguridad locales.
+ * Permite cambiar el alias, correo, avatar y clave encriptada de Nexus Fortress.
+ */
 function openProfileModal() {
   const user = getCurrentWorkspaceUser();
   const members = store.get.members();
@@ -682,6 +697,12 @@ function openProfileModal() {
             <span>Autobloqueo al salir (Auto-lock)</span>
           </label>
         </div>
+        <div class="form-group">
+          <label class="checkbox-item">
+            <input type="checkbox" id="profile-low-feedback" ${localStorage.getItem('low_feedback_enabled') === 'true' ? 'checked' : ''}>
+            <span>Modo Poca Retroalimentación (ocultar confirmaciones)</span>
+          </label>
+        </div>
       </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
@@ -727,6 +748,7 @@ function openProfileModal() {
       localStorage.setItem('workspace_recovery_hash', hashStr(recoveryCodeForDisplay.replace(/-/g, '')));
     }
     localStorage.setItem('autolock_enabled', modal.querySelector('#profile-autolock').checked);
+    localStorage.setItem('low_feedback_enabled', modal.querySelector('#profile-low-feedback').checked);
 
     updateUserProfileUI();
 
@@ -751,11 +773,11 @@ function openProfileModal() {
       };
       rcModal.querySelector('#rc-done-btn').onclick = () => {
         closeModal();
-        showToast('Contrasena y codigo de recuperacion actualizados', 'success');
+        showToast('Contrasena y codigo de recuperacion actualizados', 'success', true);
       };
     } else {
       closeModal();
-      showToast('Perfil actualizado', 'success');
+      showToast('Perfil actualizado', 'success', true);
     }
   });
 }

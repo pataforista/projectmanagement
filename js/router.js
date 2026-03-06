@@ -52,7 +52,13 @@ class Router {
         window.addEventListener('hashchange', () => this._dispatch());
     }
 
-    /** Register a view handler: router.on('dashboard', renderFn) */
+    /**
+     * Registra una función manejadora para una ruta/vista específica.
+     * Permite el encadenamiento de llamadas (chaining).
+     * @param {string} viewName - Nombre base de la ruta.
+     * @param {Function} handler - Función de renderizado asociada.
+     * @returns {Router}
+     */
     on(viewName, handler) {
         this._handlers[viewName] = handler;
         return this;
@@ -60,12 +66,19 @@ class Router {
 
     get current() { return this._current; }
 
-    /** Navigate programmatically */
+    /**
+     * Cambia la ruta actual del navegador, lo que disparará asíncronamente
+     * el evento hashchange y el subsiguiente _dispatch().
+     * @param {string} path - URL base con formato hash (ej '/projects').
+     */
     navigate(path) {
         window.location.hash = path;
     }
 
-    /** Parse current hash and dispatch to the right handler */
+    /** 
+     * Extrae y normaliza el hash actual de la URL, determinando los 
+     * parámetros dinámicos (como projectOS ID) e invoca el renderizador.
+     */
     _dispatch() {
         const hash = window.location.hash.replace('#', '') || '/dashboard';
 
@@ -104,6 +117,14 @@ class Router {
         if (sub) sub.textContent = meta.subtitle;
     }
 
+    /**
+     * Inyecta la vista en el contenedor raíz del DOM ("app-root").
+     * Gestiona la ejecución segura de las funciones de limpieza (teardown)  
+     * devueltas por la vista anterior para evitar memory leaks (fugas de memoria).
+     * 
+     * @param {string} viewName - Nombre de la vista.
+     * @param {Object} params - Filtros/IDs de URL extraídos de la ruta.
+     */
     _render(viewName, params) {
         const root = document.getElementById('app-root');
         if (!root) return;

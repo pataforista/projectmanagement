@@ -199,6 +199,10 @@ async function loadDriveContent() {
   }
 
   container.innerHTML = `
+    <div style="background:rgba(59,130,246,0.1); border-left:4px solid var(--accent-primary); padding:10px 15px; border-radius:4px; margin-bottom:20px; font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:10px;">
+      <i data-feather="info" style="width:16px; height:16px; color:var(--accent-primary);"></i>
+      <span>Los archivos de Drive son de <strong>solo lectura</strong> dentro del Workspace. Para borrarlos o moverlos, usa la web de Google Drive.</span>
+    </div>
     <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
       ${files.map(file => {
     const mimeType = file.mimeType || '';
@@ -343,7 +347,7 @@ function bindZoteroEvents() {
 }
 
 window.deleteLibraryItem = async function (id) {
-  if (confirm("¿Estás seguro de querer borrar esta referencia de tu biblioteca local?")) {
+  if (confirm("¿Estás seguro de querer borrar esta referencia de tu biblioteca local?\n\nℹ️ Esto solo borra la referencia del Workspace local. No afectará a tu cuenta de Zotero.")) {
     const lib = store.get.library().filter(i => i.id !== id);
     await store.dispatch('CLEAR_LIBRARY_AND_SYNC', lib);
     renderLibrary(document.getElementById('app-root'));

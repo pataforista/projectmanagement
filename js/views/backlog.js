@@ -173,7 +173,8 @@ function bindInlineStatus(root) {
       e.stopPropagation();
       const taskId = btn.dataset.id;
       const task = store.get.allTasks().find(t => t.id === taskId);
-      if (task && confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+      const msg = `¿Eliminar la tarea "${task.title}"?\n\n⚠️ Esto se reflejará en el Google Drive compartido del equipo.`;
+      if (task && confirm(msg)) {
         await store.dispatch('DELETE_TASK', { id: taskId });
         refreshBacklog(root);
       }

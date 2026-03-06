@@ -2,7 +2,15 @@
  * notifications.js — Web Notifications & Reminders Logic
  */
 
+/**
+ * Gestor de Notificaciones del Escritorio y Recordatorios.
+ */
 const NotificationsManager = {
+    /**
+     * Inicializa el sistema de notificaciones. Solicita permiso al usuario si 
+     * aún no lo ha concedido, verifica recordatorios pendientes inmediatamente 
+     * y configura un intervalo de chequeo horario.
+     */
     async init() {
         if (!('Notification' in window)) {
             console.warn('Este navegador no soporta notificaciones de escritorio');
@@ -25,6 +33,11 @@ const NotificationsManager = {
         setInterval(() => this.checkReminders(), 3600000);
     },
 
+    /**
+     * Evalúa todas las tareas locales no terminadas para determinar si hay 
+     * tareas vencidas o por vencer (mañana o hoy) y dispara una alerta 
+     * agrupada de recordatorio diario.
+     */
     checkReminders() {
         if (Notification.permission !== 'granted') return;
 
@@ -76,6 +89,11 @@ const NotificationsManager = {
         }
     },
 
+    /**
+     * Levanta una notificación nativa del SO.
+     * @param {string} title - Título de la notificación.
+     * @param {Object} options - Parámetros de la notificación (body, icon, etc).
+     */
     showNotification(title, options) {
         if (Notification.permission === 'granted') {
             try {
@@ -91,6 +109,10 @@ const NotificationsManager = {
     },
 
     // For testing and demo purposes
+    /**
+     * Función de prueba para verificar que los permisos están correctamente configurados
+     * y el navegador es capaz de renderizar las notificaciones nativas.
+     */
     testNotification() {
         this.showNotification('Workspace de Producción', {
             body: 'Las notificaciones están funcionando correctamente.'
