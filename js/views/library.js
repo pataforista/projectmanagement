@@ -6,6 +6,7 @@
 // Local state for library view
 let currentLibraryViewMode = 'grid'; // 'grid' | 'table'
 let currentLibraryTab = 'zotero'; // 'zotero' | 'drive'
+let currentLibrarySearch = ''; // Search query
 
 function renderLibrary(root) {
   const libraryItems = store.get.library() || [];
@@ -32,6 +33,14 @@ function renderLibrary(root) {
            <div style="flex: 1;"></div>
 
            ${currentLibraryTab === 'zotero' ? `
+             <!-- Search -->
+             <div style="position:relative; display:flex; align-items:center;">
+               <i data-feather="search" style="position:absolute; left:8px; width:13px; height:13px; color:var(--text-muted);"></i>
+               <input type="text" id="lib-search" class="form-input" placeholder="Buscar por título, autor..." value="${esc(currentLibrarySearch)}"
+                 style="padding-left:28px; height:32px; font-size:0.82rem; width:220px;"
+                 oninput="setLibrarySearch(this.value)">
+             </div>
+
              <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
                <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
                  <i data-feather="grid" style="width: 14px; height: 14px;"></i>
@@ -40,11 +49,17 @@ function renderLibrary(root) {
                  <i data-feather="list" style="width: 14px; height: 14px;"></i>
                </button>
              </div>
-             
+
              <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
              <div class="dropdown-wrapper" style="display:flex; gap:8px;">
+               <button class="btn btn-secondary" onclick="exportLibraryAsBibTeX()" title="Exportar biblioteca como BibTeX">
+                 <i data-feather="download"></i> BibTeX
+               </button>
+               <button class="btn btn-secondary" onclick="exportLibraryAsCSL()" title="Exportar biblioteca como CSL-JSON">
+                 <i data-feather="download"></i> CSL-JSON
+               </button>
                <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()" title="Importar CSL JSON manual">
-                 <i data-feather="upload-cloud"></i> Archivo
+                 <i data-feather="upload-cloud"></i> Importar
                </button>
                <button class="btn btn-primary" id="btn-zotero-sync" title="Sincronizar en vivo con API">
                  <i data-feather="refresh-cw"></i> Sincronizar Zotero
@@ -75,15 +90,32 @@ function renderLibrary(root) {
   }
 }
 
-function renderZoteroContent(items) {
+function renderZoteroContent(allItems) {
+  // Apply search filter
+  const q = currentLibrarySearch.toLowerCase().trim();
+  const items = q
+    ? allItems.filter(i =>
+        (i.title || '').toLowerCase().includes(q) ||
+        (i.author || '').toLowerCase().includes(q) ||
+        (i.publicationTitle || '').toLowerCase().includes(q) ||
+        (i.tags || []).some(t => t.toLowerCase().includes(q))
+      )
+    : allItems;
+
+  const withDOI = items.filter(i => i.doi);
+
   return `
     <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-      ${statPill(items.length, 'Referencias Totales', 'book')}
+      ${statPill(allItems.length, 'Referencias Totales', 'book')}
       ${statPill(items.filter(i => i.itemType === 'article-journal').length, 'Artículos', 'file-text')}
+      ${statPill(withDOI.length, 'Con DOI', 'link')}
+      ${q ? statPill(items.length, 'Resultados', 'search') : ''}
     </div>
     <div style="flex:1;">
       ${items.length === 0
-      ? emptyState('book-open', 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar.')
+      ? emptyState('book-open', allItems.length === 0
+          ? 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar.'
+          : 'No hay resultados para esa búsqueda.')
       : (currentLibraryViewMode === 'table' ? renderLibraryTable(items) : renderLibraryGrid(items))}
     </div>
   `;
@@ -242,20 +274,38 @@ function renderLibraryTable(items) {
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Título</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Autores</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Año</th>
+                    <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Clave / DOI</th>
                     <th style="padding: 12px; border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.8rem; font-weight: 600;">Acción</th>
                 </tr>
             </thead>
             <tbody>
                 ${items.sort((a, b) => b.importedAt - a.importedAt).map(item => `
                 <tr style="border-bottom: 1px solid var(--border-highlight); transition: background 0.2s;">
-                    <td style="padding: 12px;"><span class="badge badge-neutral">${item.itemType}</span></td>
-                    <td style="padding: 12px; font-weight: 500;">${esc(item.title)}</td>
+                    <td style="padding: 12px;"><span class="badge badge-neutral">${esc(item.itemType || '?')}</span></td>
+                    <td style="padding: 12px; font-weight: 500; max-width:280px;">
+                      <span title="${esc(item.title)}">${esc(item.title)}</span>
+                      ${item.publicationTitle ? `<div style="font-size:0.73rem; color:var(--text-muted); margin-top:2px;">${esc(item.publicationTitle)}</div>` : ''}
+                    </td>
                     <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${esc(item.author || '---')}</td>
-                    <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${item.date ? escaAño(item.date) : '---'}</td>
+                    <td style="padding: 12px; color: var(--text-secondary); font-size: 0.85rem;">${item.year || (item.date ? escaAño(item.date) : '---')}</td>
+                    <td style="padding: 12px; font-size: 0.75rem;">
+                      ${item.citeKey ? `<code style="background:var(--bg-surface-2); padding:2px 5px; border-radius:4px; color:var(--accent-teal);">${esc(item.citeKey)}</code>` : ''}
+                      ${item.doi
+                        ? `<a href="https://doi.org/${esc(item.doi)}" target="_blank" rel="noopener noreferrer"
+                             style="display:block; margin-top:3px; color:var(--accent-primary); font-size:0.7rem;"
+                             title="Abrir DOI: ${esc(item.doi)}">
+                             <i data-feather="link-2" style="width:10px;height:10px;"></i> DOI
+                           </a>`
+                        : ''}
+                    </td>
                     <td style="padding: 12px; display:flex; gap:8px;">
                         <a href="${item.uri}" class="btn btn-sm btn-ghost" title="Abrir en Zotero" style="color:var(--accent-primary);">
                           <i data-feather="external-link" style="width: 14px; height: 14px;"></i>
                         </a>
+                        <button class="btn btn-sm btn-ghost" title="Copiar clave de cita [@${esc(item.citeKey || item.id)}]"
+                          onclick="navigator.clipboard.writeText('[@${esc(item.citeKey || item.id)}]').then(()=>showToast('Clave copiada','success'))">
+                          <i data-feather="copy" style="width: 14px; height: 14px;"></i>
+                        </button>
                         <button class="btn btn-sm btn-ghost" title="Eliminar referencia" style="color:var(--accent-danger);" onclick="deleteLibraryItem('${item.id}')">
                           <i data-feather="trash-2" style="width: 14px; height: 14px;"></i>
                         </button>
@@ -338,3 +388,34 @@ function processZoteroItem(raw) {
 }
 
 window.renderLibrary = renderLibrary;
+
+window.setLibrarySearch = function (q) {
+  currentLibrarySearch = q;
+  const root = document.getElementById('app-root');
+  const items = store.get.library() || [];
+  const contentArea = document.getElementById('library-content-area');
+  if (contentArea) {
+    contentArea.innerHTML = renderZoteroContent(items);
+    if (window.feather) feather.replace();
+  }
+};
+
+window.exportLibraryAsBibTeX = function () {
+  const items = store.get.library() || [];
+  if (!items.length) return showToast('La biblioteca está vacía.', 'warning');
+  if (!window.zoteroApi?.exportAsBibTeX) return showToast('Función de exportación no disponible.', 'error');
+  const bib = zoteroApi.exportAsBibTeX(items);
+  const date = new Date().toISOString().slice(0, 10);
+  downloadFile(`biblioteca-${date}.bib`, bib);
+  showToast(`${items.length} referencias exportadas como BibTeX.`, 'success');
+};
+
+window.exportLibraryAsCSL = function () {
+  const items = store.get.library() || [];
+  if (!items.length) return showToast('La biblioteca está vacía.', 'warning');
+  if (!window.zoteroApi?.exportAsCSLJSON) return showToast('Función de exportación no disponible.', 'error');
+  const json = zoteroApi.exportAsCSLJSON(items);
+  const date = new Date().toISOString().slice(0, 10);
+  downloadFile(`biblioteca-${date}.json`, json);
+  showToast(`${items.length} referencias exportadas como CSL-JSON.`, 'success');
+};

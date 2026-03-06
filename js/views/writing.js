@@ -122,7 +122,8 @@ function renderWriting(root) {
               <button class="btn btn-icon btn-sm" title="Metadatos YAML (Propiedades)" id="wr-properties-btn"><i data-feather="settings"></i></button>
               <button class="btn btn-icon btn-sm" title="Vista Previa Markdown" id="wr-preview-btn"><i data-feather="eye"></i></button>
               <button class="btn btn-icon btn-sm" title="Crear Snapshot (Versión)" id="wr-snapshot"><i data-feather="camera"></i></button>
-              <button class="btn btn-icon btn-sm" title="Exportar .md" id="wr-export"><i data-feather="download"></i></button>
+              <button class="btn btn-icon btn-sm" title="Exportar Markdown plano" id="wr-export"><i data-feather="download"></i></button>
+              <button class="btn btn-icon btn-sm" title="Exportar Pandoc (.md con frontmatter YAML + bibliografía)" id="wr-export-pandoc"><i data-feather="file-text"></i></button>
               <button class="btn btn-primary btn-sm" id="wr-save">Guardar</button>
             </div>
           </header>
@@ -237,8 +238,9 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
         const options = [
           { id: 'cita', icon: 'book-open', label: 'Cita Académica' },
           { id: 'img', icon: 'image', label: 'Imagen' },
-          { id: 'ref', icon: 'link', label: 'Ref Zotero' },
-          { id: 'title', icon: 'type', label: 'Título H2' }
+          { id: 'ref', icon: 'link', label: 'Cita Pandoc [@key]' },
+          { id: 'title', icon: 'type', label: 'Título H2' },
+          { id: 'quarto', icon: 'code', label: 'Bloque Quarto' }
         ];
 
         slashMenu.innerHTML = options.map(o => `
@@ -257,6 +259,25 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
             if (action === 'cita') insert = '> "Texto de la cita" (Autor, Año)';
             if (action === 'img') insert = '![Descripción](url)';
             if (action === 'title') insert = '## ';
+            if (action === 'quarto') insert = '```{r}\n\n```';
+            if (action === 'ref') {
+              // Show library picker
+              const lib = store.get.library() || [];
+              if (!lib.length) { insert = '[@citeKey]'; }
+              else {
+                const choices = lib.slice(0, 15).map((item, idx) =>
+                  `${idx + 1}. ${item.citeKey || item.id} — ${item.title.substring(0, 50)}`
+                ).join('\n');
+                const pick = prompt(`Selecciona una referencia:\n${choices}\n\nEscribe el número o la clave directamente:`);
+                if (pick) {
+                  const num = parseInt(pick, 10);
+                  const chosen = !isNaN(num) && lib[num - 1]
+                    ? lib[num - 1].citeKey || lib[num - 1].id
+                    : pick.trim();
+                  insert = `[@${chosen}]`;
+                }
+              }
+            }
 
             const start = editor.selectionStart;
             const end = editor.selectionEnd;
@@ -536,12 +557,57 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
       showToast('Documento y meta-datos guardados.', 'success');
     });
 
-    // Export button
+    // Export button — plain Markdown
     root.querySelector('#wr-export').addEventListener('click', () => {
       const title = root.querySelector('#wr-section-title').value.trim() || p?.name || 'manuscrito';
       const content = editor.value;
       downloadFile(`${title}.md`, content);
-      showToast('Archivo exportado.', 'success');
+      showToast('Archivo Markdown exportado.', 'success');
+    });
+
+    // Export Pandoc-ready Markdown with YAML frontmatter
+    root.querySelector('#wr-export-pandoc')?.addEventListener('click', () => {
+      const title = root.querySelector('#wr-section-title').value.trim() || p?.name || 'manuscrito';
+      const content = editor.value;
+      const yamlStr = root.querySelector('#wr-properties').value.trim();
+
+      // Parse existing YAML properties for author/date overrides
+      let props = {};
+      if (yamlStr) {
+        try {
+          if (window.jsyaml) props = jsyaml.load(yamlStr) || {};
+        } catch (_e) { /* ignore */ }
+      }
+
+      // Build frontmatter
+      const today = new Date().toISOString().slice(0, 10);
+      const author = props.autor || props.author || (store.get.members ? store.get.members()[0]?.name : '') || 'Autor';
+      const frontmatter = [
+        '---',
+        `title: "${title.replace(/"/g, "'")}"`,
+        `author: "${author}"`,
+        `date: "${today}"`,
+        'bibliography: references.bib',
+        'csl: apa.csl',
+        'lang: es',
+        'output:',
+        '  pdf_document:',
+        '    toc: true',
+        '  word_document: default',
+        '---',
+        '',
+      ].join('\n');
+
+      // Append bibliography section from library if there are [@citeKey] refs in content
+      const citeRefs = [...content.matchAll(/\[@([^\]]+)\]/g)].map(m => m[1]);
+      let bibSection = '';
+      if (citeRefs.length) {
+        bibSection = '\n\n# Referencias\n\n::: {#refs}\n:::\n';
+      }
+
+      const pandocMd = frontmatter + content + bibSection;
+      downloadFile(`${title}-pandoc.md`, pandocMd);
+      showToast('Exportado con frontmatter Pandoc. Usa: pandoc archivo.md --citeproc -o salida.pdf', 'success');
     });
 
     // Preview and Dataview parser

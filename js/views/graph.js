@@ -5,6 +5,14 @@
 import { store } from '../store.js';
 import { esc } from '../utils.js';
 
+// Lazy-load vault export utility
+async function loadVaultExport() {
+    if (!window.exportVault) {
+        await import('../utils/vault-export.js');
+    }
+    return window.exportVault;
+}
+
 export const renderGraph = (root) => {
     root.innerHTML = `
         <div class="view-container" style="padding:0; overflow:hidden; display:flex; flex-direction:column; height:100vh;">
@@ -13,7 +21,13 @@ export const renderGraph = (root) => {
                     <h1>Grafo de Conocimiento</h1>
                     <p>Visualiza las conexiones entre tus ideas, proyectos y referencias.</p>
                 </div>
-                <div class="header-actions">
+                <div class="header-actions" style="display:flex; gap:8px;">
+                    <button class="btn btn-secondary btn-sm" id="btn-export-graphml" title="Exportar grafo como GraphML (Gephi / Cytoscape)">
+                        <i data-feather="share-2"></i> GraphML
+                    </button>
+                    <button class="btn btn-secondary btn-sm" id="btn-export-vault" title="Exportar todos los documentos como vault Markdown (Zettlr / Logseq)">
+                        <i data-feather="archive"></i> Vault ZIP
+                    </button>
                     <button class="btn btn-secondary btn-sm" onclick="app.navigate('writing')">Volver a Escritura</button>
                 </div>
             </header>
@@ -151,6 +165,59 @@ export const renderGraph = (root) => {
         Graph.height(container.clientHeight);
     });
     resizeObserver.observe(container);
+
+    // ── GraphML Export ────────────────────────────────────────────────────
+    root.querySelector('#btn-export-graphml')?.addEventListener('click', () => {
+        const xmlLines = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            '<graphml xmlns="http://graphml.graphdrawing.org/graphml"',
+            '         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
+            '         xsi:schemaLocation="http://graphml.graphdrawing.org/graphml http://graphml.graphdrawing.org/graphml/graphml.xsd">',
+            '  <key id="label" for="node" attr.name="label" attr.type="string"/>',
+            '  <key id="type"  for="node" attr.name="type"  attr.type="string"/>',
+            '  <key id="color" for="node" attr.name="color" attr.type="string"/>',
+            '  <key id="etype" for="edge" attr.name="type"  attr.type="string"/>',
+            '  <graph id="workspace" edgedefault="directed">',
+        ];
+
+        data.nodes.forEach(n => {
+            xmlLines.push(`    <node id="${esc(n.id)}">`);
+            xmlLines.push(`      <data key="label">${esc(n.name)}</data>`);
+            xmlLines.push(`      <data key="type">${esc(n.type)}</data>`);
+            xmlLines.push(`      <data key="color">${esc(n.color || '#888')}</data>`);
+            xmlLines.push(`    </node>`);
+        });
+
+        data.links.forEach((l, i) => {
+            const src = typeof l.source === 'object' ? l.source.id : l.source;
+            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            xmlLines.push(`    <edge id="e${i}" source="${esc(src)}" target="${esc(tgt)}">`);
+            xmlLines.push(`      <data key="etype">${esc(l.type || 'link')}</data>`);
+            xmlLines.push(`    </edge>`);
+        });
+
+        xmlLines.push('  </graph>', '</graphml>');
+
+        const blob = new Blob([xmlLines.join('\n')], { type: 'application/xml' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = `workspace-graph-${new Date().toISOString().slice(0, 10)}.graphml`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (window.showToast) showToast(`Grafo exportado: ${data.nodes.length} nodos, ${data.links.length} enlaces.`, 'success');
+    });
+
+    // ── Vault Export ──────────────────────────────────────────────────────
+    root.querySelector('#btn-export-vault')?.addEventListener('click', async () => {
+        try {
+            const fn = await loadVaultExport();
+            await fn(store);
+        } catch (err) {
+            console.error(err);
+            if (window.showToast) showToast('Error al exportar el vault: ' + err.message, 'error');
+        }
+    });
 
     feather.replace();
 };
