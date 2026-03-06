@@ -3,6 +3,7 @@
  */
 
 const PRIORITIES = ['alta', 'media', 'baja'];
+const BACKLOG_STATUSES = window.STATUSES || ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
 
 function renderBacklog(root) {
   root.innerHTML = `
@@ -25,7 +26,7 @@ function renderBacklog(root) {
         <span id="backlog-drive-link-container"></span>
         <select class="filter-select" id="bl-status">
           <option value="">Todos los estados</option>
-          ${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
+          ${BACKLOG_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
         </select>
         <select class="filter-select" id="bl-priority">
           <option value="">Todas las prioridades</option>
@@ -131,7 +132,7 @@ function backlogRow(t) {
       </td>
       <td>
         <select class="filter-select inline-status-select" data-task-id="${t.id}" style="font-size:0.75rem; padding:3px 22px 3px 7px;">
-          ${STATUSES.map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+          ${BACKLOG_STATUSES.map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </td>
       <td>

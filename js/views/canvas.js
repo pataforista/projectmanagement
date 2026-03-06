@@ -17,7 +17,7 @@ let canvasState = {
 let ctx;
 let canvasEl;
 
-export const renderCanvas = (root) => {
+const renderCanvas = (root) => {
     root.innerHTML = `
     <div class="view-inner" style="display:flex; flex-direction:column; height:100%; padding:0;">
       <div class="view-header" style="padding: 16px 24px; border-bottom: 1px solid var(--border-color); flex-shrink:0;">
