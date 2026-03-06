@@ -207,6 +207,15 @@ async function loadDriveContent() {
     const thumbnailLink = safeUrl(file.thumbnailLink);
     const iconLink = safeUrl(file.iconLink);
     const webViewLink = safeUrl(file.webViewLink);
+    const ownerLabel = file.owners?.[0]?.displayName || file.owners?.[0]?.emailAddress || 'Sin propietario';
+    const isSharedDrive = !!file.driveId;
+    const isSharedWithMe = file.shared && !file.ownedByMe && !isSharedDrive;
+    const sourceLabel = isSharedDrive
+      ? 'Biblioteca compartida'
+      : (isSharedWithMe ? 'Compartido conmigo' : 'Biblioteca personal');
+    const sourceTone = isSharedDrive || isSharedWithMe
+      ? 'background:rgba(59,130,246,0.12); color:#93c5fd;'
+      : 'background:rgba(16,185,129,0.12); color:#86efac;';
     return `
           <div class="card glass-panel drive-card" style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: transform 0.2s; cursor:default;">
             <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
@@ -217,7 +226,8 @@ async function loadDriveContent() {
             </div>
             <div style="overflow:hidden;">
               <h4 style="font-size:0.8rem; margin:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${esc(file.name)}">${esc(file.name)}</h4>
-              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(fileSize / 1024 / 1024).toFixed(2)} MB</p>
+              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(fileSize / 1024 / 1024).toFixed(2)} MB · ${esc(ownerLabel)}</p>
+              <span style="display:inline-block; margin-top:6px; padding:2px 8px; border-radius:999px; font-size:0.64rem; font-weight:600; ${sourceTone}">${sourceLabel}</span>
             </div>
             <a href="${webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem; ${webViewLink ? '' : 'pointer-events:none; opacity:0.6;'}">
               <i data-feather="external-link" style="width:12px;"></i> Abrir
