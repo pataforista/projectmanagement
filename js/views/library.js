@@ -93,7 +93,15 @@ async function loadDriveContent() {
   const container = document.getElementById('library-content-area');
   if (!container) return;
 
-  const files = await syncManager.listDriveFiles();
+  let files = [];
+  try {
+    files = await syncManager.listDriveFiles();
+  } catch (err) {
+    console.error('Error loading Drive files:', err);
+    container.innerHTML = emptyState('alert-circle', 'No se pudo cargar el contenido de Drive.');
+    if (window.feather) feather.replace();
+    return;
+  }
 
   if (files.length === 0) {
     container.innerHTML = emptyState('cloud-off', 'No se encontraron archivos en Drive o no estás conectado.');
@@ -104,21 +112,25 @@ async function loadDriveContent() {
   container.innerHTML = `
     <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
       ${files.map(file => {
-    const isImg = file.mimeType.startsWith('image/');
-    const icon = getFileIcon(file.mimeType);
+    const mimeType = file.mimeType || '';
+    const icon = getFileIcon(mimeType);
+    const fileSize = Number(file.size || 0);
+    const thumbnailLink = safeUrl(file.thumbnailLink);
+    const iconLink = safeUrl(file.iconLink);
+    const webViewLink = safeUrl(file.webViewLink);
     return `
           <div class="card glass-panel drive-card" style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: transform 0.2s; cursor:default;">
             <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
-              ${file.thumbnailLink
-        ? `<img src="${file.thumbnailLink}" style="width:100%; height:100%; object-fit:cover;">`
+              ${thumbnailLink
+        ? `<img src="${thumbnailLink}" alt="Vista previa de ${esc(file.name || 'archivo')}" style="width:100%; height:100%; object-fit:cover;">`
         : `<i data-feather="${icon}" style="width:32px; height:32px; opacity:0.4;"></i>`}
-                <img src="${file.iconLink}" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">
+                ${iconLink ? `<img src="${iconLink}" alt="Icono de archivo" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">` : ''}
             </div>
             <div style="overflow:hidden;">
               <h4 style="font-size:0.8rem; margin:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${esc(file.name)}">${esc(file.name)}</h4>
-              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(fileSize / 1024 / 1024).toFixed(2)} MB</p>
             </div>
-            <a href="${file.webViewLink}" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem;">
+            <a href="${webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem; ${webViewLink ? '' : 'pointer-events:none; opacity:0.6;'}">
               <i data-feather="external-link" style="width:12px;"></i> Abrir
             </a>
           </div>
@@ -127,6 +139,21 @@ async function loadDriveContent() {
     </div>
   `;
   if (window.feather) feather.replace();
+}
+
+function safeUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString();
+    }
+  } catch (_e) {
+    return '';
+  }
+
+  return '';
 }
 
 function getFileIcon(mime) {
