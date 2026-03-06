@@ -50,6 +50,13 @@ function renderIntegrations(root) {
             <button class="btn btn-secondary btn-sm" onclick="syncManager?.openPanel()" style="margin-top:16px;width:100%;">
               Configurar Google API
             </button>
+            <div style="margin-top:12px; padding:10px 12px; background:rgba(var(--accent-warning-rgb,255,200,0),0.08); border:1px solid rgba(var(--accent-warning-rgb,255,200,0),0.25); border-radius:8px; font-size:0.75rem; color:var(--text-secondary); line-height:1.5;">
+              <strong style="color:var(--text-primary);">⚠ Escenario Drive Vacío</strong><br>
+              Si pierdes acceso a Google Drive <em>y</em> limpias el caché del navegador, los datos cifrados en IndexedDB quedarán inaccesibles sin el salt criptográfico. Descarga una copia de seguridad y guárdala en un lugar seguro (gestor de contraseñas, pendrive cifrado).
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-export-identity" style="margin-top:8px;width:100%;">
+              Exportar identidad criptográfica
+            </button>
           </div>
         </div>
 
@@ -235,6 +242,31 @@ function renderIntegrations(root) {
   `;
 
   feather.replace();
+
+  // ── Cryptographic identity backup ──────────────────────────────────────────
+  root.querySelector('#btn-export-identity')?.addEventListener('click', () => {
+    const salt = localStorage.getItem('nexus_salt');
+    const lockHash = localStorage.getItem('workspace_lock_hash');
+    if (!salt) {
+      if (window.showToast) showToast('No hay identidad criptográfica almacenada en este dispositivo aún.', 'warning');
+      return;
+    }
+    const payload = {
+      nexus_salt: salt,
+      workspace_lock_hash: lockHash || null,
+      exported_at: new Date().toISOString(),
+      note: 'Guarda este archivo en un lugar seguro (gestor de contraseñas o pendrive cifrado). Necesitas también tu contraseña maestra para recuperar el acceso.'
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nexus-identity-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    if (window.showToast) showToast('Identidad criptográfica exportada. Guárdala en un lugar seguro.', 'success');
+  });
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Bind events
   root.querySelector('#btn-save-zotero')?.addEventListener('click', () => {

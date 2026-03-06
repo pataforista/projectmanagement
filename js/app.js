@@ -14,12 +14,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Import crypto layer (available as ES module or global import)
     const cryptoLayer = await import('./utils/crypto.js').catch(() => null);
 
-    // ── Secure hash via Web Crypto SHA-256 ──
+    // ── Secure hash via PBKDF2 (v2) ──
     const hashStr = async (str) => {
         if (cryptoLayer) return cryptoLayer.hashPassword(str);
-        // Fallback for environments without module support (should not happen)
+        // Fallback: should not happen in a modern browser
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    };
+
+    // ── SHA-256 hash — used ONLY for one-time migration from old stored hashes ──
+    const hashStrLegacySHA256 = async (str) => {
+        if (cryptoLayer?.hashPasswordLegacySHA256) return cryptoLayer.hashPasswordLegacySHA256(str);
+        return null;
     };
 
     // ── Legacy Hash (djb2) for Migration ──
@@ -158,18 +164,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const inputHash = await hashStr(pwd);
                 let isMatch = (inputHash === savedHash);
 
-                // ── Legacy Migration Check ──
+                // ── Legacy Migration: djb2 → PBKDF2 v2 ──
                 if (!isMatch && savedHash.length < 60) {
                     const legHash = legacyHash(pwd);
                     if (legHash === savedHash) {
-                        console.log('[Fortress] Legacy hash matched. Upgrading to Nexus Fortress (SHA-256)...');
+                        console.log('[Fortress] djb2 hash matched. Upgrading to PBKDF2 v2...');
                         const newHash = await hashStr(pwd);
                         const recoveryCode = generateRecoveryCode();
                         const recoveryHash = await hashStr(normalizeCode(recoveryCode));
                         localStorage.setItem('workspace_lock_hash', newHash);
                         localStorage.setItem('workspace_recovery_hash', recoveryHash);
                         isMatch = true;
-                        // Show recovery code because we just generated it
                         authForm.style.display = 'none';
                         authSubtitle.textContent = "Seguridad actualizada. Guarda tu nuevo codigo.";
                         showCodeDisplay(recoveryCode, () => {
@@ -177,7 +182,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                             resolve();
                         });
                         if (cryptoLayer) await cryptoLayer.unlock(pwd);
-                        return; // Exit here as showCodeDisplay will resolve
+                        return;
+                    }
+                }
+
+                // ── Legacy Migration: SHA-256 (v1) → PBKDF2 v2 ──
+                // Stored hashes without the "v2:" prefix and exactly 64 hex chars
+                // were produced by the old single-round SHA-256 verifier.
+                if (!isMatch && !savedHash.startsWith('v2:') && savedHash.length === 64) {
+                    const sha256Hash = await hashStrLegacySHA256(pwd);
+                    if (sha256Hash && sha256Hash === savedHash) {
+                        console.log('[Fortress] SHA-256 hash matched. Upgrading to PBKDF2 v2...');
+                        const newHash = await hashStr(pwd);
+                        localStorage.setItem('workspace_lock_hash', newHash);
+                        savedHash = newHash;
+                        isMatch = true;
+                        // Recovery hash also needs upgrading — reuse existing recovery code path
+                        const rawRecovery = localStorage.getItem('workspace_recovery_hash');
+                        // We can't recover the original plaintext code, so just leave recovery
+                        // hash as-is; it will be upgraded on the next successful recovery flow.
                     }
                 }
 

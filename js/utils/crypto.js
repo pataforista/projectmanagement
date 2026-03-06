@@ -69,9 +69,41 @@ export async function deriveKey(password) {
 }
 
 /**
- * Derives a SHA-256 hash for password verification.
+ * Derives a PBKDF2-hardened verification token for password checking.
+ *
+ * Uses 150,000 PBKDF2-SHA-256 iterations (half of the encryption key
+ * derivation) with a separate "verify" purpose, so that an attacker who
+ * obtains the Drive JSON file faces ~150k iterations of work per guess
+ * rather than a single SHA-256 round.
+ *
+ * Output is prefixed with "v2:" to distinguish it from legacy SHA-256 hashes
+ * and allow transparent migration in app.js.
  */
 export async function hashPassword(password) {
+    const saltBytes = await getOrCreateSalt();
+    const enc = new TextEncoder();
+    // Derive a separate purpose key: append ':verify' to the password so the
+    // verifier is cryptographically independent from the AES encryption key.
+    const rawKey = await crypto.subtle.importKey(
+        'raw', enc.encode(password + ':verify'), 'PBKDF2', false, ['deriveKey']
+    );
+    const verifyKey = await crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: saltBytes, iterations: 150_000, hash: 'SHA-256' },
+        rawKey,
+        { name: 'AES-GCM', length: 256 },
+        true,          // extractable so we can export the raw bytes as the token
+        ['encrypt']
+    );
+    const keyBytes = await crypto.subtle.exportKey('raw', verifyKey);
+    return 'v2:' + Array.from(new Uint8Array(keyBytes)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Legacy SHA-256 verifier — used ONLY for one-time migration of stored hashes.
+ * Do NOT use this for new password storage.
+ * @internal
+ */
+export async function hashPasswordLegacySHA256(password) {
     const saltBytes = await getOrCreateSalt();
     const saltB64 = btoa(String.fromCharCode(...saltBytes));
     const enc = new TextEncoder();

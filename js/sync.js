@@ -241,6 +241,21 @@ const syncManager = (() => {
 
             localStorage.setItem('gdrive_file_id', fileId);
             const remoteData = await getFileContent(fileId);
+
+            // ── Race-condition guard ────────────────────────────────────────
+            // Drive can take a few seconds to propagate a freshly written file.
+            // If the payload is E2EE-encrypted but the auth_salt has not yet
+            // arrived in the metadata, we must NOT hydrate the store: the local
+            // device has no way to derive the correct AES key, so it would seed
+            // gibberish and lock the user out.
+            if (remoteData?.e2ee === true && !remoteData?.metadata?.auth_salt) {
+                if (window.showToast) showToast('⚠️ Datos cifrados aún sin salt en Drive. Reintenta en unos segundos.', 'warning', 6000);
+                console.warn('[Sync] Pull aborted — remote is E2EE but auth_salt not yet propagated.');
+                updateSyncUI('online');
+                return;
+            }
+            // ────────────────────────────────────────────────────────────────
+
             const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
             if (remoteData?.updatedAt > localUpdate) {
                 await seedFromRemote(remoteData);
@@ -343,17 +358,21 @@ const syncManager = (() => {
         // AES-256-GCM key — otherwise Drive data cannot be decrypted.
         const meta = data?.metadata;
         if (meta) {
+            let identityAdopted = false;
             if (meta.auth_salt && !localStorage.getItem('nexus_salt')) {
                 localStorage.setItem('nexus_salt', meta.auth_salt);
-                console.log('[Sync] Remote salt adopted — key derivation aligned across devices.');
+                identityAdopted = true;
             }
             if (meta.auth_lock_hash && !localStorage.getItem('workspace_lock_hash')) {
                 localStorage.setItem('workspace_lock_hash', meta.auth_lock_hash);
-                console.log('[Sync] Remote lock hash adopted — existing password recognised on this device.');
+                identityAdopted = true;
             }
             if (meta.auth_recovery_hash && !localStorage.getItem('workspace_recovery_hash')) {
                 localStorage.setItem('workspace_recovery_hash', meta.auth_recovery_hash);
-                console.log('[Sync] Remote recovery hash adopted.');
+            }
+            if (identityAdopted) {
+                console.log('[Sync] Cryptographic identity adopted from Drive — key derivation aligned across devices.');
+                if (window.showToast) showToast('Identidad criptográfica sincronizada desde Drive. Ingresa tu contraseña para acceder.', 'success', 5000);
             }
         }
         // ────────────────────────────────────────────────────────────────────
