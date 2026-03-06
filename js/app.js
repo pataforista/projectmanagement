@@ -364,6 +364,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('integrations', (root) => renderIntegrations(root))
         .on('canvas', (root) => renderCanvas && renderCanvas(root))
         .on('logs', (root) => renderLogs(root))
+        .on('collaboration', (root) => renderCollaboration(root))
         .on('document', (root, params) => renderDocumentView(root, params))
         .on('project', (root, params) => renderProjectDetail(root, params));
 
