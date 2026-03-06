@@ -1,9 +1,7 @@
-/**
- * sync.js — Google Drive Synchronization + Team Import Manager
- */
+import { encryptRecord, decryptRecord, isLocked, hasKey } from './utils/crypto.js';
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/spreadsheets.readonly';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
 
@@ -144,13 +142,13 @@ const syncManager = (() => {
         updateSyncUI('offline');
     }
 
-    function getSnapshot() {
-        return {
-            version: '1.1',
+    async function getSnapshot() {
+        const data = {
+            version: '1.2',
             updatedAt: Date.now(),
             metadata: {
                 teamName: getConfig().teamName,
-                actor: localStorage.getItem('workspace_actor') || 'owner-local',
+                actor: localStorage.getItem('workspace_user_name') || 'owner-local',
             },
             projects: store.get.projects(),
             tasks: store.get.allTasks(),
@@ -163,6 +161,25 @@ const syncManager = (() => {
             annotations: store.get.annotations ? store.get.annotations() : [],
             snapshots: store.get.snapshots ? store.get.snapshots() : [],
         };
+
+        // E2EE Layer: Encrypt sensitive stores if key is available
+        if (hasKey() && !isLocked()) {
+            console.log('[Sync] Applying E2EE to snapshot...');
+            try {
+                return {
+                    ...data,
+                    e2ee: true,
+                    projects: await Promise.all(data.projects.map(encryptRecord)),
+                    tasks: await Promise.all(data.tasks.map(encryptRecord)),
+                    cycles: await Promise.all(data.cycles.map(encryptRecord)),
+                    decisions: await Promise.all(data.decisions.map(encryptRecord)),
+                    documents: await Promise.all(data.documents.map(encryptRecord)),
+                };
+            } catch (e) {
+                console.error('[Sync] E2EE failed, sending plaintext:', e);
+            }
+        }
+        return data;
     }
 
     async function push() {
@@ -378,13 +395,26 @@ const syncManager = (() => {
     function parseObsidianMarkdown(text) {
         const lines = text.split(/\r?\n/);
         return lines
-            .filter(line => /^- \[( |x)\]/i.test(line.trim()))
+            .filter(line => {
+                const trimmed = line.trim();
+                return /^- \[( |x)\]/i.test(trimmed) || /^[*-] /i.test(trimmed);
+            })
             .map((line, idx) => {
-                const done = /- \[x\]/i.test(line.trim());
-                const title = line.replace(/^- \[( |x)\]\s*/i, '').trim();
+                const trimmed = line.trim();
+                // Checklist detection
+                const isChecklist = /^- \[( |x)\]/i.test(trimmed);
+                const done = /- \[x\]/i.test(trimmed);
+                // Clean title
+                let title = trimmed;
+                if (isChecklist) {
+                    title = trimmed.replace(/^- \[( |x)\]\s*/i, '');
+                } else {
+                    title = trimmed.replace(/^[*-]\s+/, '');
+                }
+
                 return {
                     id: `ob-${Date.now()}-${idx}`,
-                    title: title || `Nota ${idx + 1}`,
+                    title: title.trim() || `Nota ${idx + 1}`,
                     status: done ? 'Terminado' : 'Capturado',
                     priority: 'media',
                     type: 'task',
@@ -470,7 +500,7 @@ const syncManager = (() => {
 
         overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         document.body.appendChild(overlay);
-        feather.replace();
+        if (window.feather) feather.replace();
 
         overlay.querySelector('#sync-close').addEventListener('click', () => overlay.remove());
         overlay.querySelector('#sync-disconnect').addEventListener('click', () => {
@@ -609,7 +639,21 @@ const syncManager = (() => {
         }
     }
 
-    return { init, authenticate, disconnect, push, pull, openPanel, getConfig, syncCalendar, syncGoogleTasks, syncTodoist };
+    async function listDriveFiles() {
+        if (!accessToken) return [];
+        try {
+            const resp = await fetch('https://www.googleapis.com/drive/v3/files?pageSize=20&fields=files(id,name,mimeType,thumbnailLink,webViewLink,iconLink,size)&q=trashed=false', {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const result = await resp.json();
+            return result.files || [];
+        } catch (err) {
+            console.error('[Sync] List files failed:', err);
+            return [];
+        }
+    }
+
+    return { init, authenticate, disconnect, push, pull, openPanel, getConfig, listDriveFiles, syncCalendar, syncGoogleTasks, syncTodoist, getAccessToken: () => accessToken };
 })();
 
 export { syncManager };

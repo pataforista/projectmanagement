@@ -46,6 +46,7 @@
   <link rel="stylesheet" href="styles/main.css">
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/animations.css">
+  <link rel="stylesheet" href="styles/skeletons.css">
 
   <!-- Feather Icons (local vendor) -->
   <script src="js/vendor/feather.min.js"></script>
@@ -200,26 +201,26 @@
 
       <div class="sidebar-footer">
         <div class="footer-actions">
-          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema">
+          <button class="btn-theme-toggle" id="btn-theme-toggle" title="Cambiar tema" aria-label="Cambiar tema">
             <i data-feather="sun" class="sun-icon"></i>
             <i data-feather="moon" class="moon-icon"></i>
           </button>
-          <button class="btn btn-icon" id="btn-sync-toggle" onclick="syncManager.openPanel()"
-            title="Conectar Google Drive" style="position:relative;">
+          <button class="btn btn-icon" id="btn-sync-toggle" title="Conectar Google Drive"
+            aria-label="Sincronizar con Google Drive" style="position:relative;">
             <i data-feather="cloud"></i>
             <span class="status-indicator status-offline" id="sync-indicator"></span>
           </button>
-          <button class="btn btn-icon" id="btn-export" onclick="exportData()" title="Exportar datos (JSON)">
+          <button class="btn btn-icon" id="btn-export" title="Exportar datos (JSON)" aria-label="Exportar datos JSON">
             <i data-feather="download"></i>
           </button>
-          <button class="btn btn-icon" id="btn-integrations" title="Integraciones y APIs">
+          <button class="btn btn-icon" id="btn-integrations" title="Integraciones y APIs"
+            aria-label="Abrir integraciones y APIs">
             <i data-feather="settings"></i>
           </button>
-          <button class="btn btn-icon" id="btn-help" title="Guía de Uso">
+          <button class="btn btn-icon" id="btn-help" title="Guía de Uso" aria-label="Abrir guía de uso">
             <i data-feather="help-circle"></i>
           </button>
-          <button class="btn btn-icon" id="btn-lock" onclick="lockWorkspace && lockWorkspace()"
-            title="Bloquear Workspace">
+          <button class="btn btn-icon" id="btn-lock" title="Bloquear Workspace" aria-label="Bloquear Workspace">
             <i data-feather="lock"></i>
           </button>
         </div>
@@ -317,6 +318,7 @@
   <script type="module" src="js/sync.js"></script>
   <script type="module" src="js/modals.js"></script>
   <script type="module" src="js/components.js"></script>
+  <script type="module" src="js/components/chat.js"></script>
   <script type="module" src="js/api/zotero.js"></script>
   <script type="module" src="js/notifications.js"></script>
 

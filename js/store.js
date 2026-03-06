@@ -57,12 +57,22 @@ const store = (() => {
 
         console.log('Seeding initial data...');
         const now = Date.now();
-        const p1 = { id: 'p1', name: 'Proyecto de Investigación A', description: 'Investigación sobre metodologías ágiles en educación.', type: 'Investigación', status: 'activo', createdAt: now };
-        const p2 = { id: 'p2', name: 'Artículo: Cognición y Lenguaje', description: 'Redacción de paper para revista indexada.', type: 'Artículo', status: 'activo', createdAt: now };
-        const p3 = { id: 'p3', name: 'Clase Semestre A — Metodología', description: 'Preparación de material y dictado de clases.', type: 'Clase', status: 'activo', createdAt: now };
 
-        const t1 = { id: 't1', projectId: 'p2', title: 'Redactar introducción del artículo', status: 'En elaboración', priority: 'alta', dueDate: '2026-03-04', subtasks: [], tags: ['Escritura'], createdAt: now };
-        const t2 = { id: 't2', projectId: 'p3', title: 'Definir pregunta de investigación central', status: 'Capturado', priority: 'media', dueDate: '2026-03-05', subtasks: [], tags: ['Planeación'], createdAt: now };
+        const m1 = { id: 'u1', name: 'Carlos (Tú)', role: 'Investigador Principal', avatar: 'C' };
+        const m2 = { id: 'u2', name: 'Equipo Alpha', role: 'Colaboradores', avatar: 'A' };
+        const m3 = { id: 'u3', name: 'Supervisor', role: 'Revisión', avatar: 'S' };
+
+        await dbAPI.put('members', m1);
+        await dbAPI.put('members', m2);
+        await dbAPI.put('members', m3);
+        _state.members = [m1, m2, m3];
+
+        const p1 = { id: 'p1', name: 'Proyecto de Investigación A', description: 'Investigación sobre metodologías ágiles en educación.', type: 'Investigación', status: 'activo', ownerId: 'u1', createdAt: now };
+        const p2 = { id: 'p2', name: 'Artículo: Cognición y Lenguaje', description: 'Redacción de paper para revista indexada.', type: 'Artículo', status: 'activo', ownerId: 'u1', createdAt: now };
+        const p3 = { id: 'p3', name: 'Clase Semestre A — Metodología', description: 'Preparación de material y dictado de clases.', type: 'Clase', status: 'activo', ownerId: 'u1', createdAt: now };
+
+        const t1 = { id: 't1', projectId: 'p2', title: 'Redactar introducción del artículo', status: 'En elaboración', priority: 'alta', dueDate: '2026-03-04', subtasks: [], tags: ['Escritura'], assigneeId: 'u1', createdAt: now };
+        const t2 = { id: 't2', projectId: 'p3', title: 'Definir pregunta de investigación central', status: 'Capturado', priority: 'media', dueDate: '2026-03-05', subtasks: [], tags: ['Planeación'], assigneeId: 'u2', createdAt: now };
 
         await dbAPI.put('projects', p1); await dbAPI.put('projects', p2); await dbAPI.put('projects', p3);
         await dbAPI.put('tasks', t1); await dbAPI.put('tasks', t2);
@@ -139,9 +149,13 @@ const store = (() => {
             // ── Tasks ──
             case 'ADD_TASK': {
                 storeName = 'tasks';
+                const actor = localStorage.getItem('workspace_user_name') || 'Carlos';
                 const record = {
                     id: _uid,
                     createdAt: Date.now(),
+                    createdBy: actor,
+                    updatedAt: Date.now(),
+                    updatedBy: actor,
                     cycleId: null,
                     subtasks: [],
                     tags: [],
@@ -155,11 +169,14 @@ const store = (() => {
             }
             case 'UPDATE_TASK': {
                 storeName = 'tasks';
+                const actor = localStorage.getItem('workspace_user_name') || 'Carlos';
                 const idx = _state.tasks.findIndex(t => t.id === payload.id);
                 if (idx !== -1) {
                     const updated = {
                         ..._state.tasks[idx],
                         ...payload,
+                        updatedBy: actor,
+                        updatedAt: Date.now(),
                         dependencies: payload.dependencies || _state.tasks[idx].dependencies || []
                     };
                     await dbAPI.put(storeName, updated);

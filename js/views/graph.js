@@ -35,17 +35,36 @@ export const renderGraph = (root) => {
     const projects = store.get.projects();
     const documents = store.get.documents();
 
+    // 1. Add Projects
     projects.forEach(p => {
-        data.nodes.push({ id: p.id, name: p.name, type: 'project', color: p.color || 'var(--accent-primary)' });
+        data.nodes.push({
+            id: p.id,
+            name: p.name,
+            type: 'project',
+            val: 25,
+            color: p.color || '#4f46e5'
+        });
+        // Hierarchy links: Project -> Project
+        if (p.parentId) {
+            data.links.push({ source: p.parentId, target: p.id, type: 'hierarchy' });
+        }
     });
 
+    // 2. Add Documents
     documents.forEach(d => {
-        data.nodes.push({ id: d.id, name: d.title, type: 'doc', color: 'var(--accent-teal)' });
+        data.nodes.push({
+            id: d.id,
+            name: d.title,
+            type: 'doc',
+            val: 12,
+            color: '#14b8a6'
+        });
+        // Project containment links: Project -> Document
         if (d.projectId) {
-            data.links.push({ source: d.projectId, target: d.id });
+            data.links.push({ source: d.projectId, target: d.id, type: 'containment' });
         }
 
-        // Detect linkages [[Doc Title]]
+        // Cross-references [[Doc Title]]
         documents.forEach(other => {
             if (other.id !== d.id && d.content && d.content.includes(`[[${other.title}]]`)) {
                 data.links.push({ source: d.id, target: other.id, type: 'crosslink' });
@@ -55,7 +74,7 @@ export const renderGraph = (root) => {
 
     const container = root.querySelector('#graph-canvas-wrap');
     if (typeof ForceGraph === 'undefined') {
-        container.innerHTML = '<div style="color:var(--accent-danger); padding:20px;">Error: No se pudo cargar Force-Graph JS desde CDN. Verifica tu conexión a internet o los scripts en index.html.</div>';
+        container.innerHTML = '<div style="color:var(--accent-danger); padding:20px;">Error: No se pudo cargar Force-Graph JS desde CDN.</div>';
         return;
     }
 
@@ -63,23 +82,24 @@ export const renderGraph = (root) => {
     const overlay = root.querySelector('#graph-container > div:first-child');
     if (overlay) overlay.style.display = 'none';
 
-    // Get current theme background
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-surface').trim() || '#0f0f12';
-
     // Render Graph
     const Graph = ForceGraph()(container)
         .graphData(data)
         .backgroundColor('transparent')
         .nodeId('id')
-        .nodeVal(node => node.type === 'project' ? 25 : 10)
+        .nodeVal('val')
         .nodeLabel('name')
         .nodeColor('color')
-        .linkColor(link => link.type === 'crosslink' ? 'var(--accent-teal)' : 'var(--border-focus)')
-        .linkWidth(link => link.type === 'crosslink' ? 2 : 1)
-        .linkDirectionalParticles(link => link.type === 'crosslink' ? 2 : 0)
-        .linkDirectionalParticleSpeed(d => 0.005)
+        .linkColor(link => {
+            if (link.type === 'hierarchy') return '#6366f1';
+            if (link.type === 'crosslink') return '#14b8a6';
+            return 'rgba(255,255,255,0.1)';
+        })
+        .linkWidth(link => link.type === 'hierarchy' ? 3 : 1)
+        .linkDirectionalArrowLength(link => link.type === 'hierarchy' ? 4 : 0)
+        .linkDirectionalParticles(link => link.type === 'crosslink' ? 3 : 0)
+        .linkDirectionalParticleSpeed(0.005)
         .onNodeClick(node => {
-            // Navigate based on type
             if (node.type === 'doc') {
                 const doc = documents.find(d => d.id === node.id);
                 if (doc && doc.projectId) {
@@ -91,21 +111,38 @@ export const renderGraph = (root) => {
             }
         })
         .nodeCanvasObject((node, ctx, globalScale) => {
-            // Draw Node Circle
-            const size = node.type === 'project' ? 8 : 4;
+            const label = node.name;
+            const fontSize = node.type === 'project' ? 14 / globalScale : 10 / globalScale;
+            ctx.font = `${fontSize}px Inter, sans-serif`;
+            const textWidth = ctx.measureText(label).width;
+            const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
+
+            // Glow effect
+            ctx.shadowBlur = 15 / globalScale;
+            ctx.shadowColor = node.color;
+
+            // Node Circle
             ctx.beginPath();
-            ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
+            ctx.arc(node.x, node.y, node.type === 'project' ? 6 : 3, 0, 2 * Math.PI, false);
             ctx.fillStyle = node.color;
             ctx.fill();
 
-            // Draw Label
-            const label = node.name;
-            const fontSize = 12 / globalScale;
-            ctx.font = `${fontSize}px var(--font-family)`;
+            // Reset shadow for text
+            ctx.shadowBlur = 0;
+
+            // Label
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = 'var(--text-primary)';
-            ctx.fillText(label, node.x, node.y + size + fontSize);
+
+            // Dynamic color based on theme
+            const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+            const isLight = (theme === 'zen' || theme === 'light');
+
+            ctx.fillStyle = isLight
+                ? (node.type === 'project' ? '#1a1a1a' : 'rgba(26,26,26,0.8)')
+                : (node.type === 'project' ? '#ffffff' : 'rgba(255,255,255,0.7)');
+
+            ctx.fillText(label, node.x, node.y + (node.type === 'project' ? 12 : 8));
         });
 
     // Resize observer to make canvas responsive

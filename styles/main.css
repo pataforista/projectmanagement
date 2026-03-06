@@ -174,6 +174,53 @@
     z-index: 0;
 }
 
+[data-theme="zen"] {
+    --bg-base: #f4eee0;
+    --bg-surface: rgba(244, 238, 224, 0.85);
+    --bg-surface-2: rgba(230, 222, 202, 0.9);
+    --bg-surface-hover: rgba(210, 200, 180, 0.95);
+    --bg-panel: rgba(244, 238, 224, 0.7);
+    --bg-input: rgba(0, 0, 0, 0.05);
+    --bg-overlay: rgba(26, 26, 26, 0.4);
+
+    --border-color: rgba(26, 26, 26, 0.15);
+    --border-highlight: rgba(26, 26, 26, 0.25);
+    --border-focus: #bc4749;
+
+    --text-primary: #1a1a1a;
+    --text-secondary: #3d3d3d;
+    --text-muted: #706b64;
+
+    --accent-primary: #bc4749; /* Cinnabar Red */
+    --accent-primary-glow: rgba(188, 71, 73, 0.2);
+    --accent-primary-hover: #a23c3e;
+    --accent-teal: #2a6f97; /* Indigo wash */
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Sumi-e Background for Zen */
+[data-theme="zen"] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url('assets/zen-bg.png');
+    background-size: cover;
+    background-position: center bottom;
+    opacity: 0.12;
+    pointer-events: none;
+    z-index: 0;
+}
+
+[data-theme="zen"] h1, 
+[data-theme="zen"] h2,
+[data-theme="zen"] .brand-text {
+    font-family: 'Nunito', serif;
+    font-weight: 800;
+}
+
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
 *,
 *::before,

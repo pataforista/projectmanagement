@@ -29,6 +29,7 @@ function renderBoard(root) {
             <option value="">Todos los proyectos</option>
             ${store.get.projects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
           </select>
+          <span id="board-drive-link-container"></span>
           <button class="btn btn-primary" id="board-new-btn"><i data-feather="plus"></i> Nueva tarea</button>
         </div>
       </div>
@@ -39,7 +40,16 @@ function renderBoard(root) {
   renderBoardColumns(root, '');
 
   root.querySelector('#board-proj-filter').addEventListener('change', e => {
-    renderBoardColumns(root, e.target.value);
+    const pid = e.target.value;
+    const p = store.get.projectById(pid);
+    const linkWrap = root.querySelector('#board-drive-link-container');
+    if (p && p.driveUrl) {
+      linkWrap.innerHTML = `<a href="${esc(p.driveUrl)}" target="_blank" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
+      feather.replace();
+    } else {
+      linkWrap.innerHTML = '';
+    }
+    renderBoardColumns(root, pid);
   });
   root.querySelector('#board-new-btn').addEventListener('click', () => openTaskModal());
 }
@@ -89,8 +99,9 @@ function kanbanCard(t) {
           ${t.dueDate ? `<i data-feather="calendar"></i>${fmtDate(t.dueDate)}` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
+          ${t.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}" style="width:18px;height:18px;font-size:0.6rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">${(store.get.memberById(t.assigneeId)?.avatar || '?')}</div>` : ''}
           <span class="priority-pip ${t.priority || 'baja'}"></span>
-          <span style="font-size:0.68rem;color:var(--text-muted);text-transform:capitalize;">${esc(t.type || 'tarea')}</span>
+          <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="padding:2px; margin-left:4px; opacity:0; transition:opacity 0.2s; color:var(--text-muted);"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>
         </div>
       </div>
     </div>`;
@@ -98,9 +109,29 @@ function kanbanCard(t) {
 
 function bindDragDrop(container) {
   container.querySelectorAll('.kanban-card').forEach(card => {
-    card.addEventListener('click', e => {
+    card.addEventListener('mouseenter', () => {
+      const btn = card.querySelector('.task-quick-delete');
+      if (btn) btn.style.opacity = '1';
+    });
+    card.addEventListener('mouseleave', () => {
+      const btn = card.querySelector('.task-quick-delete');
+      if (btn) btn.style.opacity = '0';
+    });
+
+    card.addEventListener('click', async e => {
       // Don't open if dragging
       if (card.classList.contains('dragging')) return;
+
+      if (e.target.closest('.task-quick-delete')) {
+        const taskId = card.dataset.taskId;
+        const task = store.get.allTasks().find(t => t.id === taskId);
+        if (task && confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+          await store.dispatch('DELETE_TASK', { id: taskId });
+          const projFilter = document.getElementById('board-proj-filter');
+          renderBoardColumns(document.getElementById('board-view'), projFilter?.value || '');
+        }
+        return;
+      }
 
       const tId = card.dataset.taskId;
       const task = store.get.allTasks().find(t => t.id === tId);

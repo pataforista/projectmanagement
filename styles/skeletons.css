@@ -1,0 +1,153 @@
+/**
+ * skeletons.css — Skeleton Loaders & Shimmer Effects
+ * Uses CSS hardware-accelerated animations (transform/opacity) to avoid layout thrash.
+ * No CLS (Cumulative Layout Shift) because dimensions are reserved BEFORE data loads.
+ */
+
+/* ── Base Shimmer Animation ────────────────────────────────────────────────── */
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@keyframes skeleton-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* ── Shared Base ────────────────────────────────────────────────────────────── */
+.skeleton {
+    background: linear-gradient(90deg,
+            var(--bg-surface-2, #1e1e2e) 25%,
+            var(--bg-surface-3, #2a2a3c) 50%,
+            var(--bg-surface-2, #1e1e2e) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+    border-radius: 6px;
+    will-change: background-position;
+}
+
+/* ── Skeleton Variants ──────────────────────────────────────────────────────── */
+.skeleton-line {
+    height: 14px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.skeleton-line.skeleton-line--sm {
+    height: 10px;
+    width: 40%;
+}
+
+.skeleton-line.skeleton-line--md {
+    height: 14px;
+    width: 70%;
+}
+
+.skeleton-line.skeleton-line--lg {
+    height: 20px;
+    width: 90%;
+}
+
+.skeleton-line.skeleton-line--full {
+    width: 100%;
+}
+
+.skeleton-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.skeleton-avatar--sm {
+    width: 24px;
+    height: 24px;
+}
+
+/* ── Skeleton Card ─────────────────────────────────────────────────────────── */
+.skeleton-card {
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 12px;
+    background: var(--bg-surface-1, #18181b);
+    border: 1px solid var(--border-color, #2a2a3c);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.skeleton-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+
+/* ── Skeleton Table Row ────────────────────────────────────────────────────── */
+.skeleton-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color, #2a2a3c);
+}
+
+.skeleton-row>.skeleton {
+    flex: 1;
+    height: 12px;
+}
+
+.skeleton-row>.skeleton:first-child {
+    max-width: 120px;
+}
+
+.skeleton-row>.skeleton:nth-child(2) {
+    max-width: 200px;
+}
+
+/* ── View-level Skeleton Containers ───────────────────────────────────────── */
+.skeleton-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    padding: 16px 0;
+}
+
+.skeleton-board-col {
+    background: var(--bg-surface-1);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* ── Fade-in for loaded content ────────────────────────────────────────────── */
+@keyframes contentFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.content-loaded {
+    animation: contentFadeIn 0.25s ease-out forwards;
+}

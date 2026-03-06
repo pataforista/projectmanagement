@@ -6,6 +6,9 @@
 // Modal helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+const STATUSES = ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
+const TASK_TYPES = ['tarea', 'subtarea', 'entregable', 'hito', 'idea', 'decisión', 'recurso'];
+
 function openModal(html) {
   closeModal();
   const overlay = document.createElement('div');
@@ -44,10 +47,17 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
     </div>
     <div class="modal-body">
+      ${isEdit && task.createdBy ? `
+        <div style="font-size:0.75rem; color:var(--text-muted); background:var(--bg-secondary); padding:8px 12px; border-radius:8px; margin-bottom:16px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <span><i data-feather="user" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i><b>Creado por:</b> ${esc(task.createdBy)} (${fmtDate(task.createdAt)})</span>
+          ${task.updatedBy ? `<span><i data-feather="edit-2" style="width:12px;height:12px;margin-right:4px;vertical-align:middle;"></i><b>Última mod.:</b> ${esc(task.updatedBy)}</span>` : ''}
+        </div>
+      ` : ''}
       <div class="form-group">
         <label class="form-label">Título *</label>
-        <input class="form-input" id="task-title" placeholder="¿Qué hay que hacer?" autofocus value="${isEdit ? esc(task.title) : ''}">
+        <input class="form-input" id="task-title" placeholder="¿Qué hay que hacer?" value="${isEdit ? esc(task.title) : ''}" autofocus>
       </div>
+
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Proyecto</label>
@@ -64,19 +74,12 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
           </select>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Estado</label>
           <select class="form-select" id="task-status">
-            ${STATUSES.map(s => `<option value="${s}" ${s === defStatus ? 'selected' : ''}>${s}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Prioridad</label>
-          <select class="form-select" id="task-priority">
-            <option value="alta" ${isEdit && task.priority === 'alta' ? 'selected' : ''}>Alta</option>
-            <option value="media" ${(!isEdit || task.priority === 'media') ? 'selected' : ''}>Media</option>
-            <option value="baja" ${isEdit && task.priority === 'baja' ? 'selected' : ''}>Baja</option>
+            ${STATUSES.map(s => `<option value="${s}" ${s === (isEdit ? task.status : (defStatus || STATUSES[0])) ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -86,35 +89,56 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
           </select>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Fecha límite</label>
-        <input class="form-input" type="date" id="task-due" value="${isEdit && task.dueDate ? task.dueDate : ''}">
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+        <div class="form-group">
+          <label class="form-label">Prioridad</label>
+          <select class="form-select" id="task-priority">
+            <option value="alta" ${isEdit && task.priority === 'alta' ? 'selected' : ''}>Alta</option>
+            <option value="media" ${(!isEdit || task.priority === 'media') ? 'selected' : ''}>Media</option>
+            <option value="baja" ${isEdit && task.priority === 'baja' ? 'selected' : ''}>Baja</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Asignado a</label>
+          <select class="form-select" id="task-assignee">
+            <option value="">Sin asignar</option>
+            ${store.get.members().map(m => `<option value="${m.id}" ${isEdit && task.assigneeId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha límite</label>
+          <input class="form-input" type="date" id="task-due" value="${isEdit && task.dueDate ? task.dueDate : ''}">
+        </div>
       </div>
+
       <div class="form-group">
         <label class="form-label">Descripción</label>
         <textarea class="form-textarea" id="task-desc" placeholder="Contexto, notas, referencias…" rows="2">${isEdit ? esc(task.description || '') : ''}</textarea>
       </div>
-      <div class="form-group">
-        <label class="form-label">Etiquetas (separadas por coma)</label>
-        <input class="form-input" id="task-tags" placeholder="ej. urgente, revisión, campo" value="${isEdit && task.tags ? esc(task.tags.join(', ')) : ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Subtareas</label>
-        <div id="subtasks-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
-        <div style="display:flex; gap:8px;">
-          <input class="form-input" id="new-subtask" placeholder="Nueva subtarea…">
-          <button class="btn btn-secondary" id="add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+        <div class="form-group">
+          <label class="form-label">Subtareas</label>
+          <div id="subtasks-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+          <div style="display:flex; gap:8px;">
+            <input class="form-input" id="new-subtask" placeholder="Nueva subtarea…">
+            <button class="btn btn-secondary" id="add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
+          </div>
         </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Referencias de Zotero</label>
-        <select class="form-select" id="task-refs" multiple style="height:80px;">
-          ${store.get.library().map(lib => `
-            <option value="${lib.id}" ${isEdit && (task.referenceIds || []).includes(lib.id) ? 'selected' : ''}>
-              ${esc(lib.author.split(';')[0])} — ${esc(lib.title)}
-            </option>`).join('')}
-        </select>
-        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">Mantén Ctrl (o Cmd) presionado para seleccionar varias.</div>
+        <div class="form-group">
+          <label class="form-label">Etiquetas (separadas por coma)</label>
+          <input class="form-input" id="task-tags" placeholder="ej. urgente, revisión, campo" value="${isEdit && task.tags ? esc(task.tags.join(', ')) : ''}" style="margin-bottom:8px;">
+          
+          <label class="form-label">Referencias de Zotero</label>
+          <select class="form-select" id="task-refs" multiple style="height:100px;">
+            ${store.get.library().map(lib => `
+              <option value="${lib.id}" ${isEdit && (task.referenceIds || []).includes(lib.id) ? 'selected' : ''}>
+                ${esc(lib.author.split(';')[0])} — ${esc(lib.title)}
+              </option>`).join('')}
+          </select>
+          <div style="font-size:0.65rem; color:var(--text-muted); margin-top:4px;">Mantén Ctrl (o Cmd) presionado para seleccionar varias.</div>
+        </div>
       </div>
     </div>
     <div class="modal-footer" style="display:flex; justify-content:space-between; width:100%;">
@@ -199,7 +223,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       type: modal.querySelector('#task-type').value,
       dueDate: modal.querySelector('#task-due').value || null,
       description: modal.querySelector('#task-desc').value,
-      assigneeId: 'u1',
+      assigneeId: modal.querySelector('#task-assignee').value || null,
       tags,
       subtasks: subTasks,
       referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value)
@@ -256,6 +280,10 @@ function openProjectModal(p = null) {
       <div class="form-group">
         <label class="form-label">Nota de Obsidian (URI)</label>
         <input class="form-input" id="proj-obsidian" placeholder="obsidian://open?vault=..." value="${isEdit ? esc(p?.obsidianUri || '') : ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Enlace Google Drive (Carpeta/Archivo)</label>
+        <input class="form-input" id="proj-drive" placeholder="https://drive.google.com/..." value="${isEdit ? esc(p?.driveUrl || '') : ''}">
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div class="form-group">
@@ -319,6 +347,7 @@ function openProjectModal(p = null) {
       status: modal.querySelector('#proj-status').value,
       goal: modal.querySelector('#proj-goal').value,
       obsidianUri: modal.querySelector('#proj-obsidian').value.trim(),
+      driveUrl: modal.querySelector('#proj-drive').value.trim(),
       startDate: modal.querySelector('#proj-start').value || null,
       endDate: modal.querySelector('#proj-end').value || null,
       color: modal.querySelector('#proj-color').value,

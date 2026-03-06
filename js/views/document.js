@@ -163,9 +163,9 @@ function addBlockToEditor(editor, block, insertAfterEl = null) {
         el.value = block.text || '';
         el.dataset.blockType = block.type;
         el.placeholder = block.type === 'code' ? 'Escribe código...' : 'Escribe algo...';
-        autoResize(el);
         el.addEventListener('input', () => autoResize(el));
         wrap.appendChild(el);
+        setTimeout(() => autoResize(el), 0);
         focusEl = el;
     } else if (block.type === 'callout') {
         const container = document.createElement('div');

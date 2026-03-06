@@ -20,6 +20,7 @@ const ROUTES = {
     '/medical': 'medical',
     '/integrations': 'integrations',
     '/canvas': 'canvas',
+    '/graph': 'graph',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -109,7 +110,14 @@ class Router {
         if (handler) {
             handler(root, params);
         } else {
-            root.innerHTML = `<div class="empty-state"><p>Vista no encontrada: ${viewName}</p></div>`;
+            // ✅ SECURITY FIX: viewName derives from the URL hash (user-controlled).
+            // Using innerHTML here was an XSS vector. textContent is always safe.
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            const p = document.createElement('p');
+            p.textContent = `Vista no encontrada: ${viewName}`;
+            empty.appendChild(p);
+            root.appendChild(empty);
         }
     }
 

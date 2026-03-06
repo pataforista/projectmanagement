@@ -1,34 +1,24 @@
 /**
- * sw.js — Service Worker v5
- * Cache-first strategy for shell assets + offline fallback.
- * Updated to include all new view modules and assets.
+ * Service Worker — v11 (Stability + Crash Protection)
+ * Caches shell assets and provides an always-responding fetch handler.
  */
 
-// ⚠️  RECORDATORIO: incrementa el número de versión cada vez que agregues,
-//    elimines o modifiques un archivo en SHELL_ASSETS (o en index.html / sw.js),
-//    para que los usuarios existentes descarguen el service worker actualizado.
-//    Ejemplo: workspace-v7 → workspace-v8
-const CACHE_NAME = 'workspace-v8';
+const CACHE_NAME = 'workspace-v12';
 const SHELL_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/styles/main.css',
-    '/styles/components.css',
-    '/styles/animations.css',
+    '/css/index.css',
     '/js/db.js',
     '/js/utils.js',
     '/js/utils/crypto.js',
-    '/js/utils/schema.js',
-    '/js/utils/versioning.js',
-    '/js/utils/templates.js',
     '/js/store.js',
     '/js/sync.js',
     '/js/modals.js',
     '/js/notifications.js',
     '/js/app.js',
-    '/js/api/zotero.js',
-    // Views
+    '/js/router.js',
+    '/js/components.js',
     '/js/views/dashboard.js',
     '/js/views/projects.js',
     '/js/views/backlog.js',
@@ -37,43 +27,30 @@ const SHELL_ASSETS = [
     '/js/views/calendar.js',
     '/js/views/document.js',
     '/js/views/decisions.js',
-    '/js/views/library.js',
+    '/js/views/graph.js',
     '/js/views/canvas.js',
-    '/js/views/logs.js',
-    '/js/views/writing.js',
-    '/js/views/medical.js',
     '/js/views/integrations.js',
+    '/js/views/library.js',
+    '/js/views/logs.js',
     '/js/views/matrix.js',
-    // Vendor
+    '/js/views/medical.js',
+    '/js/views/writing.js',
     '/js/vendor/feather.min.js',
-    // Icons
-    '/icons/icon-72.png',
-    '/icons/icon-96.png',
-    '/icons/icon-128.png',
-    '/icons/icon-144.png',
-    '/icons/icon-152.png',
-    '/icons/icon-192.png',
-    '/icons/icon-384.png',
-    '/icons/icon-512.png',
-    '/icons/apple-touch-icon.png',
-    // External CDN (cached for offline)
-    'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
+    '/icons/icon-192.png'
 ];
 
-// ── Install: cache shell ──────────────────────────────────────────────────────
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(SHELL_ASSETS.filter(a => !a.startsWith('https://'))))
+            .then(cache => cache.addAll(SHELL_ASSETS))
             .then(() => self.skipWaiting())
             .catch(err => {
-                console.warn('[SW] Some assets failed to cache (non-fatal):', err);
+                console.warn('[SW] Cache init error:', err);
                 return self.skipWaiting();
             })
     );
 });
 
-// ── Activate: clean old caches ────────────────────────────────────────────────
 self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
@@ -82,85 +59,77 @@ self.addEventListener('activate', event => {
     );
 });
 
-// ── Fetch: cache-first, fallback to network ───────────────────────────────────
 self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') return;
 
     const url = new URL(event.request.url);
     const isLocal = url.origin === self.location.origin;
-    const isCDN = url.hostname.includes('googleapis.com') ||
-        url.hostname.includes('gstatic.com');
+    const isCDN = url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('unpkg.com');
 
     if (!isLocal && !isCDN) return;
 
-    // Network-first for API calls, cache-first for static assets
-    const isAPI = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com/') && url.pathname.includes('calendar');
+    event.respondWith((async () => {
+        try {
+            const isAPI = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com');
 
-    if (isAPI) {
-        // Network-first with cache fallback
-        event.respondWith(
-            fetch(event.request)
-                .then(res => {
-                    if (res && res.status === 200) {
-                        const clone = res.clone();
-                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+            // 1. API: Network-first
+            if (isAPI) {
+                try {
+                    const response = await fetch(event.request);
+                    if (response && response.status === 200) {
+                        const cache = await caches.open(CACHE_NAME);
+                        cache.put(event.request, response.clone());
                     }
-                    return res;
-                })
-                .catch(() => caches.match(event.request))
-        );
-        return;
-    }
+                    return response;
+                } catch (err) {
+                    const cached = await caches.match(event.request);
+                    if (cached) return cached;
+                    throw err;
+                }
+            }
 
-    // Cache-first for everything else
-    event.respondWith(
-        caches.match(event.request).then(cached => {
-            if (cached) return cached;
-            return fetch(event.request)
-                .then(res => {
-                    if (res && res.status === 200) {
-                        const clone = res.clone();
-                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-                    }
-                    return res;
-                })
-                .catch(() => {
-                    if (event.request.mode === 'navigate') {
-                        return caches.match('/index.html');
-                    }
-                });
-        })
-    );
+            // 2. Static: Cache-first
+            const cachedResponse = await caches.match(event.request);
+            if (cachedResponse) return cachedResponse;
+
+            // 3. Fallback: Network
+            try {
+                const networkResponse = await fetch(event.request);
+                if (isLocal && networkResponse && networkResponse.status === 200) {
+                    const cache = await caches.open(CACHE_NAME);
+                    cache.put(event.request, networkResponse.clone());
+                }
+                return networkResponse;
+            } catch (err) {
+                if (event.request.mode === 'navigate') {
+                    const fallback = await caches.match('/index.html');
+                    if (fallback) return fallback;
+                }
+                throw err;
+            }
+        } catch (error) {
+            console.error('[SW] Critical fetch error:', error);
+            // ✅ ULTIMATE STABILITY: Always return a Response to prevent crash
+            return new Response('Offline / Engine Error', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: { 'Content-Type': 'text/plain' }
+            });
+        }
+    })());
 });
 
-// ── Background sync ───────────────────────────────────────────────────────────
-self.addEventListener('sync', event => {
-    if (event.tag === 'sync-workspace') {
-        event.waitUntil(flushSyncQueue());
-    }
-});
-
-async function flushSyncQueue() {
-    console.log('[SW] Background sync triggered.');
-}
-
-// ── Push notifications (stub) ─────────────────────────────────────────────────
 self.addEventListener('push', event => {
-    if (!event.data) return;
-    const data = event.data.json();
+    const data = event.data ? event.data.text() : 'Nueva notificación';
     event.waitUntil(
-        self.registration.showNotification(data.title || 'Workspace', {
-            body: data.body || '',
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-96.png',
-            data: { url: data.url || '/' }
+        self.registration.showNotification('Workspace', {
+            body: data,
+            icon: '/icons/icon-192.png'
         })
     );
 });
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-    event.waitUntil(
-        clients.openWindow(event.notification.data?.url || '/')
-    );
+    event.waitUntil(clients.openWindow('/'));
 });

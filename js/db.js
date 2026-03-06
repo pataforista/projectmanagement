@@ -15,7 +15,7 @@ async function getCrypto() {
 
 
 const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 6;
+const DB_VERSION = 11; // v11: added assigneeId to interconsultations
 
 let db;
 
@@ -35,6 +35,7 @@ const STORES = {
   snapshots: 'snapshots',
   annotations: 'annotations',
   messages: 'messages',
+  notifications: 'notifications'
 };
 
 export const initDB = () => new Promise(async (resolve, reject) => {
@@ -71,6 +72,10 @@ export const initDB = () => new Promise(async (resolve, reject) => {
         s.createIndex('type', 'type', { unique: false });
         s.createIndex('status', 'status', { unique: false });
         s.createIndex('parentId', 'parentId', { unique: false });
+        s.createIndex('ownerId', 'ownerId', { unique: false });
+      } else {
+        const s = e.target.transaction.objectStore('projects');
+        if (!s.indexNames.contains('ownerId')) s.createIndex('ownerId', 'ownerId', { unique: false });
       }
 
       // Tasks
@@ -81,6 +86,16 @@ export const initDB = () => new Promise(async (resolve, reject) => {
         s.createIndex('cycleId', 'cycleId', { unique: false });
         s.createIndex('status', 'status', { unique: false });
         s.createIndex('priority', 'priority', { unique: false });
+        s.createIndex('createdBy', 'createdBy', { unique: false });
+        s.createIndex('assigneeId', 'assigneeId', { unique: false });
+        s.createIndex('createdAt', 'createdAt', { unique: false });
+        s.createIndex('updatedAt', 'updatedAt', { unique: false });
+      } else {
+        const s = e.target.transaction.objectStore('tasks');
+        if (!s.indexNames.contains('createdBy')) s.createIndex('createdBy', 'createdBy', { unique: false });
+        if (!s.indexNames.contains('assigneeId')) s.createIndex('assigneeId', 'assigneeId', { unique: false });
+        if (!s.indexNames.contains('createdAt')) s.createIndex('createdAt', 'createdAt', { unique: false });
+        if (!s.indexNames.contains('updatedAt')) s.createIndex('updatedAt', 'updatedAt', { unique: false });
       }
 
       // Cycles
@@ -131,6 +146,10 @@ export const initDB = () => new Promise(async (resolve, reject) => {
         const s = d.createObjectStore('interconsultations', { keyPath: 'id' });
         s.createIndex('projectId', 'projectId', { unique: false });
         s.createIndex('status', 'status', { unique: false });
+        s.createIndex('assigneeId', 'assigneeId', { unique: false });
+      } else {
+        const s = e.target.transaction.objectStore('interconsultations');
+        if (!s.indexNames.contains('assigneeId')) s.createIndex('assigneeId', 'assigneeId', { unique: false });
       }
 
       // Sessions (Classes, Medical Appointments, Meetings)
@@ -167,6 +186,14 @@ export const initDB = () => new Promise(async (resolve, reject) => {
         const s = d.createObjectStore('messages', { keyPath: 'id' });
         s.createIndex('projectId', 'projectId', { unique: false });
         s.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+
+      // Notifications — was missing from schema (store.js writes to this store)
+      if (!d.objectStoreNames.contains('notifications')) {
+        const s = d.createObjectStore('notifications', { keyPath: 'id' });
+        s.createIndex('read', 'read', { unique: false });
+        s.createIndex('timestamp', 'timestamp', { unique: false });
+        s.createIndex('type', 'type', { unique: false });
       }
     };
   });

@@ -5,6 +5,7 @@
 
 // Local state for library view
 let currentLibraryViewMode = 'grid'; // 'grid' | 'table'
+let currentLibraryTab = 'zotero'; // 'zotero' | 'drive'
 
 function renderLibrary(root) {
   const libraryItems = store.get.library() || [];
@@ -16,64 +17,140 @@ function renderLibrary(root) {
           <h1>Biblioteca de Recursos</h1>
           <p class="view-subtitle">Gestión del conocimiento, investigación y docencia.</p>
         </div>
-        <div class="view-actions" style="position:relative;">
-           <!-- View Mode Toggle -->
-           <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
-             <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
-               <i data-feather="grid" style="width: 14px; height: 14px;"></i>
+        
+        <div class="view-actions">
+           <!-- Tab Switcher -->
+           <div class="btn-group" style="background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; display: flex; gap: 4px;">
+             <button class="btn btn-ghost btn-sm ${currentLibraryTab === 'zotero' ? 'active' : ''}" onclick="setLibraryTab('zotero')">
+               <i data-feather="book"></i> Zotero
              </button>
-             <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'table' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('table')" title="Vista Tabla (Dataview)">
-               <i data-feather="list" style="width: 14px; height: 14px;"></i>
+             <button class="btn btn-ghost btn-sm ${currentLibraryTab === 'drive' ? 'active' : ''}" onclick="setLibraryTab('drive')">
+               <i data-feather="hard-drive"></i> Google Drive
              </button>
            </div>
-           
-           <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
-           <div class="dropdown-wrapper">
-             <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()" title="Importar CSL JSON manual">
-               <i data-feather="upload-cloud"></i> Archivo
-             </button>
-             <button class="btn btn-primary" id="btn-zotero-sync" title="Sincronizar en vivo con API" style="margin-left: 8px;">
-               <i data-feather="refresh-cw"></i> Sincronizar Zotero
-             </button>
-             <button class="btn btn-icon" id="btn-zotero-config" title="Configurar Zotero API" style="margin-left:8px;">
-               <i data-feather="settings"></i>
-             </button>
-             
-             <div class="popover-menu glass-panel" id="zotero-config-popover" style="display:none; position:absolute; right:0; top:40px; width:300px; padding:16px; border-radius:8px; z-index:100; text-align:left;">
-               <h4 style="margin:0 0 12px 0; font-size:0.9rem;">Configuración Zotero API</h4>
-               <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">Obtén tu UserID y Web API Key gratuitos desde las preferencias de tu cuenta en zotero.org.</p>
-               <input class="form-input" id="zot-user-id" placeholder="Zotero User ID (ej. 1234567)" style="margin-bottom:8px;" value="${esc(zoteroApi.getCredentials().userId)}">
-               <input class="form-input" id="zot-api-key" placeholder="API Key secreta" type="password" style="margin-bottom:12px;" value="${esc(zoteroApi.getCredentials().apiKey)}">
-               <button class="btn btn-primary btn-sm" id="btn-zot-save-cfg" style="width:100%;">Guardar credenciales</button>
+
+           <div style="flex: 1;"></div>
+
+           ${currentLibraryTab === 'zotero' ? `
+             <div class="btn-group" style="margin-right: 12px; display: flex; background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px;">
+               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'grid' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('grid')" title="Vista Mosaico">
+                 <i data-feather="grid" style="width: 14px; height: 14px;"></i>
+               </button>
+               <button class="btn btn-ghost btn-sm ${currentLibraryViewMode === 'table' ? 'active' : ''}" style="padding: 4px 8px;" onclick="setLibraryViewMode('table')" title="Vista Tabla (Dataview)">
+                 <i data-feather="list" style="width: 14px; height: 14px;"></i>
+               </button>
              </div>
-           </div>
+             
+             <input type="file" id="zotero-import-file" accept=".json" style="display:none;" />
+             <div class="dropdown-wrapper" style="display:flex; gap:8px;">
+               <button class="btn btn-secondary" onclick="document.getElementById('zotero-import-file').click()" title="Importar CSL JSON manual">
+                 <i data-feather="upload-cloud"></i> Archivo
+               </button>
+               <button class="btn btn-primary" id="btn-zotero-sync" title="Sincronizar en vivo con API">
+                 <i data-feather="refresh-cw"></i> Sincronizar Zotero
+               </button>
+               <button class="btn btn-icon" id="btn-zotero-config" title="Configurar Zotero API">
+                 <i data-feather="settings"></i>
+               </button>
+             </div>
+           ` : `
+             <button class="btn btn-secondary" onclick="syncManager.openPanel()">
+               <i data-feather="settings"></i> Configurar Drive
+             </button>
+           `}
         </div>
       </div>
 
-      <!-- Library Stats -->
-      <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-        ${statPill(libraryItems.length, 'Referencias Totales', 'book')}
-        ${statPill(libraryItems.filter(i => i.itemType === 'article-journal').length, 'Artículos', 'file-text')}
-        ${statPill(libraryItems.filter(i => i.itemType === 'book').length, 'Libros', 'bookmark')}
-      </div>
-
-      <div class="library-container" style="flex:1; display:flex; flex-direction:column;">
-        ${libraryItems.length === 0
-      ? emptyState('book-open', 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar, o sube manualmente un archivo CSL-JSON.')
-      : (currentLibraryViewMode === 'table' ? renderLibraryTable(libraryItems) : renderLibraryGrid(libraryItems))}
+      <div class="library-container" id="library-content-area" style="flex:1; display:flex; flex-direction:column;">
+        ${currentLibraryTab === 'zotero' ? renderZoteroContent(libraryItems) : '<div class="loader-wrap"><i data-feather="loader" class="spin"></i> Cargando Drive...</div>'}
       </div>
     </div>`;
 
-  feather.replace();
+  if (window.feather) feather.replace();
 
-  // Zotero API logic
-  const fileInput = document.getElementById('zotero-import-file');
-  if (fileInput) fileInput.addEventListener('change', handleZoteroImport);
+  if (currentLibraryTab === 'zotero') {
+    bindZoteroEvents();
+  } else {
+    loadDriveContent();
+  }
+}
 
+function renderZoteroContent(items) {
+  return `
+    <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
+      ${statPill(items.length, 'Referencias Totales', 'book')}
+      ${statPill(items.filter(i => i.itemType === 'article-journal').length, 'Artículos', 'file-text')}
+    </div>
+    <div style="flex:1;">
+      ${items.length === 0
+      ? emptyState('book-open', 'Tu biblioteca está vacía. Añade tus llaves API web de Zotero y dale a sincronizar.')
+      : (currentLibraryViewMode === 'table' ? renderLibraryTable(items) : renderLibraryGrid(items))}
+    </div>
+  `;
+}
+
+async function loadDriveContent() {
+  const container = document.getElementById('library-content-area');
+  if (!container) return;
+
+  const files = await syncManager.listDriveFiles();
+
+  if (files.length === 0) {
+    container.innerHTML = emptyState('cloud-off', 'No se encontraron archivos en Drive o no estás conectado.');
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
+      ${files.map(file => {
+    const isImg = file.mimeType.startsWith('image/');
+    const icon = getFileIcon(file.mimeType);
+    return `
+          <div class="card glass-panel drive-card" style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: transform 0.2s; cursor:default;">
+            <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
+              ${file.thumbnailLink
+        ? `<img src="${file.thumbnailLink}" style="width:100%; height:100%; object-fit:cover;">`
+        : `<i data-feather="${icon}" style="width:32px; height:32px; opacity:0.4;"></i>`}
+                <img src="${file.iconLink}" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">
+            </div>
+            <div style="overflow:hidden;">
+              <h4 style="font-size:0.8rem; margin:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${esc(file.name)}">${esc(file.name)}</h4>
+              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(file.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+            <a href="${file.webViewLink}" target="_blank" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem;">
+              <i data-feather="external-link" style="width:12px;"></i> Abrir
+            </a>
+          </div>
+        `;
+  }).join('')}
+    </div>
+  `;
+  if (window.feather) feather.replace();
+}
+
+function getFileIcon(mime) {
+  if (mime.includes('pdf')) return 'file-text';
+  if (mime.includes('image')) return 'image';
+  if (mime.includes('spreadsheet') || mime.includes('excel')) return 'table';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return 'monitor';
+  if (mime.includes('document') || mime.includes('word')) return 'edit-3';
+  return 'file';
+}
+
+window.setLibraryTab = function (tab) {
+  currentLibraryTab = tab;
+  renderLibrary(document.getElementById('app-root'));
+};
+
+function bindZoteroEvents() {
   const btnSync = document.getElementById('btn-zotero-sync');
   const btnConfig = document.getElementById('btn-zotero-config');
   const popover = document.getElementById('zotero-config-popover');
   const btnSaveCfg = document.getElementById('btn-zot-save-cfg');
+
+  const fileInput = document.getElementById('zotero-import-file');
+  if (fileInput) fileInput.addEventListener('change', handleZoteroImport);
 
   if (btnConfig && popover) {
     btnConfig.addEventListener('click', (e) => {

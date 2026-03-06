@@ -65,10 +65,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const generateRecoveryCode = () => {
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        // ✅ SECURITY FIX: Use cryptographically secure random values (OS entropy)
+        // Math.random() is a predictable PRNG — never use it for security tokens.
+        const randomBytes = crypto.getRandomValues(new Uint8Array(16));
         let code = '';
         for (let i = 0; i < 16; i++) {
             if (i > 0 && i % 4 === 0) code += '-';
-            code += chars[Math.floor(Math.random() * chars.length)];
+            code += chars[randomBytes[i] % chars.length];
         }
         return code;
     };
@@ -307,7 +310,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }).catch(() => { });
 
         navigator.serviceWorker.addEventListener('controllerchange', () => {
-            window.location.reload();
+            // ✅ FIX: Never reload immediately — the user might have unsaved work.
+            // Show a non-blocking toast and let them decide when to refresh.
+            const reload = () => window.location.reload();
+            if (window.showToast) {
+                // Create an actionable toast with an "Update" button
+                const container = document.getElementById('toast-container');
+                if (container) {
+                    const el = document.createElement('div');
+                    el.className = 'toast toast-info';
+                    el.style.cssText = 'display:flex;align-items:center;gap:10px;';
+                    el.innerHTML = `<span>Nueva versión disponible.</span>
+                        <button onclick="window.location.reload()" style="background:var(--accent-primary);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem;font-weight:600;">Actualizar</button>`;
+                    container.appendChild(el);
+                } else {
+                    showToast('Nueva versión disponible. Recarga para actualizar.', 'info');
+                }
+            } else {
+                // Fallback: confirm dialog if toast system isn't ready yet
+                if (confirm('Nueva versión disponible. ¿Actualizar ahora?')) reload();
+            }
         });
     }
 
@@ -355,6 +377,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 7. Load User Profile & Notifications ──────────────────────────────────
     if (window.updateUserProfileUI) updateUserProfileUI();
     if (window.NotificationsManager) NotificationsManager.init();
+    if (window.ChatManager) ChatManager.init();
 
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
@@ -373,6 +396,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
     document.getElementById('btn-help')?.addEventListener('click', openHelpModal);
     document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
+
+    // ── Buttons migrated from inline onclick (CSP prep) ────────────────────────
+    document.getElementById('btn-sync-toggle')?.addEventListener('click', () => syncManager.openPanel());
+    document.getElementById('btn-export')?.addEventListener('click', () => exportData());
+    document.getElementById('btn-lock')?.addEventListener('click', () => {
+        if (window.lockWorkspace) lockWorkspace();
+    });
 
     document.getElementById('search-overlay')?.addEventListener('click', e => {
         if (e.target.id === 'search-overlay') closeSearch();
@@ -441,7 +471,7 @@ function initUIToggles() {
 
     themeBtn?.addEventListener('click', () => {
         let currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const themes = ['dark', 'light', 'rosel', 'celada'];
+        const themes = ['dark', 'light', 'rosel', 'celada', 'zen'];
         const currentIdx = themes.indexOf(currentTheme);
         const newTheme = themes[(currentIdx + 1) % themes.length];
         document.documentElement.setAttribute('data-theme', newTheme);
@@ -477,7 +507,8 @@ function initUIToggles() {
 }
 
 function refreshSidebarProjects() {
-    const container = document.getElementById('sidebar-projects-list');
+    // ✅ FIX: The HTML element is id="sidebar-projects" — no "-list" suffix.
+    const container = document.getElementById('sidebar-projects');
     if (!container) return;
     const allProjects = store.get.projects().filter(p => p.status !== 'archivado');
 

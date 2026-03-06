@@ -2,9 +2,7 @@
  * views/backlog.js — Backlog view
  */
 
-const STATUSES = ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
 const PRIORITIES = ['alta', 'media', 'baja'];
-const TASK_TYPES = ['tarea', 'subtarea', 'entregable', 'hito', 'idea', 'decisión', 'recurso'];
 
 function renderBacklog(root) {
   root.innerHTML = `
@@ -24,6 +22,7 @@ function renderBacklog(root) {
           <option value="">Todos los proyectos</option>
           ${store.get.projects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
         </select>
+        <span id="backlog-drive-link-container"></span>
         <select class="filter-select" id="bl-status">
           <option value="">Todos los estados</option>
           ${STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
@@ -44,7 +43,19 @@ function renderBacklog(root) {
   bindTaskCheckboxes(root);
 
   root.querySelector('#backlog-new-btn').addEventListener('click', () => openTaskModal());
-  ['bl-proj', 'bl-status', 'bl-priority'].forEach(id => {
+  root.querySelector('#bl-proj')?.addEventListener('change', e => {
+    const pid = e.target.value;
+    const p = store.get.projectById(pid);
+    const linkWrap = root.querySelector('#backlog-drive-link-container');
+    if (p && p.driveUrl) {
+      linkWrap.innerHTML = `<a href="${esc(p.driveUrl)}" target="_blank" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
+      feather.replace();
+    } else {
+      linkWrap.innerHTML = '';
+    }
+    refreshBacklog(root);
+  });
+  ['bl-status', 'bl-priority'].forEach(id => {
     root.querySelector(`#${id}`)?.addEventListener('change', () => refreshBacklog(root));
   });
 }
@@ -78,9 +89,11 @@ function renderBacklogTable(tasks) {
           <th>Título</th>
           <th>Proyecto</th>
           <th>Estado</th>
+          <th>Asignado</th>
           <th>Prioridad</th>
           <th>Tipo</th>
           <th>Fecha límite</th>
+          <th style="width:32px;"></th>
         </tr>
       </thead>
       <tbody>
@@ -118,6 +131,9 @@ function backlogRow(t) {
         </select>
       </td>
       <td>
+        ${t.assigneeId ? `<span class="badge badge-neutral" style="font-size:0.68rem; background:var(--bg-surface-2);">${esc(store.get.memberById(t.assigneeId)?.name || '—')}</span>` : '<span style="color:var(--text-muted); font-size:0.7rem;">—</span>'}
+      </td>
+      <td>
         <span style="display:inline-flex;align-items:center;gap:5px;">
           <span class="priority-pip ${t.priority || 'baja'}"></span>
           <span style="font-size:0.78rem;text-transform:capitalize;">${esc(t.priority || 'baja')}</span>
@@ -127,13 +143,15 @@ function backlogRow(t) {
       <td style="font-size:0.78rem; ${isOverdue ? 'color:var(--accent-danger);font-weight:600;' : 'color:var(--text-muted);'}">
         ${t.dueDate ? fmtDate(t.dueDate) : '—'}
       </td>
+      <td>
+        <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="color:var(--text-muted); opacity:0.3; transition:opacity 0.2s;"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
+      </td>
     </tr>`;
 }
 
 function bindInlineStatus(root) {
   root.querySelectorAll('.inline-status-select').forEach(sel => {
     sel.addEventListener('change', async e => {
-      // Prevent row click when changing status
       e.stopPropagation();
       const tr = sel.closest('tr');
       const taskId = tr.dataset.taskId;
@@ -142,10 +160,24 @@ function bindInlineStatus(root) {
     });
   });
 
-  // Open modal on row click (excluding the status dropdown and checkbox)
+  root.querySelectorAll('.task-quick-delete').forEach(btn => {
+    btn.addEventListener('mouseenter', () => btn.style.opacity = '1');
+    btn.addEventListener('mouseleave', () => btn.style.opacity = '0.3');
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const taskId = btn.dataset.id;
+      const task = store.get.allTasks().find(t => t.id === taskId);
+      if (task && confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+        await store.dispatch('DELETE_TASK', { id: taskId });
+        refreshBacklog(root);
+      }
+    });
+  });
+
+  // Open modal on row click (excluding the status dropdown, checkbox and delete button)
   root.querySelectorAll('table.list-table tbody tr').forEach(row => {
     row.addEventListener('click', e => {
-      if (e.target.closest('.task-checkbox') || e.target.closest('.inline-status-select')) return;
+      if (e.target.closest('.task-checkbox') || e.target.closest('.inline-status-select') || e.target.closest('.task-quick-delete')) return;
 
       const taskId = row.dataset.taskId;
       const task = store.get.allTasks().find(t => t.id === taskId);

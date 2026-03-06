@@ -1,0 +1,23 @@
+/*
+ * _headers — Netlify HTTP Security Headers
+ * Applies Content Security Policy and other security best practices
+ * on EVERY response by default.
+ */
+
+/*
+ * ─── Default Headers for ALL routes ────────────────────────────────────────
+ */
+/*all routes*/
+  # Prevent site from being embedded in an iframe (Clickjacking)
+  X-Frame-Options: SAMEORIGIN
+  # Stop browsers from guessing content types (MIME sniffing)
+  X-Content-Type-Options: nosniff
+  # Enable XSS filter in older browsers
+  X-XSS-Protection: 1; mode=block
+  # Restrict referrer info to same origin
+  Referrer-Policy: strict-origin-when-cross-origin
+  # Permissions Policy — disable features not used
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  # Content Security Policy
+  # Allows scripts from self and specific trusted CDNs (Google Identity Services, Feather icons)
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com https://apis.google.com 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.google.com https://*.googleapis.com https://*.googleusercontent.com; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com https://www.googleapis.com; frame-src https://accounts.google.com; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self';
