@@ -150,6 +150,9 @@ const syncManager = (() => {
             metadata: {
                 teamName: getConfig().teamName,
                 actor: getCurrentWorkspaceActor().label,
+                auth_salt: localStorage.getItem('nexus_salt') || null,
+                auth_lock_hash: localStorage.getItem('workspace_lock_hash') || null,
+                auth_recovery_hash: localStorage.getItem('workspace_recovery_hash') || null,
             },
             projects: store.get.projects(),
             tasks: store.get.allTasks(),
@@ -333,6 +336,27 @@ const syncManager = (() => {
     }
 
     async function seedFromRemote(data) {
+        // ── Multi-device auth continuity ────────────────────────────────────
+        // The encryption salt and auth hashes are device-local by default.
+        // When a new device pulls data from Drive for the first time, it must
+        // adopt the original salt so that the same password derives the same
+        // AES-256-GCM key — otherwise Drive data cannot be decrypted.
+        const meta = data?.metadata;
+        if (meta) {
+            if (meta.auth_salt && !localStorage.getItem('nexus_salt')) {
+                localStorage.setItem('nexus_salt', meta.auth_salt);
+                console.log('[Sync] Remote salt adopted — key derivation aligned across devices.');
+            }
+            if (meta.auth_lock_hash && !localStorage.getItem('workspace_lock_hash')) {
+                localStorage.setItem('workspace_lock_hash', meta.auth_lock_hash);
+                console.log('[Sync] Remote lock hash adopted — existing password recognised on this device.');
+            }
+            if (meta.auth_recovery_hash && !localStorage.getItem('workspace_recovery_hash')) {
+                localStorage.setItem('workspace_recovery_hash', meta.auth_recovery_hash);
+                console.log('[Sync] Remote recovery hash adopted.');
+            }
+        }
+        // ────────────────────────────────────────────────────────────────────
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', data);
     }
 
