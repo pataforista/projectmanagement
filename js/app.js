@@ -371,6 +371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('canvas', (root) => renderCanvas && renderCanvas(root))
         .on('logs', (root) => renderLogs(root))
         .on('collaboration', (root) => renderCollaboration(root))
+        .on('devices', (root) => renderDevices(root))
         .on('document', (root, params) => renderDocumentView(root, params))
         .on('project', (root, params) => renderProjectDetail(root, params));
 
@@ -442,6 +443,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             decisions: 'Decisiones', library: 'Biblioteca', matrix: 'Matriz',
             writing: 'Escritura', medical: 'Médico', integrations: 'Integraciones',
             logs: 'Actividad', canvas: 'Canvas', document: 'Documento',
+            devices: 'Dispositivos',
         };
         const updateBreadcrumb = () => {
             const view = location.hash.replace('#/', '').split('/')[0] || 'dashboard';
@@ -517,9 +519,10 @@ function initUIToggles() {
     });
 
     // ── Hidden Device Admin Access ─────────────────────────────────────────────
-    // Mechanism 1: 7 rapid clicks on the user avatar opens device management.
+    // Mechanism 1: 7 rapid clicks on the user avatar navigates to devices page.
     // Mechanism 2: Ctrl+Shift+Alt+L (not listed anywhere in the UI).
     (() => {
+        const _goDevices = () => router.navigate('/devices');
         let clickCount = 0;
         let clickTimer = null;
         const profileBtn = document.getElementById('btn-user-profile');
@@ -529,17 +532,17 @@ function initUIToggles() {
                 clearTimeout(clickTimer);
                 if (clickCount >= 7) {
                     clickCount = 0;
-                    if (window.syncManager?.openDevicesPanel) syncManager.openDevicesPanel();
+                    _goDevices();
                     return;
                 }
                 clickTimer = setTimeout(() => { clickCount = 0; }, 1200);
-            }, true); // capture phase: runs before the normal click handler
+            }, true);
         }
 
         document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'L') {
                 e.preventDefault();
-                if (window.syncManager?.openDevicesPanel) syncManager.openDevicesPanel();
+                _goDevices();
             }
         });
     })();
