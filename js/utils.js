@@ -300,6 +300,149 @@ export function generateUID() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 }
 
+// ── Device Registry ───────────────────────────────────────────────────────────
+const DEVICE_ID_KEY = 'workspace_device_id';
+const DEVICE_NAME_KEY = 'workspace_device_name';
+const DEVICES_REGISTRY_KEY = 'workspace_devices_registry';
+
+function _getDefaultDeviceName() {
+    const ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua)) return 'iPad';
+    if (/Android/.test(ua) && /Mobile/.test(ua)) return 'Android';
+    if (/Android/.test(ua)) return 'Tablet Android';
+    if (/Mac/.test(ua)) return 'Mac';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Linux/.test(ua)) return 'Linux';
+    return 'Navegador';
+}
+
+/**
+ * Returns or creates a persistent unique ID for this device.
+ * Stored in localStorage so it survives page reloads.
+ */
+function getOrCreateDeviceId() {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+        const bytes = crypto.getRandomValues(new Uint8Array(12));
+        id = 'dev-' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+}
+
+/**
+ * Returns the user-defined or auto-generated name for this device.
+ */
+function getDeviceName() {
+    return localStorage.getItem(DEVICE_NAME_KEY) || _getDefaultDeviceName();
+}
+
+/**
+ * Sets a human-readable name for this device.
+ * @param {string} name
+ */
+function setDeviceName(name) {
+    localStorage.setItem(DEVICE_NAME_KEY, String(name).trim().slice(0, 40));
+}
+
+/**
+ * Returns metadata object for the current device.
+ */
+function getDeviceInfo() {
+    return {
+        id: getOrCreateDeviceId(),
+        name: getDeviceName(),
+        platform: (/iPhone|iPad|iPod|Android/.test(navigator.userAgent) ? 'mobile' : 'desktop'),
+        browser: (() => {
+            const ua = navigator.userAgent;
+            if (/Edg\//.test(ua)) return 'Edge';
+            if (/Chrome\//.test(ua)) return 'Chrome';
+            if (/Firefox\//.test(ua)) return 'Firefox';
+            if (/Safari\//.test(ua)) return 'Safari';
+            return 'Navegador';
+        })(),
+        lastSeen: Date.now(),
+        registeredAt: Number(localStorage.getItem('workspace_device_registered_at') || Date.now()),
+    };
+}
+
+/**
+ * Loads the full list of known devices from localStorage.
+ * @returns {Array}
+ */
+function getDevicesRegistry() {
+    try {
+        return JSON.parse(localStorage.getItem(DEVICES_REGISTRY_KEY) || '[]');
+    } catch { return []; }
+}
+
+/**
+ * Updates the current device's entry in the local registry (upsert by id).
+ * @returns {Array} Updated registry.
+ */
+function updateCurrentDeviceInRegistry() {
+    const info = getDeviceInfo();
+    if (!localStorage.getItem('workspace_device_registered_at')) {
+        localStorage.setItem('workspace_device_registered_at', String(info.lastSeen));
+        info.registeredAt = info.lastSeen;
+    }
+    const devices = getDevicesRegistry();
+    const idx = devices.findIndex(d => d.id === info.id);
+    if (idx >= 0) {
+        devices[idx] = { ...devices[idx], ...info };
+    } else {
+        devices.push(info);
+    }
+    localStorage.setItem(DEVICES_REGISTRY_KEY, JSON.stringify(devices));
+    return devices;
+}
+
+/**
+ * Merges a remote devices array into the local registry.
+ * Remote entries win only if their lastSeen is newer.
+ * The current device always overwrites its own remote record.
+ * @param {Array} remoteDevices
+ * @returns {Array} Merged registry.
+ */
+function mergeDevicesFromRemote(remoteDevices) {
+    if (!Array.isArray(remoteDevices) || remoteDevices.length === 0) {
+        return updateCurrentDeviceInRegistry();
+    }
+    const currentId = getOrCreateDeviceId();
+    const localMap = new Map(getDevicesRegistry().map(d => [d.id, d]));
+
+    for (const rd of remoteDevices) {
+        if (!rd || !rd.id) continue;
+        // Never overwrite our own device with stale remote data
+        if (rd.id === currentId) continue;
+        const existing = localMap.get(rd.id);
+        if (!existing || rd.lastSeen > existing.lastSeen) {
+            localMap.set(rd.id, rd);
+        }
+    }
+
+    // Always refresh current device
+    const currentInfo = getDeviceInfo();
+    localMap.set(currentId, { ...(localMap.get(currentId) || {}), ...currentInfo });
+
+    const merged = Array.from(localMap.values());
+    localStorage.setItem(DEVICES_REGISTRY_KEY, JSON.stringify(merged));
+    return merged;
+}
+
+/**
+ * Removes a device from the local registry by its ID.
+ * Cannot remove the current device.
+ * @param {string} deviceId
+ */
+function revokeDevice(deviceId) {
+    const currentId = getOrCreateDeviceId();
+    if (deviceId === currentId) return;
+    const devices = getDevicesRegistry().filter(d => d.id !== deviceId);
+    localStorage.setItem(DEVICES_REGISTRY_KEY, JSON.stringify(devices));
+}
+
 // Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
@@ -318,5 +461,13 @@ window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
 window.getCurrentWorkspaceActor = getCurrentWorkspaceActor;
 window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
+window.getOrCreateDeviceId = getOrCreateDeviceId;
+window.getDeviceName = getDeviceName;
+window.setDeviceName = setDeviceName;
+window.getDeviceInfo = getDeviceInfo;
+window.getDevicesRegistry = getDevicesRegistry;
+window.updateCurrentDeviceInRegistry = updateCurrentDeviceInRegistry;
+window.mergeDevicesFromRemote = mergeDevicesFromRemote;
+window.revokeDevice = revokeDevice;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage, getOrCreateDeviceId, getDeviceName, setDeviceName, getDeviceInfo, getDevicesRegistry, updateCurrentDeviceInRegistry, mergeDevicesFromRemote, revokeDevice };

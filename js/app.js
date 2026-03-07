@@ -281,6 +281,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    // ── 0.2. Register Device ───────────────────────────────────────────────────
+    // Ensures this device has a persistent ID and is present in the local registry.
+    if (window.updateCurrentDeviceInRegistry) {
+        try { updateCurrentDeviceInRegistry(); } catch (e) { /* non-critical */ }
+    }
+
     // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
     try {
         await initDB();
