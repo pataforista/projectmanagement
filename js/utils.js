@@ -304,6 +304,7 @@ export function generateUID() {
 const DEVICE_ID_KEY = 'workspace_device_id';
 const DEVICE_NAME_KEY = 'workspace_device_name';
 const DEVICES_REGISTRY_KEY = 'workspace_devices_registry';
+const REVOKED_DEVICES_KEY = 'workspace_revoked_devices';
 
 function _getDefaultDeviceName() {
     const ua = navigator.userAgent;
@@ -432,15 +433,83 @@ function mergeDevicesFromRemote(remoteDevices) {
 }
 
 /**
- * Removes a device from the local registry by its ID.
- * Cannot remove the current device.
+ * Removes a device from the active registry and adds it to the revocation list.
+ * Cannot revoke the current device.
  * @param {string} deviceId
+ * @param {string} [deviceName] - Optional label for audit trail.
  */
-function revokeDevice(deviceId) {
+function revokeDevice(deviceId, deviceName) {
     const currentId = getOrCreateDeviceId();
     if (deviceId === currentId) return;
+    // Remove from active registry
     const devices = getDevicesRegistry().filter(d => d.id !== deviceId);
     localStorage.setItem(DEVICES_REGISTRY_KEY, JSON.stringify(devices));
+    // Add to revocation list
+    const revoked = getRevokedDevices();
+    if (!revoked.find(r => r.id === deviceId)) {
+        revoked.push({
+            id: deviceId,
+            name: deviceName || deviceId,
+            revokedAt: Date.now(),
+            revokedBy: getOrCreateDeviceId(),
+        });
+        localStorage.setItem(REVOKED_DEVICES_KEY, JSON.stringify(revoked));
+    }
+}
+
+// ── Revocation List ───────────────────────────────────────────────────────────
+
+/**
+ * Returns the list of revoked device entries: [{id, name, revokedAt, revokedBy}].
+ */
+function getRevokedDevices() {
+    try {
+        return JSON.parse(localStorage.getItem(REVOKED_DEVICES_KEY) || '[]');
+    } catch { return []; }
+}
+
+/**
+ * Checks if a given device ID is in the revocation list.
+ * @param {string} deviceId
+ */
+function isDeviceRevoked(deviceId) {
+    return getRevokedDevices().some(r => r.id === deviceId);
+}
+
+/**
+ * Returns true if the current device has been revoked by another device.
+ */
+function isCurrentDeviceRevoked() {
+    return isDeviceRevoked(getOrCreateDeviceId());
+}
+
+/**
+ * Removes a device from the revocation list (restores access).
+ * @param {string} deviceId
+ */
+function unRevokeDevice(deviceId) {
+    const revoked = getRevokedDevices().filter(r => r.id !== deviceId);
+    localStorage.setItem(REVOKED_DEVICES_KEY, JSON.stringify(revoked));
+}
+
+/**
+ * Merges a remote revocation list into the local one (union — revocations are sticky).
+ * Un-revocations propagate via absence: if remote no longer lists an ID, it's restored.
+ * @param {Array} remoteRevoked
+ */
+function mergeRevokedDevicesFromRemote(remoteRevoked) {
+    if (!Array.isArray(remoteRevoked)) return;
+    const currentId = getOrCreateDeviceId();
+    const localMap = new Map(getRevokedDevices().map(r => [r.id, r]));
+    for (const rr of remoteRevoked) {
+        if (!rr || !rr.id) continue;
+        if (!localMap.has(rr.id)) {
+            localMap.set(rr.id, rr);
+        }
+    }
+    // Current device cannot be in its own revocation list
+    localMap.delete(currentId);
+    localStorage.setItem(REVOKED_DEVICES_KEY, JSON.stringify(Array.from(localMap.values())));
 }
 
 // Attach to window
@@ -469,5 +538,10 @@ window.getDevicesRegistry = getDevicesRegistry;
 window.updateCurrentDeviceInRegistry = updateCurrentDeviceInRegistry;
 window.mergeDevicesFromRemote = mergeDevicesFromRemote;
 window.revokeDevice = revokeDevice;
+window.getRevokedDevices = getRevokedDevices;
+window.isDeviceRevoked = isDeviceRevoked;
+window.isCurrentDeviceRevoked = isCurrentDeviceRevoked;
+window.unRevokeDevice = unRevokeDevice;
+window.mergeRevokedDevicesFromRemote = mergeRevokedDevicesFromRemote;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage, getOrCreateDeviceId, getDeviceName, setDeviceName, getDeviceInfo, getDevicesRegistry, updateCurrentDeviceInRegistry, mergeDevicesFromRemote, revokeDevice };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage, getOrCreateDeviceId, getDeviceName, setDeviceName, getDeviceInfo, getDevicesRegistry, updateCurrentDeviceInRegistry, mergeDevicesFromRemote, revokeDevice, getRevokedDevices, isDeviceRevoked, isCurrentDeviceRevoked, unRevokeDevice, mergeRevokedDevicesFromRemote };

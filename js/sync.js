@@ -1,5 +1,5 @@
 import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './utils/crypto.js';
-import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage, getDeviceInfo, updateCurrentDeviceInRegistry, mergeDevicesFromRemote, revokeDevice } from './utils.js';
+import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage, getDeviceInfo, updateCurrentDeviceInRegistry, mergeDevicesFromRemote, revokeDevice, getRevokedDevices, isCurrentDeviceRevoked, unRevokeDevice, mergeRevokedDevicesFromRemote, getOrCreateDeviceId, getDeviceName, setDeviceName, getDevicesRegistry, isDeviceRevoked } from './utils.js';
 
 const syncManager = (() => {
     const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -178,6 +178,7 @@ const syncManager = (() => {
             annotations: (store.get.annotations ? store.get.annotations() : []).filter(isShared),
             snapshots: (store.get.snapshots ? store.get.snapshots() : []).filter(isShared),
             devices: currentDevices,
+            revokedDevices: getRevokedDevices(),
             settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
@@ -212,6 +213,11 @@ const syncManager = (() => {
      */
     async function push() {
         if (!accessToken || isSyncing) return;
+        // Block push if this device was revoked
+        if (isCurrentDeviceRevoked()) {
+            showToast('⛔ Este dispositivo fue revocado. No se puede sincronizar.', 'error', true);
+            return;
+        }
         isSyncing = true;
         updateSyncUI('syncing');
 
@@ -367,6 +373,20 @@ const syncManager = (() => {
     async function seedFromRemote(data) {
         if (data.settings) {
             syncSettingsToLocalStorage(data.settings);
+        }
+
+        // Merge revocation list from remote BEFORE device registry merge
+        if (Array.isArray(data.revokedDevices)) {
+            mergeRevokedDevicesFromRemote(data.revokedDevices);
+        }
+
+        // Check if this device has been revoked by another device
+        if (isCurrentDeviceRevoked()) {
+            console.warn('[Sync] This device has been revoked. Blocking sync.');
+            showToast('⛔ Este dispositivo fue revocado por otro administrador. Sync bloqueado.', 'error', true);
+            // Show a persistent blocking UI
+            _showRevocationNotice();
+            return;
         }
 
         // Merge device registry from remote (preserves all known devices)
@@ -786,68 +806,32 @@ const syncManager = (() => {
         }
     }
 
+    // ── Revocation Notice ─────────────────────────────────────────────────────
+
+    function _showRevocationNotice() {
+        if (document.getElementById('revocation-banner')) return;
+        const banner = document.createElement('div');
+        banner.id = 'revocation-banner';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--accent-danger,#e74c3c);color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.9rem;box-shadow:0 2px 12px rgba(0,0,0,0.3);';
+        banner.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;">
+            <i data-feather="shield-off" style="width:18px;height:18px;flex-shrink:0;"></i>
+            <span><b>Dispositivo revocado.</b> Otro administrador ha bloqueado la sincronización desde este dispositivo. Contacta al administrador para restaurar el acceso.</span>
+          </div>
+          <button id="revocation-info-btn" class="btn" style="background:rgba(255,255,255,0.2);color:#fff;border:1px solid rgba(255,255,255,0.4);white-space:nowrap;font-size:0.8rem;padding:4px 12px;">¿Qué hacer?</button>`;
+        document.body.prepend(banner);
+        if (window.feather) feather.replace();
+        banner.querySelector('#revocation-info-btn').addEventListener('click', () => {
+            alert('Tu acceso a la sincronización fue revocado desde otro dispositivo.\n\nPara restaurarlo:\n1. Pide al administrador que abra "Dispositivos" en el panel de Sync\n2. Que seleccione tu dispositivo y presione "Restaurar"\n3. Que haga un Push para propagar el cambio\n4. Recarga esta página y haz Pull para confirmar');
+        });
+    }
+
     // ── Device Management ─────────────────────────────────────────────────────
 
     /**
      * Renders the HTML for the devices management section.
      * @param {Function} onRevokeCallback - Called with deviceId when a device is revoked.
      */
-    function _renderDevicesHTML(onRevokeCallback) {
-        const devices = window.getDevicesRegistry ? getDevicesRegistry() : [];
-        const currentId = window.getOrCreateDeviceId ? getOrCreateDeviceId() : '';
-        const now = Date.now();
-
-        const fmtLastSeen = (ts) => {
-            if (!ts) return 'Desconocido';
-            const diff = now - ts;
-            const mins = Math.floor(diff / 60000);
-            if (mins < 2) return 'Ahora mismo';
-            if (mins < 60) return `Hace ${mins} min`;
-            const hrs = Math.floor(mins / 60);
-            if (hrs < 24) return `Hace ${hrs}h`;
-            const days = Math.floor(hrs / 24);
-            return `Hace ${days}d`;
-        };
-
-        const platformIcon = (p) => {
-            if (p === 'mobile') return 'smartphone';
-            return 'monitor';
-        };
-
-        const deviceRows = devices.length === 0
-            ? `<p style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:12px;">No hay dispositivos registrados. Sincroniza para registrar este dispositivo.</p>`
-            : devices.map(d => {
-                const isCurrent = d.id === currentId;
-                return `
-                <div class="device-row" data-device-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-color)'};position:relative;">
-                  <i data-feather="${platformIcon(d.platform)}" style="width:18px;height:18px;flex-shrink:0;color:${isCurrent ? 'var(--accent-primary)' : 'var(--text-muted)'};"></i>
-                  <div style="flex:1;min-width:0;">
-                    <div style="font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
-                      <span class="device-name-display">${esc(d.name)}</span>
-                      ${isCurrent ? '<span style="font-size:0.7rem;background:var(--accent-primary);color:#fff;padding:1px 6px;border-radius:10px;font-weight:500;">Este dispositivo</span>' : ''}
-                    </div>
-                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">
-                      ${esc(d.browser || '')}${d.browser ? ' · ' : ''}${fmtLastSeen(d.lastSeen)}
-                    </div>
-                  </div>
-                  <div style="display:flex;gap:6px;flex-shrink:0;">
-                    ${isCurrent ? `<button class="btn btn-ghost btn-sm device-rename-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;" title="Renombrar este dispositivo"><i data-feather="edit-2" style="width:12px;height:12px;"></i></button>` : ''}
-                    ${!isCurrent ? `<button class="btn btn-ghost btn-sm device-revoke-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;color:var(--accent-danger);" title="Eliminar este dispositivo de la lista"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
-                  </div>
-                </div>`;
-            }).join('');
-
-        return `
-          <div id="devices-section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-              <h3 style="margin:0;font-size:0.95rem;">Dispositivos vinculados</h3>
-              <span style="font-size:0.75rem;color:var(--text-muted);">${devices.length} dispositivo${devices.length !== 1 ? 's' : ''}</span>
-            </div>
-            <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 10px;">Todos los dispositivos que han sincronizado con esta cuenta via Google Drive.</p>
-            <div id="devices-list">${deviceRows}</div>
-          </div>`;
-    }
-
     /**
      * Builds the devices section DOM and binds its events inside a given container.
      */
@@ -877,19 +861,36 @@ const syncManager = (() => {
         section.querySelectorAll('.device-revoke-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const deviceId = btn.dataset.id;
-                if (!confirm('¿Eliminar este dispositivo de la lista? (Solo elimina la entrada local. El dispositivo puede volver a registrarse al sincronizar.)')) return;
-                if (window.revokeDevice) revokeDevice(deviceId);
-                btn.closest('.device-row').remove();
-                showToast('Dispositivo eliminado de la lista.', 'info');
+                const deviceName = btn.dataset.name || deviceId;
+                if (!confirm(`¿Revocar acceso al dispositivo "${deviceName}"?\n\nEste dispositivo no podrá sincronizar datos hasta que lo restaures. El cambio se propaga al hacer Push.`)) return;
+                revokeDevice(deviceId, deviceName);
+                const listEl = section.querySelector('#devices-list');
+                if (listEl) { listEl.innerHTML = _renderDevicesListHTML(); if (window.feather) feather.replace(); }
+                _bindDevicesSection(section.parentElement || section);
+                showToast(`"${deviceName}" revocado. Haz Push para propagar el cambio.`, 'warning', true);
+            });
+        });
+
+        // Restore revoked devices
+        section.querySelectorAll('.device-unrevoce-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const deviceId = btn.dataset.id;
+                unRevokeDevice(deviceId);
+                const listEl = section.querySelector('#devices-list');
+                if (listEl) { listEl.innerHTML = _renderDevicesListHTML(); if (window.feather) feather.replace(); }
+                _bindDevicesSection(section.parentElement || section);
+                showToast('Dispositivo restaurado. Haz Push para propagar el cambio.', 'success', true);
             });
         });
     }
 
     function _renderDevicesListHTML() {
         const devices = getDevicesRegistry();
+        const revokedList = getRevokedDevices();
+        const revokedIds = new Set(revokedList.map(r => r.id));
         const currentId = getOrCreateDeviceId();
         const now = Date.now();
-        const fmtLastSeen = (ts) => {
+        const fmtTs = (ts) => {
             if (!ts) return 'Desconocido';
             const diff = now - ts;
             const mins = Math.floor(diff / 60000);
@@ -899,53 +900,81 @@ const syncManager = (() => {
             if (hrs < 24) return `Hace ${hrs}h`;
             return `Hace ${Math.floor(hrs / 24)}d`;
         };
-        if (devices.length === 0) {
-            return `<p style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:12px;">No hay dispositivos registrados. Sincroniza para registrar este dispositivo.</p>`;
-        }
-        return devices.map(d => {
-            const isCurrent = d.id === currentId;
-            return `<div class="device-row" data-device-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-color)'};">
-              <i data-feather="${d.platform === 'mobile' ? 'smartphone' : 'monitor'}" style="width:18px;height:18px;flex-shrink:0;color:${isCurrent ? 'var(--accent-primary)' : 'var(--text-muted)'};"></i>
-              <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
-                  <span class="device-name-display">${esc(d.name)}</span>
-                  ${isCurrent ? '<span style="font-size:0.7rem;background:var(--accent-primary);color:#fff;padding:1px 6px;border-radius:10px;font-weight:500;">Este dispositivo</span>' : ''}
-                </div>
-                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${esc(d.browser || '')}${d.browser ? ' · ' : ''}${fmtLastSeen(d.lastSeen)}</div>
+
+        // Active devices
+        const activeRows = devices.length === 0
+            ? `<p style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:12px 0;">Sin dispositivos registrados. Sincroniza para registrar este dispositivo.</p>`
+            : devices.map(d => {
+                const isCurrent = d.id === currentId;
+                return `<div class="device-row" data-device-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-color)'};">
+                  <i data-feather="${d.platform === 'mobile' ? 'smartphone' : 'monitor'}" style="width:18px;height:18px;flex-shrink:0;color:${isCurrent ? 'var(--accent-primary)' : 'var(--text-muted)'};"></i>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
+                      <span>${esc(d.name)}</span>
+                      ${isCurrent ? '<span style="font-size:0.7rem;background:var(--accent-primary);color:#fff;padding:1px 6px;border-radius:10px;font-weight:500;">Este dispositivo</span>' : ''}
+                    </div>
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${esc(d.browser || '')}${d.browser ? ' · ' : ''}${fmtTs(d.lastSeen)}</div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-shrink:0;">
+                    ${isCurrent ? `<button class="btn btn-ghost btn-sm device-rename-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;" title="Renombrar"><i data-feather="edit-2" style="width:12px;height:12px;"></i></button>` : ''}
+                    ${!isCurrent ? `<button class="btn btn-ghost btn-sm device-revoke-btn" data-id="${esc(d.id)}" data-name="${esc(d.name)}" style="font-size:0.75rem;padding:3px 8px;color:var(--accent-danger);" title="Revocar acceso a este dispositivo"><i data-feather="shield-off" style="width:12px;height:12px;"></i> Revocar</button>` : ''}
+                  </div>
+                </div>`;
+            }).join('');
+
+        // Revoked devices section
+        const revokedRows = revokedList.length === 0 ? '' : `
+            <div style="margin-top:14px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+                <i data-feather="shield-off" style="width:14px;height:14px;color:var(--accent-danger);"></i>
+                <span style="font-size:0.8rem;font-weight:600;color:var(--accent-danger);">Revocados (${revokedList.length})</span>
               </div>
-              <div style="display:flex;gap:6px;flex-shrink:0;">
-                ${isCurrent ? `<button class="btn btn-ghost btn-sm device-rename-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;" title="Renombrar"><i data-feather="edit-2" style="width:12px;height:12px;"></i></button>` : ''}
-                ${!isCurrent ? `<button class="btn btn-ghost btn-sm device-revoke-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;color:var(--accent-danger);" title="Eliminar"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
-              </div>
+              ${revokedList.map(r => `
+                <div class="device-row" data-device-id="${esc(r.id)}" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid var(--accent-danger);opacity:0.8;">
+                  <i data-feather="shield-off" style="width:18px;height:18px;flex-shrink:0;color:var(--accent-danger);"></i>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:0.88rem;color:var(--accent-danger);">${esc(r.name || r.id)}</div>
+                    <div style="font-size:0.73rem;color:var(--text-muted);">Revocado ${fmtTs(r.revokedAt)}</div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm device-unrevoce-btn" data-id="${esc(r.id)}" style="font-size:0.75rem;padding:3px 8px;color:var(--accent-success,#27ae60);" title="Restaurar acceso">
+                    <i data-feather="shield-check" style="width:12px;height:12px;"></i> Restaurar
+                  </button>
+                </div>`).join('')}
             </div>`;
-        }).join('');
+
+        return activeRows + revokedRows;
     }
 
     /**
      * Opens a standalone modal to manage linked devices.
      */
     function openDevicesPanel() {
+        const revokedCount = getRevokedDevices().length;
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         overlay.id = 'devices-panel-overlay';
         overlay.innerHTML = `
-          <div class="modal" style="max-width:520px;">
+          <div class="modal" style="max-width:520px;max-height:90vh;overflow-y:auto;">
             <div class="modal-header">
-              <h2><i data-feather="monitor"></i> Dispositivos vinculados</h2>
+              <h2><i data-feather="monitor"></i> Dispositivos vinculados${revokedCount > 0 ? ` <span style="font-size:0.75rem;background:var(--accent-danger);color:#fff;padding:2px 8px;border-radius:10px;margin-left:6px;vertical-align:middle;">${revokedCount} revocado${revokedCount > 1 ? 's' : ''}</span>` : ''}</h2>
               <button class="btn btn-icon" id="devices-close"><i data-feather="x"></i></button>
             </div>
             <div class="modal-body">
-              <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;color:var(--text-muted);">
+              <div style="background:var(--bg-secondary);border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.82rem;color:var(--text-muted);line-height:1.5;">
                 <b style="color:var(--text-primary);">¿Cómo funciona?</b><br>
-                Cada dispositivo se registra automáticamente al sincronizar con Google Drive. La misma cuenta (mismo archivo en Drive) se comparte entre todos los dispositivos vinculados.
-                Para acceder desde un nuevo dispositivo: configura el mismo <b>Shared File ID</b> en la configuración de Sync.
+                Cada dispositivo se registra al sincronizar. <b>Revocar</b> bloquea el sync de ese dispositivo — el cambio se propaga cuando hagas Push. Puede restaurarse en cualquier momento.
               </div>
-              ${_renderDevicesHTML()}
+              <div id="devices-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                  <h3 style="margin:0;font-size:0.95rem;">Activos</h3>
+                  <button class="btn btn-ghost btn-sm" id="devices-rename-current" style="font-size:0.78rem;">
+                    <i data-feather="edit-2" style="width:12px;height:12px;"></i> Renombrar este dispositivo
+                  </button>
+                </div>
+                <div id="devices-list">${_renderDevicesListHTML()}</div>
+              </div>
             </div>
-            <div class="modal-footer" style="justify-content:space-between;">
-              <button class="btn btn-ghost" id="devices-rename-current" style="font-size:0.85rem;">
-                <i data-feather="edit-2" style="width:14px;height:14px;"></i> Renombrar este dispositivo
-              </button>
+            <div class="modal-footer">
               <button class="btn btn-primary" id="devices-close-btn">Cerrar</button>
             </div>
           </div>`;
@@ -958,48 +987,18 @@ const syncManager = (() => {
         overlay.querySelector('#devices-close-btn').addEventListener('click', () => overlay.remove());
 
         overlay.querySelector('#devices-rename-current').addEventListener('click', () => {
-            const currentName = window.getDeviceName ? getDeviceName() : 'Este dispositivo';
-            const newName = prompt('Nombre para este dispositivo:', currentName);
+            const newName = prompt('Nombre para este dispositivo:', getDeviceName());
             if (newName && newName.trim()) {
-                window.setDeviceName(newName.trim());
-                window.updateCurrentDeviceInRegistry();
-                showToast('Nombre de dispositivo actualizado.', 'success');
-                // Refresh list
+                setDeviceName(newName.trim());
+                updateCurrentDeviceInRegistry();
                 const listEl = overlay.querySelector('#devices-list');
-                if (listEl) {
-                    const devices = window.getDevicesRegistry ? getDevicesRegistry() : [];
-                    const currentId = window.getOrCreateDeviceId ? getOrCreateDeviceId() : '';
-                    const now = Date.now();
-                    const fmtLastSeen = (ts) => {
-                        if (!ts) return 'Desconocido';
-                        const diff = now - ts;
-                        const mins = Math.floor(diff / 60000);
-                        if (mins < 2) return 'Ahora mismo';
-                        if (mins < 60) return `Hace ${mins} min`;
-                        const hrs = Math.floor(mins / 60);
-                        if (hrs < 24) return `Hace ${hrs}h`;
-                        return `Hace ${Math.floor(hrs / 24)}d`;
-                    };
-                    listEl.innerHTML = devices.map(d => {
-                        const isCurrent = d.id === currentId;
-                        return `
-                        <div class="device-row" data-device-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-color)'};">
-                          <i data-feather="${d.platform === 'mobile' ? 'smartphone' : 'monitor'}" style="width:18px;height:18px;flex-shrink:0;color:${isCurrent ? 'var(--accent-primary)' : 'var(--text-muted)'};"></i>
-                          <div style="flex:1;min-width:0;">
-                            <div style="font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
-                              <span>${esc(d.name)}</span>
-                              ${isCurrent ? '<span style="font-size:0.7rem;background:var(--accent-primary);color:#fff;padding:1px 6px;border-radius:10px;font-weight:500;">Este dispositivo</span>' : ''}
-                            </div>
-                            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${esc(d.browser || '')}${d.browser ? ' · ' : ''}${fmtLastSeen(d.lastSeen)}</div>
-                          </div>
-                        </div>`;
-                    }).join('');
-                    if (window.feather) feather.replace();
-                }
+                if (listEl) { listEl.innerHTML = _renderDevicesListHTML(); if (window.feather) feather.replace(); }
+                _bindDevicesSection(overlay.querySelector('#devices-section'));
+                showToast('Nombre de dispositivo actualizado.', 'success');
             }
         });
 
-        _bindDevicesSection(overlay);
+        _bindDevicesSection(overlay.querySelector('#devices-section'));
     }
 
     return { init, authenticate, disconnect, push, pull, openPanel, openDevicesPanel, getConfig, listDriveFiles, syncCalendar, syncGoogleTasks, syncTodoist, getAccessToken: () => accessToken };
