@@ -553,7 +553,7 @@ const syncManager = (() => {
             <div class="form-group">
               <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
                 <span>Shared File ID <span style="color:var(--text-muted);font-weight:400;">(vincula otro dispositivo)</span></span>
-                ${cfg.sharedFileId ? `<button type="button" id="sync-copy-fileid" class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:2px 8px;" title="Copiar ID para pegarlo en otro dispositivo"><i data-feather="copy" style="width:11px;height:11px;margin-right:3px;"></i>Copiar</button>` : ''}
+                ${(cfg.sharedFileId || localStorage.getItem('gdrive_file_id')) ? `<button type="button" id="sync-copy-fileid" class="btn btn-ghost btn-sm" style="font-size:0.72rem;padding:2px 8px;" title="Copiar ID para pegarlo en otro dispositivo"><i data-feather="copy" style="width:11px;height:11px;margin-right:3px;"></i>Copiar</button>` : ''}
               </label>
               <input class="form-input" id="sync-shared-id" placeholder="Pegar el File ID del JSON compartido" value="${esc(cfg.sharedFileId)}">
             </div>
@@ -858,14 +858,16 @@ const syncManager = (() => {
         // Rename current device
         section.querySelectorAll('.device-rename-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const currentName = window.getDeviceName ? getDeviceName() : 'Este dispositivo';
+                const currentName = getDeviceName();
                 const newName = prompt('Nombre para este dispositivo:', currentName);
                 if (newName && newName.trim()) {
-                    window.setDeviceName(newName.trim());
-                    window.updateCurrentDeviceInRegistry();
-                    // Re-render devices list
-                    section.querySelector('#devices-list').innerHTML = _renderDevicesListHTML();
+                    setDeviceName(newName.trim());
+                    updateCurrentDeviceInRegistry();
+                    const listEl = section.querySelector('#devices-list');
+                    if (listEl) listEl.innerHTML = _renderDevicesListHTML();
                     if (window.feather) feather.replace();
+                    // Rebind events on fresh rows
+                    _bindDevicesSection(section.parentElement || section);
                     showToast('Nombre de dispositivo actualizado.', 'success');
                 }
             });
@@ -884,7 +886,39 @@ const syncManager = (() => {
     }
 
     function _renderDevicesListHTML() {
-        return _renderDevicesHTML().match(/<div id="devices-list">([\s\S]*?)<\/div>/)?.[1] || '';
+        const devices = getDevicesRegistry();
+        const currentId = getOrCreateDeviceId();
+        const now = Date.now();
+        const fmtLastSeen = (ts) => {
+            if (!ts) return 'Desconocido';
+            const diff = now - ts;
+            const mins = Math.floor(diff / 60000);
+            if (mins < 2) return 'Ahora mismo';
+            if (mins < 60) return `Hace ${mins} min`;
+            const hrs = Math.floor(mins / 60);
+            if (hrs < 24) return `Hace ${hrs}h`;
+            return `Hace ${Math.floor(hrs / 24)}d`;
+        };
+        if (devices.length === 0) {
+            return `<p style="color:var(--text-muted);font-size:0.85rem;text-align:center;padding:12px;">No hay dispositivos registrados. Sincroniza para registrar este dispositivo.</p>`;
+        }
+        return devices.map(d => {
+            const isCurrent = d.id === currentId;
+            return `<div class="device-row" data-device-id="${esc(d.id)}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--bg-secondary);margin-bottom:6px;border:1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-color)'};">
+              <i data-feather="${d.platform === 'mobile' ? 'smartphone' : 'monitor'}" style="width:18px;height:18px;flex-shrink:0;color:${isCurrent ? 'var(--accent-primary)' : 'var(--text-muted)'};"></i>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:0.9rem;display:flex;align-items:center;gap:6px;">
+                  <span class="device-name-display">${esc(d.name)}</span>
+                  ${isCurrent ? '<span style="font-size:0.7rem;background:var(--accent-primary);color:#fff;padding:1px 6px;border-radius:10px;font-weight:500;">Este dispositivo</span>' : ''}
+                </div>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${esc(d.browser || '')}${d.browser ? ' · ' : ''}${fmtLastSeen(d.lastSeen)}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                ${isCurrent ? `<button class="btn btn-ghost btn-sm device-rename-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;" title="Renombrar"><i data-feather="edit-2" style="width:12px;height:12px;"></i></button>` : ''}
+                ${!isCurrent ? `<button class="btn btn-ghost btn-sm device-revoke-btn" data-id="${esc(d.id)}" style="font-size:0.75rem;padding:3px 8px;color:var(--accent-danger);" title="Eliminar"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>` : ''}
+              </div>
+            </div>`;
+        }).join('');
     }
 
     /**
