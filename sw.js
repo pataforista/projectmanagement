@@ -8,7 +8,10 @@ const SHELL_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
-    '/css/index.css',
+    '/styles/main.css',
+    '/styles/components.css',
+    '/styles/animations.css',
+    '/styles/skeletons.css',
     '/js/db.js',
     '/js/utils.js',
     '/js/utils/crypto.js',
@@ -35,6 +38,7 @@ const SHELL_ASSETS = [
     '/js/views/matrix.js',
     '/js/views/medical.js',
     '/js/views/writing.js',
+    '/js/views/collaboration.js',
     '/js/vendor/feather.min.js',
     '/icons/icon-192.png'
 ];
@@ -64,7 +68,7 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(event.request.url);
     const isLocal = url.origin === self.location.origin;
-    const isCDN = url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('unpkg.com');
+    const isCDN = url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('unpkg.com') || url.hostname.includes('cdnjs.cloudflare.com');
 
     if (!isLocal && !isCDN) return;
 
