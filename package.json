@@ -1,5 +1,9 @@
 {
   "dependencies": {
     "feather-icons": "^4.29.2"
+  },
+  "scripts": {
+    "check:review-ready": "node scripts/review-ready.js",
+    "check": "npm run check:review-ready"
   }
 }
