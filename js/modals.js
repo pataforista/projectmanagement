@@ -231,11 +231,10 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       }
     }
   });
-}
 
-modal.querySelector('#modal-close').addEventListener('click', closeModal);
-modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
-modal.querySelector('#task-save').addEventListener('click', async () => {
+  modal.querySelector('#modal-close').addEventListener('click', closeModal);
+  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+  modal.querySelector('#task-save').addEventListener('click', async () => {
   const title = modal.querySelector('#task-title').value.trim();
   if (!title) { showToast('El título es obligatorio.', 'error'); return; }
 
@@ -264,7 +263,8 @@ modal.querySelector('#task-save').addEventListener('click', async () => {
   }
   closeModal();
   refreshCurrentView();
-});
+  });
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Project Modal
