@@ -609,8 +609,24 @@ const store = (() => {
                     break;
                 }
 
-                // Step 1: update memory immediately (safe & instant)
+                // ── Step 0.5: Preserve Local Items ──
+                // Items with visibility = 'local' are NOT sent to the cloud. 
+                // Therefore, if we bluntly overwrite the local DB, we lose them.
                 const validKeys = Object.keys(_state);
+                for (const key of validKeys) {
+                    if (Array.isArray(_state[key]) && Array.isArray(sanitizedPayload[key])) {
+                        // Find all local items in current state
+                        const localItems = _state[key].filter(item => item && item.visibility === 'local');
+
+                        // Merge them into the incoming payload.
+                        // (We append them so they survive the IDB clear/put cascade)
+                        if (localItems.length > 0) {
+                            sanitizedPayload[key] = [...sanitizedPayload[key], ...localItems];
+                        }
+                    }
+                }
+
+                // Step 1: update memory immediately (safe & instant)
                 for (const key of validKeys) {
                     if (Array.isArray(sanitizedPayload[key])) {
                         _state[key] = sanitizedPayload[key];

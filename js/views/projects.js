@@ -32,7 +32,7 @@ function renderProjects(root, params) {
         </select>
       </div>
 
-      <div class="projects-grid" id="projects-grid">
+      <div class="projects-grid animate-cascade" id="projects-grid">
         ${renderProjectCards(projects)}
       </div>
     </div>`;
@@ -307,7 +307,7 @@ function showProjectTab(root, p, tab) {
       <div style="margin-bottom:12px; display:flex; justify-content:flex-end;">
         <button class="btn btn-primary btn-sm" id="proj-new-cycle-btn"><i data-feather="plus"></i> Nuevo ciclo</button>
       </div>
-      <div class="cycles-grid">${cycles.length ? cycles.map(c => cycleCard(c)).join('') : emptyState('refresh-cw', 'Sin ciclos.')}</div>`;
+      <div class="cycles-grid animate-cascade">${cycles.length ? cycles.map(c => cycleCard(c)).join('') : emptyState('refresh-cw', 'Sin ciclos.')}</div>`;
     feather.replace();
     content.querySelector('#proj-new-cycle-btn')?.addEventListener('click', () => openCycleModal(p.id));
   } else if (tab === 'document') {

@@ -207,11 +207,13 @@ function bindDragDrop(container) {
         if (boardCols) {
           // Re-render inline
           const tasks = selVal ? store.get.allTasks().filter(t => t.projectId === selVal) : store.get.allTasks();
-          boardCols.querySelectorAll('.board-cards').forEach(col => {
+          boardCols.querySelectorAll('.board-column').forEach(col => {
             const colStatus = col.dataset.status;
             const colTasks = tasks.filter(t => t.status === colStatus);
-            col.innerHTML = colTasks.map(t => kanbanCard(t)).join('');
-            col.closest('.board-column').querySelector('.board-column-count').textContent = colTasks.length;
+            const cardsContainer = col.querySelector('.board-cards');
+            if (cardsContainer) cardsContainer.innerHTML = colTasks.map(t => kanbanCard(t)).join('');
+            const countEl = col.querySelector('.board-column-count');
+            if (countEl) countEl.textContent = colTasks.length;
           });
           feather.replace();
           bindDragDrop(boardCols);

@@ -198,68 +198,73 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
 
   if (isEdit) {
     modal.querySelector('#task-delete').addEventListener('click', async () => {
-      if (confirm(`¿Estás seguro de querer eliminar la tarea "${task.title}"?`)) {
+      const isLocal = task.visibility === 'local';
+      const msg = isLocal
+        ? `¿Estás seguro de eliminar la tarea "${task.title}" de tu dispositivo local?`
+        : `¿Estás seguro de eliminar la tarea "${task.title}"?\n\n⚠️ Esta tarea pertenece a un PROYECTO COMPARTIDO. Esto afectará al Google Drive del equipo.`;
+
+      if (confirm(msg)) {
         await store.dispatch('DELETE_TASK', { id: task.id });
         closeModal();
         refreshCurrentView();
       }
     });
-
-    // Handle subtask checkbox events when editing
-    subList.addEventListener('change', e => {
-      if (e.target.type === 'checkbox') {
-        const sid = parseInt(e.target.dataset.id, 10);
-        const st = subTasks.find(x => x.id === sid);
-        if (st) st.done = e.target.checked;
-      }
-    });
-
-    subList.addEventListener('click', e => {
-      const btn = e.target.closest('button');
-      if (btn && btn.dataset.id) {
-        const sid = parseInt(btn.dataset.id, 10);
-        const idx = subTasks.findIndex(x => x.id === sid);
-        if (idx !== -1) {
-          subTasks.splice(idx, 1);
-          renderSubtasks();
-        }
-      }
-    });
   }
 
-  modal.querySelector('#modal-close').addEventListener('click', closeModal);
-  modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
-  modal.querySelector('#task-save').addEventListener('click', async () => {
-    const title = modal.querySelector('#task-title').value.trim();
-    if (!title) { showToast('El título es obligatorio.', 'error'); return; }
-
-    const tags = modal.querySelector('#task-tags').value.split(',').map(t => t.trim()).filter(t => t);
-
-    const payload = {
-      title,
-      projectId: modal.querySelector('#task-project').value || null,
-      cycleId: modal.querySelector('#task-cycle').value || null,
-      status: modal.querySelector('#task-status').value,
-      priority: modal.querySelector('#task-priority').value,
-      type: modal.querySelector('#task-type').value,
-      dueDate: modal.querySelector('#task-due').value || null,
-      description: modal.querySelector('#task-desc').value,
-      assigneeId: modal.querySelector('#task-assignee').value || null,
-      tags,
-      subtasks: subTasks,
-      referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value)
-    };
-
-    if (isEdit) {
-      payload.id = task.id;
-      await store.dispatch('UPDATE_TASK', payload);
-    } else {
-      await store.dispatch('ADD_TASK', payload);
+  // Handle subtask checkbox events when editing
+  subList.addEventListener('change', e => {
+    if (e.target.type === 'checkbox') {
+      const sid = parseInt(e.target.dataset.id, 10);
+      const st = subTasks.find(x => x.id === sid);
+      if (st) st.done = e.target.checked;
     }
-    closeModal();
-    refreshCurrentView();
+  });
+
+  subList.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (btn && btn.dataset.id) {
+      const sid = parseInt(btn.dataset.id, 10);
+      const idx = subTasks.findIndex(x => x.id === sid);
+      if (idx !== -1) {
+        subTasks.splice(idx, 1);
+        renderSubtasks();
+      }
+    }
   });
 }
+
+modal.querySelector('#modal-close').addEventListener('click', closeModal);
+modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
+modal.querySelector('#task-save').addEventListener('click', async () => {
+  const title = modal.querySelector('#task-title').value.trim();
+  if (!title) { showToast('El título es obligatorio.', 'error'); return; }
+
+  const tags = modal.querySelector('#task-tags').value.split(',').map(t => t.trim()).filter(t => t);
+
+  const payload = {
+    title,
+    projectId: modal.querySelector('#task-project').value || null,
+    cycleId: modal.querySelector('#task-cycle').value || null,
+    status: modal.querySelector('#task-status').value,
+    priority: modal.querySelector('#task-priority').value,
+    type: modal.querySelector('#task-type').value,
+    dueDate: modal.querySelector('#task-due').value || null,
+    description: modal.querySelector('#task-desc').value,
+    assigneeId: modal.querySelector('#task-assignee').value || null,
+    tags,
+    subtasks: subTasks,
+    referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value)
+  };
+
+  if (isEdit) {
+    payload.id = task.id;
+    await store.dispatch('UPDATE_TASK', payload);
+  } else {
+    await store.dispatch('ADD_TASK', payload);
+  }
+  closeModal();
+  refreshCurrentView();
+});
 
 // ────────────────────────────────────────────────────────────────────────────
 // Project Modal

@@ -41,7 +41,7 @@ function renderMedical(root) {
               <th style="padding:12px; border-bottom:1px solid var(--border-color); font-size:0.8rem;">Acciones</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="animate-cascade">
             ${interconsultations.length === 0
       ? `<tr><td colspan="5" style="padding:32px; text-align:center; color:var(--text-muted);">No hay interconsultas registradas.</td></tr>`
       : interconsultations.map(i => {

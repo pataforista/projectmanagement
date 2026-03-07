@@ -97,7 +97,7 @@ function renderBacklogTable(tasks) {
           <th style="width:32px;"></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody class="animate-cascade">
         ${tasks.map(t => backlogRow(t)).join('')}
       </tbody>
     </table>`;

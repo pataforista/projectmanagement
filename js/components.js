@@ -84,7 +84,7 @@ function cycleWidget(c) {
  * @returns {string} HTML a inyectar en grillas.
  */
 function miniProjectCard(p) {
-  const pTasks = store.get.tasksByProject(p.id);
+  const pTasks = store.get.tasksByProject(p.id) || [];
   const done = pTasks.filter(t => t.status === 'Terminado').length;
   const pct = pTasks.length ? Math.round(done / pTasks.length * 100) : 0;
   return `
