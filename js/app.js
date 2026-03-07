@@ -515,6 +515,34 @@ function initUIToggles() {
     document.getElementById('btn-user-profile')?.addEventListener('click', () => {
         if (window.openProfileModal) openProfileModal();
     });
+
+    // ── Hidden Device Admin Access ─────────────────────────────────────────────
+    // Mechanism 1: 7 rapid clicks on the user avatar opens device management.
+    // Mechanism 2: Ctrl+Shift+Alt+L (not listed anywhere in the UI).
+    (() => {
+        let clickCount = 0;
+        let clickTimer = null;
+        const profileBtn = document.getElementById('btn-user-profile');
+        if (profileBtn) {
+            profileBtn.addEventListener('click', () => {
+                clickCount++;
+                clearTimeout(clickTimer);
+                if (clickCount >= 7) {
+                    clickCount = 0;
+                    if (window.syncManager?.openDevicesPanel) syncManager.openDevicesPanel();
+                    return;
+                }
+                clickTimer = setTimeout(() => { clickCount = 0; }, 1200);
+            }, true); // capture phase: runs before the normal click handler
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.altKey && e.key === 'L') {
+                e.preventDefault();
+                if (window.syncManager?.openDevicesPanel) syncManager.openDevicesPanel();
+            }
+        });
+    })();
 }
 
 /**
