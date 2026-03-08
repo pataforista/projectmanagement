@@ -1671,7 +1671,7 @@
 /* ── Integrations Hub ────────────────────────────────────────────────────────── */
 .integrations-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 20px;
     margin-top: 24px;
 }
@@ -1718,6 +1718,39 @@
 
 .integration-service-row:hover {
     border-color: var(--border-highlight);
+}
+
+
+
+/* ── Mobile/Desktop compatibility placeholders ───────────────────────────── */
+.compat-placeholder {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    border: 1px dashed var(--border-highlight);
+    background: var(--bg-surface-2);
+}
+
+.compat-placeholder i {
+    width: 18px;
+    height: 18px;
+    color: var(--accent-warning);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.compat-placeholder-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.compat-placeholder-text {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
 }
 
 /* ── Calendar & Sessions ─────────────────────────────────────────────────────── */
@@ -1834,5 +1867,24 @@
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@media (max-width: 900px) {
+    .writing-layout {
+        flex-direction: column;
+        height: auto;
+        min-height: calc(100vh - 160px);
+    }
+
+    .writing-sidebar,
+    .writing-ai-sidebar {
+        width: 100%;
+        max-height: 38vh;
+    }
+
+    .manuscript-textarea {
+        padding: 20px 16px;
+        font-size: 1rem;
     }
 }

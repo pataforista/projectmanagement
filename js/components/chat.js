@@ -39,8 +39,8 @@ export const ChatManager = (() => {
         style.textContent = `
             .minichat-container {
                 position: fixed;
-                bottom: 20px;
-                right: 20px;
+                bottom: max(20px, env(safe-area-inset-bottom));
+                right: max(20px, env(safe-area-inset-right));
                 z-index: 9999;
                 font-family: var(--font-family);
             }
@@ -142,6 +142,18 @@ export const ChatManager = (() => {
                 font-size: 0.85rem;
             }
             .hidden { display: none !important; }
+            @media (max-width: 640px) {
+                .minichat-container {
+                    right: 12px;
+                    bottom: max(12px, env(safe-area-inset-bottom));
+                }
+                .chat-panel {
+                    width: min(92vw, 360px);
+                    height: min(62vh, 460px);
+                    right: 0;
+                    bottom: 62px;
+                }
+            }
             @keyframes chat-pulse {
                 0% { transform: scale(1); }
                 50% { transform: scale(1.2); box-shadow: 0 0 20px var(--accent-primary); }

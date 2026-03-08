@@ -808,11 +808,11 @@ body::before {
 
 /* ── Topbar ─────────────────────────────────────────────────────────────────── */
 .topbar {
-    height: var(--topbar-height);
+    height: calc(var(--topbar-height) + env(safe-area-inset-top));
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 28px;
+    padding: env(safe-area-inset-top) 28px 0 28px;
     border-bottom: 1px solid var(--border-color);
     flex-shrink: 0;
     z-index: 10;
@@ -1090,7 +1090,7 @@ body::before {
     }
 
     .topbar {
-        padding: 0 16px;
+        padding: env(safe-area-inset-top) 16px 0 16px;
     }
 
     .sync-state-label {
