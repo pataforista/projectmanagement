@@ -115,6 +115,29 @@ function getCurrentWorkspaceActor() {
     };
 }
 
+function isMobileRuntime() {
+    const touchPoints = navigator.maxTouchPoints || 0;
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
+    const narrowViewport = window.matchMedia?.('(max-width: 900px)').matches;
+    return !!(coarsePointer || touchPoints > 1 || narrowViewport);
+}
+
+function renderCompatibilityNotice({
+    icon = 'smartphone',
+    title = 'Función optimizada para escritorio',
+    description = 'Esta función requiere mayor espacio de pantalla o rendimiento de CPU/GPU.'
+} = {}) {
+    return `
+        <div class="compat-placeholder" role="status" aria-live="polite">
+            <i data-feather="${esc(icon)}"></i>
+            <div class="compat-placeholder-body">
+                <p class="compat-placeholder-title">${esc(title)}</p>
+                <p class="compat-placeholder-text">${esc(description)}</p>
+            </div>
+        </div>
+    `;
+}
+
 function getCurrentWorkspaceMember() {
     if (!window.store || !store.get || !store.get.members) return null;
     const members = store.get.members();
@@ -316,7 +339,9 @@ window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
 window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
 window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
 window.getCurrentWorkspaceActor = getCurrentWorkspaceActor;
+window.isMobileRuntime = isMobileRuntime;
+window.renderCompatibilityNotice = renderCompatibilityNotice;
 window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, syncSettingsToLocalStorage };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage };

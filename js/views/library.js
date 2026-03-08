@@ -8,6 +8,7 @@ let currentLibraryViewMode = 'grid'; // 'grid' | 'table'
 let currentLibraryTab = 'zotero'; // 'zotero' | 'drive'
 let currentLibrarySearch = ''; // Search query
 let currentLibraryGroup = 'all'; // 'all' | 'none' | groupName
+let zoteroPopoverCloseHandler = null;
 
 function renderLibrary(root) {
   const libraryItems = store.get.library() || [];
@@ -183,6 +184,7 @@ async function loadDriveContent() {
   if (!container) return;
 
   let files = [];
+  const mobileMode = window.isMobileRuntime?.() || false;
   try {
     files = await syncManager.listDriveFiles();
   } catch (err) {
@@ -203,6 +205,7 @@ async function loadDriveContent() {
       <i data-feather="info" style="width:16px; height:16px; color:var(--accent-primary);"></i>
       <span>Los archivos de Drive son de <strong>solo lectura</strong> dentro del Workspace. Para borrarlos o moverlos, usa la web de Google Drive.</span>
     </div>
+    ${mobileMode ? `<div class="compat-placeholder" style="margin-bottom:16px;"><i data-feather="smartphone"></i><div class="compat-placeholder-body"><p class="compat-placeholder-title">Vista optimizada para móvil</p><p class="compat-placeholder-text">Mostramos primero metadatos (nombre, tamaño y propietario). Las miniaturas pesadas de Drive se ocultan para ahorrar datos y mejorar la carga.</p></div></div>` : ''}
     <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
       ${files.map(file => {
     const mimeType = file.mimeType || '';
@@ -223,7 +226,7 @@ async function loadDriveContent() {
     return `
           <div class="card glass-panel drive-card" style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: transform 0.2s; cursor:default;">
             <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
-              ${thumbnailLink
+              ${(thumbnailLink && !mobileMode)
         ? `<img src="${thumbnailLink}" alt="Vista previa de ${esc(file.name || 'archivo')}" style="width:100%; height:100%; object-fit:cover;">`
         : `<i data-feather="${icon}" style="width:32px; height:32px; opacity:0.4;"></i>`}
                 ${iconLink ? `<img src="${iconLink}" alt="Icono de archivo" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">` : ''}
@@ -289,11 +292,15 @@ function bindZoteroEvents() {
     });
 
     // Close popover when clicking outside
-    document.addEventListener('click', (e) => {
+    if (zoteroPopoverCloseHandler) {
+      document.removeEventListener('click', zoteroPopoverCloseHandler);
+    }
+    zoteroPopoverCloseHandler = (e) => {
       if (!popover.contains(e.target) && e.target !== btnConfig) {
         popover.style.display = 'none';
       }
-    });
+    };
+    document.addEventListener('click', zoteroPopoverCloseHandler);
   }
 
   if (btnSaveCfg) {

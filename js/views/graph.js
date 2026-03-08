@@ -3,7 +3,7 @@
  * Force-Graph visualization for Knowledge Management
  */
 import { store } from '../store.js';
-import { esc } from '../utils.js';
+import { esc, isMobileRuntime, renderCompatibilityNotice } from '../utils.js';
 
 // Lazy-load vault export utility
 async function loadVaultExport() {
@@ -14,8 +14,28 @@ async function loadVaultExport() {
 }
 
 export const renderGraph = (root) => {
+    if (isMobileRuntime()) {
+        root.innerHTML = `
+            <div class="view-inner">
+                <div class="view-header">
+                    <div class="view-header-text">
+                        <h1>Grafo de Conocimiento</h1>
+                        <p class="view-subtitle">Visualiza y vincula tus proyectos y referencias.</p>
+                    </div>
+                </div>
+                ${renderCompatibilityNotice({
+                    icon: 'monitor',
+                    title: 'Esta función solo está disponible en escritorio',
+                    description: 'El renderizado de grafos interactivos requiere más GPU/CPU y una pantalla amplia. En móvil, usa Biblioteca y Escritura para navegar por metadatos y enlaces.'
+                })}
+            </div>
+        `;
+        if (window.feather) feather.replace();
+        return;
+    }
+
     root.innerHTML = `
-        <div class="view-container" style="padding:0; overflow:hidden; display:flex; flex-direction:column; height:100vh;">
+        <div class="view-container" style="padding:0; overflow:hidden; display:flex; flex-direction:column; height:100%;">
             <header class="view-header" style="padding:15px 20px;">
                 <div class="view-title">
                     <h1>Grafo de Conocimiento</h1>
