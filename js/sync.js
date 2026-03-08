@@ -10,6 +10,7 @@ const syncManager = (() => {
     let accessToken = null;
     let isSyncing = false;
     let autoSyncTimer = null;
+    let networkOnline = navigator.onLine;
 
     const defaultConfig = {
         clientId: '',
@@ -44,27 +45,57 @@ const syncManager = (() => {
     function updateSyncUI(status) {
         const btn = document.getElementById('btn-sync-toggle');
         const indicator = document.getElementById('sync-indicator');
+        const stateLabel = document.getElementById('sync-state-label');
         if (!btn || !indicator) return;
 
         indicator.classList.remove('status-online', 'status-offline', 'status-syncing', 'status-error');
+        stateLabel?.classList.remove('status-online', 'status-offline', 'status-syncing', 'status-error');
+
+        const setLabel = (text, nextStatus) => {
+            if (!stateLabel) return;
+            stateLabel.textContent = text;
+            stateLabel.classList.add(nextStatus);
+        };
 
         switch (status) {
             case 'online':
                 indicator.classList.add('status-online');
                 btn.title = 'Google Drive conectado';
+                btn.setAttribute('aria-label', 'Sincronización online');
+                setLabel('Online', 'status-online');
                 break;
             case 'syncing':
                 indicator.classList.add('status-syncing');
                 btn.title = 'Sincronizando con Google Drive';
+                btn.setAttribute('aria-label', 'Sincronizando cambios');
+                setLabel('Sincronizando', 'status-syncing');
                 break;
             case 'error':
                 indicator.classList.add('status-error');
                 btn.title = 'Error de sincronización';
+                btn.setAttribute('aria-label', 'Error de sincronización');
+                setLabel('Error', 'status-error');
                 break;
             default:
                 indicator.classList.add('status-offline');
-                btn.title = 'Configurar Google Drive';
+                btn.title = networkOnline ? 'Configurar Google Drive' : 'Sin conexión';
+                btn.setAttribute('aria-label', networkOnline ? 'Sincronización desconectada' : 'Sin conexión a internet');
+                setLabel(networkOnline ? 'Offline' : 'Sin internet', 'status-offline');
         }
+    }
+
+    function bindNetworkListeners() {
+        window.addEventListener('online', () => {
+            networkOnline = true;
+            updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
+            if (window.showToast) showToast('Conexión restablecida', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            networkOnline = false;
+            updateSyncUI('offline');
+            if (window.showToast) showToast('Sin conexión. Trabajando en modo local.', 'warning');
+        });
     }
 
     async function loadGIS() {
@@ -114,6 +145,7 @@ const syncManager = (() => {
      * el cliente de token de Google si existe el Client ID persistido.
      */
     async function init() {
+        bindNetworkListeners();
         updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
         const cfg = getConfig();
         configureAutoSync(cfg.autoSyncMinutes);
@@ -206,13 +238,13 @@ const syncManager = (() => {
      * accidentales si el archivo remoto es más nuevo.
      */
     async function push() {
-        if (!accessToken || isSyncing) return;
+        if (!accessToken || isSyncing || !networkOnline) return;
         isSyncing = true;
         updateSyncUI('syncing');
 
         try {
             const cfg = getConfig();
-            const data = getSnapshot();
+            const data = await getSnapshot();
 
             let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
             if (!fileId) fileId = await findFile(cfg.fileName);
@@ -251,7 +283,7 @@ const syncManager = (() => {
      * mediante la hidratación global del Store.
      */
     async function pull() {
-        if (!accessToken || isSyncing) return;
+        if (!accessToken || isSyncing || !networkOnline) return;
         isSyncing = true;
         updateSyncUI('syncing');
 
@@ -286,7 +318,7 @@ const syncManager = (() => {
         // Default to a somewhat faster sync for chat/collaboration (e.g. 1 min default if not set otherwise)
         const ms = Math.max(1, Number(minutes) || 1) * 60 * 1000;
         autoSyncTimer = setInterval(async () => {
-            if (accessToken && !isSyncing) {
+            if (accessToken && !isSyncing && networkOnline) {
                 // Auto-sync sequence: Try to pull new changes first, then push our own changes
                 await pull();
                 if (!isSyncing) await push();
@@ -333,14 +365,16 @@ const syncManager = (() => {
     }
 
     async function updateFile(id, content) {
-        await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
+        const response = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(content),
+            timeout: 15000,
         });
+        if (!response.ok) throw new Error(`No se pudo actualizar archivo en Drive (${response.status})`);
     }
 
     async function getFileContent(id) {
