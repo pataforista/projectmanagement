@@ -652,6 +652,34 @@ body::before {
     border: 1.5px solid var(--bg-surface);
 }
 
+.sync-state-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    line-height: 1;
+}
+
+.sync-state-label.status-online {
+    color: var(--accent-success);
+    border-color: color-mix(in srgb, var(--accent-success) 40%, var(--border-color));
+}
+
+.sync-state-label.status-offline {
+    color: var(--text-muted);
+}
+
+.sync-state-label.status-syncing {
+    color: var(--accent-primary);
+    border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--border-color));
+}
+
+.sync-state-label.status-error {
+    color: var(--accent-danger);
+    border-color: color-mix(in srgb, var(--accent-danger) 40%, var(--border-color));
+}
+
 .status-online {
     background: var(--accent-success);
 }
@@ -1063,6 +1091,10 @@ body::before {
 
     .topbar {
         padding: 0 16px;
+    }
+
+    .sync-state-label {
+        display: none;
     }
 
 }
