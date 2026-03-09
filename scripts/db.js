@@ -285,10 +285,14 @@ export async function saveNote(note, options = {}) {
     const now = new Date().toISOString();
     const originalContent = String(note.content || '');
 
-    const content = autoLink
-      ? NoteProcessor.autoLink(originalContent, titles, note.title || '')
-      : originalContent;
+    const autoLinkResult = autoLink
+      ? NoteProcessor.autoLink(originalContent, titles, {
+          currentTitle: note.title || '',
+          maxReplacements: 200
+        })
+      : { content: originalContent, linksCreated: 0 };
 
+    const content = autoLinkResult.content;
     const contentHash = await computeContentHash(content);
 
     const prepared = {

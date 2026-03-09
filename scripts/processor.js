@@ -153,12 +153,13 @@ function summarize(text, sentencesCount = 2) {
  *
  * @param {string} content - Contenido a analizar
  * @param {string[]} titles - Títulos disponibles para linkear
- * @param {string} currentTitle - Título actual (no enlaza a sí mismo)
+ * @param {object} options - { currentTitle }
  * @returns {Array} Sugerencias: { title, index, match }
  */
-function suggestAutoLinks(content, titles, currentTitle = '') {
+function suggestAutoLinks(content, titles, options = {}) {
+  const { currentTitle = '' } = options;
   const normalized = normalizeLineEndings(content);
-  const { text } = protectSegments(normalized);
+  const protectedView = protectSegments(normalized);
 
   const suggestions = [];
   const sortedTitles = sortTitlesForLinking(titles);
@@ -167,15 +168,15 @@ function suggestAutoLinks(content, titles, currentTitle = '') {
     if (!title) continue;
     if (currentTitle && title.toLowerCase() === currentTitle.toLowerCase()) continue;
 
-    const safeTitle = escapeRegExp(title);
-    const rx = new RegExp(`\\b${safeTitle}\\b`, 'giu');
+    const escapedTitle = escapeRegExp(title);
+    const regex = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escapedTitle})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
 
     let match;
-    while ((match = rx.exec(text)) !== null) {
+    while ((match = regex.exec(protectedView.text)) !== null) {
       suggestions.push({
         title,
         index: match.index,
-        match: match[0]
+        match: match[2]
       });
     }
   }
@@ -192,26 +193,41 @@ function suggestAutoLinks(content, titles, currentTitle = '') {
  *
  * @param {string} content - Contenido original
  * @param {string[]} titles - Títulos disponibles
- * @param {string} currentTitle - Título actual (opcional)
- * @returns {string} Contenido con wikilinks añadidos
+ * @param {object} options - { currentTitle, maxReplacements }
+ * @returns {object} { content, linksCreated }
  */
-function autoLink(content, titles, currentTitle = '') {
+function autoLink(content, titles, options = {}) {
+  const {
+    currentTitle = '',
+    maxReplacements = 200
+  } = options;
+
   const normalized = normalizeLineEndings(content);
   const protectedView = protectSegments(normalized);
-  let text = protectedView.text;
+  let tempContent = protectedView.text;
+  let replacements = 0;
 
   const sortedTitles = sortTitlesForLinking(titles);
 
   for (const title of sortedTitles) {
+    if (replacements >= maxReplacements) break;
     if (!title) continue;
     if (currentTitle && title.toLowerCase() === currentTitle.toLowerCase()) continue;
 
-    const safeTitle = escapeRegExp(title);
-    const rx = new RegExp(`\\b${safeTitle}\\b`, 'giu');
-    text = text.replace(rx, `[[${title}]]`);
+    const escapedTitle = escapeRegExp(title);
+    const regex = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escapedTitle})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+
+    tempContent = tempContent.replace(regex, (full, before, match) => {
+      if (replacements >= maxReplacements) return full;
+      replacements += 1;
+      return `${before}[[${match}]]`;
+    });
   }
 
-  return protectedView.restore(text);
+  return {
+    content: protectedView.restore(tempContent),
+    linksCreated: replacements
+  };
 }
 
 /**
@@ -253,8 +269,9 @@ function buildDerivedFields(note, allTitles = []) {
     metadata,
     links,
     summary,
-    backlinkCandidates: suggestAutoLinks(content, allTitles, note.title || '')
-      .slice(0, 50) // tope defensivo para UI
+    backlinkCandidates: suggestAutoLinks(content, allTitles, {
+      currentTitle: note.title || ''
+    }).slice(0, 50) // tope defensivo para UI
   };
 }
 
