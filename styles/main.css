@@ -55,6 +55,17 @@
     --radius-lg: 14px;
     --radius-xl: 20px;
 
+    /* M3.5 shape + state tokens */
+    --shape-xs: 8px;
+    --shape-sm: 12px;
+    --shape-md: 16px;
+    --shape-lg: 24px;
+    --shape-xl: 30px;
+    --state-hover: color-mix(in srgb, var(--accent-primary) 11%, transparent);
+    --state-pressed: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    --surface-tonal: color-mix(in srgb, var(--bg-surface-2) 82%, var(--accent-primary) 18%);
+    --surface-tonal-soft: color-mix(in srgb, var(--bg-surface) 90%, var(--accent-primary) 10%);
+
     /* Transitions */
     --ease: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -303,11 +314,11 @@ body::before {
 
 /* Glassmorphism base */
 .glass-panel {
-    background: var(--bg-surface);
+    background: var(--surface-tonal-soft);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
-    border: 1px solid var(--border-highlight);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border: 1px solid color-mix(in srgb, var(--border-highlight) 82%, var(--accent-primary) 18%);
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.16), 0 4px 10px rgba(0, 0, 0, 0.18), 0 10px 24px rgba(0, 0, 0, 0.2);
     /* Stronger top light for depth */
 }
 
@@ -324,7 +335,7 @@ body::before {
     height: 100%;
     overflow-x: hidden;
     overflow-y: hidden;
-    border-right: 1px solid var(--border-color);
+    border-right: 1px solid color-mix(in srgb, var(--border-color) 76%, var(--accent-primary) 24%);
     z-index: 20;
     transition: transform var(--dur-med) var(--ease);
 }
@@ -335,7 +346,7 @@ body::before {
     align-items: center;
     padding: 0 10px;
     /* Reduced by 10px each side to account for toggle margin */
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 76%, var(--accent-primary) 24%);
     gap: 8px;
     justify-content: space-between;
 }
@@ -346,7 +357,7 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+    border-radius: 999px;
     color: var(--text-muted);
     transition: all var(--dur-fast);
     cursor: pointer;
@@ -385,7 +396,8 @@ body::before {
     width: 28px;
     height: 28px;
     background: var(--accent-primary-glow);
-    border-radius: 8px;
+    border-radius: var(--shape-sm);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 44%, transparent);
 }
 
 .sidebar-nav {
@@ -421,11 +433,11 @@ body::before {
     align-items: center;
     gap: 10px;
     padding: 7px 10px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--shape-md);
     color: var(--text-secondary);
     font-size: 0.84rem;
     font-weight: 500;
-    transition: background var(--dur-fast), color var(--dur-fast);
+    transition: background var(--dur-fast), color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-fast);
     cursor: pointer;
     border: 1px solid transparent;
     position: relative;
@@ -445,7 +457,7 @@ body::before {
 }
 
 .nav-item:hover {
-    background: var(--bg-surface-hover);
+    background: var(--state-hover);
     color: var(--text-primary);
 }
 
@@ -460,10 +472,10 @@ body::before {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, rgba(94, 106, 210, 0.15) 0%, rgba(94, 106, 210, 0.04) 100%);
-    border-radius: var(--radius-sm);
-    border: 1px solid rgba(94, 106, 210, 0.2);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    background: color-mix(in srgb, var(--accent-primary) 16%, var(--bg-surface));
+    border-radius: var(--shape-md);
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 34%, var(--border-color));
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
     z-index: -1;
 }
 
@@ -473,7 +485,7 @@ body::before {
     left: 0;
     top: 20%;
     bottom: 20%;
-    width: 3px;
+    width: 4px;
     background: linear-gradient(180deg, var(--accent-primary) 0%, var(--accent-teal) 100%);
     border-radius: 0 3px 3px 0;
     box-shadow: 0 0 8px var(--accent-primary-glow);
@@ -505,7 +517,7 @@ body::before {
 
 .sidebar-footer {
     padding: 16px 12px;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid color-mix(in srgb, var(--border-color) 76%, var(--accent-primary) 24%);
     display: flex;
     flex-direction: column;
     gap: 12px;
