@@ -53,9 +53,61 @@ function toRelative(filePath) {
   return path.relative(projectRoot, filePath);
 }
 
+function collectHtmlAssetReferences(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const attrPattern = /(?:src|href)=(["'])([^"']+)\1/g;
+  const refs = [];
+  let match;
+
+  while ((match = attrPattern.exec(content)) !== null) {
+    const reference = match[2].trim();
+
+    if (!reference ||
+      reference.startsWith('#') ||
+      /^https?:\/\//i.test(reference) ||
+      reference.startsWith('//') ||
+      reference.startsWith('mailto:') ||
+      reference.startsWith('tel:') ||
+      reference.startsWith('data:')) {
+      continue;
+    }
+
+    const cleanRef = reference.split('?')[0].split('#')[0];
+
+    if (!cleanRef || cleanRef.endsWith('/')) {
+      continue;
+    }
+
+    refs.push(cleanRef);
+  }
+
+  return refs;
+}
+
+function checkHtmlAssetReferences(filePath) {
+  const refs = collectHtmlAssetReferences(filePath);
+  const htmlDir = path.dirname(filePath);
+  const missing = [];
+
+  refs.forEach(ref => {
+    const absoluteRef = path.resolve(htmlDir, ref);
+    if (!fs.existsSync(absoluteRef)) {
+      missing.push(ref);
+    }
+  });
+
+  return {
+    ok: missing.length === 0,
+    filePath,
+    missing
+  };
+}
+
+
 function main() {
   const jsFiles = walk(projectRoot, '.js');
   const jsonFiles = walk(projectRoot, '.json');
+  const htmlFiles = walk(projectRoot, '.html');
 
   const jsFailures = jsFiles
     .map(runNodeSyntaxCheck)
@@ -65,7 +117,11 @@ function main() {
     .map(parseJson)
     .filter(result => !result.ok);
 
-  if (jsFailures.length || jsonFailures.length) {
+  const htmlFailures = htmlFiles
+    .map(checkHtmlAssetReferences)
+    .filter(result => !result.ok);
+
+  if (jsFailures.length || jsonFailures.length || htmlFailures.length) {
     console.error('Pre-upload review checks failed.');
 
     if (jsFailures.length) {
@@ -85,11 +141,22 @@ function main() {
       });
     }
 
+    if (htmlFailures.length) {
+      console.error('\nHTML asset reference errors:');
+      htmlFailures.forEach(failure => {
+        console.error(`- ${toRelative(failure.filePath)}`);
+        failure.missing.forEach(ref => {
+          console.error(`  · Missing reference: ${ref}`);
+        });
+      });
+    }
+
     process.exit(1);
   }
 
   console.log(`✅ JavaScript files checked: ${jsFiles.length}`);
   console.log(`✅ JSON files checked: ${jsonFiles.length}`);
+  console.log(`✅ HTML files checked: ${htmlFiles.length}`);
   console.log('✅ Project is ready for upload checks.');
 }
 
