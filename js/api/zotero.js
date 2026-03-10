@@ -163,6 +163,29 @@ const zoteroApi = (() => {
         return JSON.stringify(cslItems, null, 2);
     }
 
+    async function fetchItemNotes(itemKey) {
+        const creds = getCredentials();
+        if (!creds.userId || !creds.apiKey) {
+            throw new Error("Faltan las credenciales de Zotero (User ID o API Key)");
+        }
+
+        const url = `${BASE_URL}/users/${creds.userId}/items/${itemKey}/children?itemType=note&v=3&format=json`;
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Zotero-API-Version': '3',
+                'Zotero-API-Key': creds.apiKey
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error de Zotero API: ${response.status} ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
     async function syncLibrary() {
         try {
             showToast('Conectando a Zotero...', 'info');
