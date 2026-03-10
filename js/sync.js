@@ -457,8 +457,11 @@ const syncManager = (() => {
                 folderId = await createFolder('Nexus_Workspace');
                 if (folderId) localStorage.setItem('gdrive_folder_id', folderId);
             }
+            // Guard: nunca crear archivos en la raíz de Drive sin carpeta padre.
+            // Sin carpeta, los permisos de acceso quedan indefinidos.
+            if (!folderId) throw new Error('[Sync] Push abortado: no se pudo localizar ni crear la carpeta del workspace en Drive.');
 
-            // 2. Localizar el archivo core dentro del folder
+            // 2. Localizar el archivo core acotado DENTRO del folder (no búsqueda global)
             let fileId = validId(localStorage.getItem('gdrive_file_id'));
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
 
@@ -600,9 +603,12 @@ const syncManager = (() => {
         return result.id;
     }
 
-    async function findFile(name, parentId = null) {
-        let q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
-        if (parentId) q += ` and '${parentId}' in parents`;
+    async function findFile(name, parentId) {
+        // parentId es obligatorio: la búsqueda siempre debe estar acotada a la
+        // carpeta del workspace para no encontrar (ni reutilizar) archivos sueltos
+        // que puedan existir en la raíz de Drive sin permisos definidos.
+        if (!parentId) throw new Error('[Sync] findFile requiere un parentId de carpeta válido.');
+        const q = `name='${name.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false`;
 
         const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -611,9 +617,10 @@ const syncManager = (() => {
         return result.files && result.files[0] ? result.files[0].id : null;
     }
 
-    async function createFile(name, content, parentId = null) {
-        const metadata = { name, mimeType: 'application/json' };
-        if (parentId) metadata.parents = [parentId];
+    async function createFile(name, content, parentId) {
+        // parentId es obligatorio: nunca crear archivos sin carpeta padre.
+        if (!parentId) throw new Error('[Sync] createFile requiere un parentId de carpeta válido.');
+        const metadata = { name, mimeType: 'application/json', parents: [parentId] };
 
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
