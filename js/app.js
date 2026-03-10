@@ -420,9 +420,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                 authForgotLink.onclick = () => {
                     authForm.style.display = 'none';
                     if (authForgotContainer) authForgotContainer.style.display = 'none';
-                    authSubtitle.textContent = "Ingresa tu codigo de recuperacion.";
+                    authSubtitle.textContent = "Ingresa tu código de recuperación.";
                     authRecoveryPanel.style.display = 'flex';
                     authRecoveryCode.focus();
+
+                    // Show Google recovery button only if there is a linked Google account.
+                    // This avoids confusion for local-only workspaces.
+                    const googleRecoveryContainer = document.getElementById('auth-google-recovery-container');
+                    if (googleRecoveryContainer) {
+                        const linkedEmail = localStorage.getItem('workspace_user_email');
+                        if (linkedEmail) {
+                            googleRecoveryContainer.style.display = 'flex';
+                            const hint = document.getElementById('auth-google-recovery-hint');
+                            if (hint) hint.textContent = `Verifica con la cuenta: ${linkedEmail}`;
+                        }
+                    }
                 };
             }
 
@@ -432,6 +444,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     authNewpwdPanel.style.display = 'none';
                     authRecoveryCode.value = '';
                     authRecoveryCode.style.border = '';
+
+                    // Reset Google recovery panel to its initial state
+                    const googleRecoveryContainer = document.getElementById('auth-google-recovery-container');
+                    const googleRecoveryBtn = document.getElementById('auth-google-recovery-btn');
+                    const googleRecoveryLoading = document.getElementById('auth-google-recovery-loading');
+                    if (googleRecoveryContainer) googleRecoveryContainer.style.display = 'none';
+                    if (googleRecoveryBtn) googleRecoveryBtn.style.display = 'flex';
+                    if (googleRecoveryLoading) googleRecoveryLoading.style.display = 'none';
+
                     authForm.style.display = 'flex';
                     if (authForgotContainer) authForgotContainer.style.display = 'block';
                     authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
@@ -467,6 +488,74 @@ document.addEventListener('DOMContentLoaded', async () => {
                             authSubtitle.textContent = `Código incorrecto. Intentos restantes: ${MAX_ATTEMPTS - attempts}.`;
                         }
                         setTimeout(() => authRecoveryCode.style.border = '', 1000);
+                    }
+                };
+            }
+
+            // ── Google-based Recovery ────────────────────────────────────────
+            const authGoogleRecoveryBtn = document.getElementById('auth-google-recovery-btn');
+            const authGoogleRecoveryLoading = document.getElementById('auth-google-recovery-loading');
+
+            if (authGoogleRecoveryBtn) {
+                authGoogleRecoveryBtn.onclick = async () => {
+                    // Apply the same brute-force protection to Google recovery.
+                    // Without this, an attacker could spam Google logins as a bypass.
+                    if (isRecoveryLockedOut()) {
+                        const secs = getRecoveryRemainingLockout();
+                        authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
+                        return;
+                    }
+
+                    const clientId = syncManager.getConfig?.()?.clientId;
+                    if (!clientId) {
+                        authSubtitle.textContent = 'No se encontró un Google Client ID configurado.';
+                        return;
+                    }
+
+                    const linkedEmail = localStorage.getItem('workspace_user_email');
+                    if (!linkedEmail) {
+                        authSubtitle.textContent = 'No hay una cuenta de Google vinculada a este workspace.';
+                        return;
+                    }
+
+                    // Show loading state
+                    authGoogleRecoveryBtn.style.display = 'none';
+                    if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'flex';
+                    authSubtitle.textContent = 'Esperando autenticación de Google…';
+
+                    try {
+                        const user = await syncManager.signIn(clientId);
+
+                        // Normalize both emails to lowercase before comparing
+                        // to prevent case-sensitivity bypass.
+                        const googleEmail = (user?.email || '').toLowerCase().trim();
+                        const workspaceEmail = linkedEmail.toLowerCase().trim();
+
+                        if (googleEmail !== workspaceEmail) {
+                            // Wrong Google account — count as a failed recovery attempt.
+                            const attempts = recordFailedRecoveryAttempt();
+                            authGoogleRecoveryBtn.style.display = 'flex';
+                            if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'none';
+                            if (isRecoveryLockedOut()) {
+                                authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
+                            } else {
+                                authSubtitle.textContent = `⚠️ La cuenta de Google (${googleEmail}) no coincide con el workspace. Intentos restantes: ${MAX_ATTEMPTS - attempts}.`;
+                            }
+                            return;
+                        }
+
+                        // ✅ Identity verified — skip directly to new password panel.
+                        clearRecoveryAttempts();
+                        authRecoveryPanel.style.display = 'none';
+                        authSubtitle.textContent = '✅ Identidad verificada con Google. Crea una nueva contraseña.';
+                        authNewpwdPanel.style.display = 'flex';
+                        authNewpwdInput.focus();
+
+                    } catch (err) {
+                        console.warn('[Auth] Google recovery sign-in failed:', err);
+                        authGoogleRecoveryBtn.style.display = 'flex';
+                        if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'none';
+                        authSubtitle.textContent = 'No se pudo autenticar con Google. Intenta de nuevo o usa el código de recuperación.';
                     }
                 };
             }

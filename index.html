@@ -171,6 +171,30 @@
           <button type="button" id="auth-recovery-submit" class="btn btn-primary"
             style="flex:1; justify-content:center;">Verificar</button>
         </div>
+
+        <!-- Google recovery (shown only when workspace has a linked Google account) -->
+        <div id="auth-google-recovery-container" style="display:none; flex-direction:column; gap:8px; margin-top:4px;">
+          <div style="display:flex; align-items:center; gap:8px; color:var(--text-muted); font-size:0.78rem;">
+            <div style="flex:1; height:1px; background:var(--border-color);"></div>
+            <span>o</span>
+            <div style="flex:1; height:1px; background:var(--border-color);"></div>
+          </div>
+          <button type="button" id="auth-google-recovery-btn"
+            style="display:flex; align-items:center; justify-content:center; gap:8px; background:white; color:#333; border:1px solid #ddd; border-radius:8px; padding:10px 16px; font-size:0.88rem; font-weight:600; cursor:pointer; font-family:inherit; transition:box-shadow 0.15s;"
+            onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)'"
+            onmouseout="this.style.boxShadow='none'">
+            <img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="16" height="16" alt="Google">
+            Recuperar con Google
+          </button>
+          <p id="auth-google-recovery-hint" style="font-size:0.75rem; color:var(--text-muted); text-align:center; margin:0;">
+            Verifica tu identidad con la cuenta de Google vinculada a este workspace.
+          </p>
+          <!-- Loading state -->
+          <div id="auth-google-recovery-loading" style="display:none; align-items:center; justify-content:center; gap:8px; color:var(--text-muted); font-size:0.85rem;">
+            <i data-feather="loader" style="width:16px;height:16px;" class="spin"></i>
+            <span>Verificando con Google…</span>
+          </div>
+        </div>
       </div>
 
       <!-- New password panel (after code verified) -->
