@@ -3,7 +3,7 @@
  * Floating Minichat for team collaboration
  */
 import { store } from '../store.js';
-import { esc, fmtDate } from '../utils.js';
+import { esc, fmtDate, getCurrentWorkspaceActor } from '../utils.js';
 
 export const ChatManager = (() => {
     let _container = null;

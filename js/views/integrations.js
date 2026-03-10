@@ -47,9 +47,14 @@ function renderIntegrations(root) {
                 <span>Google Tasks (Tareas)</span>
               </label>
             </div>
-            <button class="btn btn-secondary btn-sm" onclick="syncManager?.openPanel()" style="margin-top:16px;width:100%;">
-              Configurar Google API
-            </button>
+            <div style="display:flex;gap:8px;margin-top:16px;">
+              <button class="btn btn-secondary btn-sm" onclick="syncManager?.openPanel()" style="flex:1;">
+                <i data-feather="settings" style="width:14px;height:14px;margin-right:4px;"></i> Configurar
+              </button>
+              <button class="btn btn-primary btn-sm" id="btn-integration-sync-now" style="flex:1;">
+                <i data-feather="refresh-cw" style="width:14px;height:14px;margin-right:4px;"></i> Sincronizar Ahora
+              </button>
+            </div>
           </div>
         </div>
 
@@ -250,6 +255,14 @@ function renderIntegrations(root) {
     renderIntegrations(root);
   });
 
+  root.querySelector('#btn-integration-sync-now')?.addEventListener('click', () => {
+    if (window.syncManager?.syncNow) {
+      syncManager.syncNow();
+    } else {
+      showToast('Sincronización no disponible. Configura Google Drive primero.', 'warning');
+    }
+  });
+
   root.querySelector('#sync-google-calendar')?.addEventListener('change', (e) => {
     localStorage.setItem('sync_gcal', e.target.checked);
     showToast(`Google Calendar ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
@@ -287,20 +300,76 @@ function renderIntegrations(root) {
     renderIntegrations(root);
   });
 
-  root.querySelector('#btn-save-security')?.addEventListener('click', () => {
+  root.querySelector('#btn-save-security')?.addEventListener('click', async () => {
     const pwd = root.querySelector('#int-new-pwd').value;
     const autolock = root.querySelector('#int-autolock').checked;
-    if (pwd.length >= 4) {
-      const hashStr = str => { let h = 0; for (let i = 0; i < str.length; i++) h = Math.imul(31, h) + str.charCodeAt(i) | 0; return h.toString(); };
-      localStorage.setItem('workspace_lock_hash', hashStr(pwd));
-      showToast('Contraseña establecida correctamente.', 'success');
-    } else if (pwd.length > 0) {
+
+    if (pwd.length > 0 && pwd.length < 4) {
       showToast('La contraseña debe tener al menos 4 caracteres.', 'error');
       return;
     }
+
+    if (pwd.length >= 4) {
+      // SHA-256 hash — compatible con el sistema de auth principal (app.js)
+      const cryptoLayer = await import('../utils/crypto.js').catch(() => null);
+      const hashPwd = async (str) => {
+        if (cryptoLayer?.hashPassword) return cryptoLayer.hashPassword(str);
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      };
+
+      // Generar código de recuperación criptográficamente seguro
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+      let recoveryCode = '';
+      for (let i = 0; i < 16; i++) {
+        if (i > 0 && i % 4 === 0) recoveryCode += '-';
+        recoveryCode += chars[randomBytes[i] % chars.length];
+      }
+      const normalized = recoveryCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      const [lockHash, recoveryHash] = await Promise.all([
+        hashPwd(pwd),
+        hashPwd(normalized)
+      ]);
+
+      localStorage.setItem('workspace_lock_hash', lockHash);
+      localStorage.setItem('workspace_recovery_hash', recoveryHash);
+
+      // Actualizar la clave de cifrado en la sesión actual
+      if (cryptoLayer?.unlock) await cryptoLayer.unlock(pwd);
+
+      // Mostrar el código de recuperación al usuario
+      const dialog = document.createElement('div');
+      dialog.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;';
+      dialog.innerHTML = `
+        <div style="background:var(--bg-surface);border-radius:16px;padding:28px;max-width:440px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,0.5);">
+          <h3 style="margin:0 0 8px;color:var(--accent-warning);">⚠️ Guarda tu código de recuperación</h3>
+          <p style="color:var(--text-secondary);font-size:0.85rem;margin:0 0 16px;">Si olvidas tu contraseña, necesitarás este código. Guárdalo en un lugar seguro antes de continuar.</p>
+          <div style="font-family:var(--font-mono);font-size:1.1rem;letter-spacing:3px;text-align:center;padding:16px;background:var(--bg-base);border-radius:8px;color:var(--text-primary);font-weight:700;margin-bottom:16px;">${recoveryCode}</div>
+          <div style="display:flex;gap:8px;">
+            <button id="sec-dlg-copy" class="btn btn-secondary" style="flex:1;justify-content:center;">Copiar código</button>
+            <button id="sec-dlg-done" class="btn btn-primary" style="flex:1;justify-content:center;">Ya lo guardé — Continuar</button>
+          </div>
+        </div>`;
+      document.body.appendChild(dialog);
+
+      dialog.querySelector('#sec-dlg-copy').onclick = () => {
+        navigator.clipboard.writeText(recoveryCode).catch(() => {});
+        dialog.querySelector('#sec-dlg-copy').textContent = '¡Copiado!';
+      };
+      dialog.querySelector('#sec-dlg-done').onclick = () => {
+        dialog.remove();
+        showToast('Contraseña actualizada correctamente.', 'success');
+        renderIntegrations(root);
+      };
+    }
+
     localStorage.setItem('autolock_enabled', autolock);
-    showToast('Configuración de seguridad guardada.', 'success');
-    renderIntegrations(root);
+    if (pwd.length === 0) {
+      showToast('Configuración de seguridad guardada.', 'success');
+      renderIntegrations(root);
+    }
   });
 
   root.querySelector('#btn-save-ollama')?.addEventListener('click', () => {
