@@ -159,7 +159,8 @@ const syncManager = (() => {
                     }
 
                     syncIdentityToWorkspaceProfile(currentUser);
-                    console.log('[Sync] Identity confirmed:', currentUser.email);
+                    // SECURITY FIX: Do not log email to console in production — leaks PII to DevTools.
+                    console.log('[Sync] Identity confirmed for user.');
                     if (window.updateUserProfileUI) window.updateUserProfileUI();
                     settleOnce(resolve, currentUser);
                 }
@@ -378,8 +379,14 @@ const syncManager = (() => {
         const sharedProjectIds = new Set(sharedProjects.map(p => p.id));
         const isShared = item => !item.projectId || sharedProjectIds.has(item.projectId);
 
+        // SECURITY FIX: Monotonic snapshot counter for rollback attack prevention.
+        // Each push increments the counter so stale/replayed snapshots can be rejected
+        // during pull (a snapshot with a lower seq than the local one is discarded).
+        const snapshotSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0) + 1;
+
         const data = {
             version: '1.2',
+            snapshotSeq,
             updatedAt: Date.now(),
             metadata: {
                 teamName: getConfig().teamName,
@@ -475,6 +482,8 @@ const syncManager = (() => {
             }
 
             localStorage.setItem('last_sync_local', String(data.updatedAt));
+            // Persist the snapshot counter so future pulls can detect rollbacks.
+            localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Push failed:', err);
@@ -642,6 +651,17 @@ const syncManager = (() => {
     }
 
     async function seedFromRemote(data) {
+        // SECURITY FIX: Reject snapshots with a lower sequence number than the local
+        // counter. This prevents replay / rollback attacks where a stale snapshot
+        // previously captured (e.g. from Drive by a malicious actor) is re-uploaded
+        // to silently revert security-critical changes (role changes, member removals).
+        const localSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0);
+        if (data.snapshotSeq !== undefined && data.snapshotSeq < localSeq) {
+            console.warn(`[Sync] Rollback rejected: remote snapshotSeq (${data.snapshotSeq}) < local (${localSeq}).`);
+            if (window.showToast) showToast('Snapshot remoto descartado: es más antiguo que el local.', 'warning');
+            return;
+        }
+
         if (data.settings) {
             syncSettingsToLocalStorage(data.settings);
         }
@@ -670,6 +690,11 @@ const syncManager = (() => {
         }
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
+
+        // Advance the local snapshot counter to the accepted remote value.
+        if (data.snapshotSeq !== undefined && data.snapshotSeq > localSeq) {
+            localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
+        }
     }
 
     function parseNotionCsv(text) {
@@ -953,10 +978,12 @@ const syncManager = (() => {
                     start: { dateTime: new Date(`${s.date}T${s.startTime || '09:00'}:00`).toISOString() },
                     end: { dateTime: new Date(`${s.date}T${s.endTime || '10:00'}:00`).toISOString() },
                 };
-                const resp = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+                // SECURITY FIX: Use fetchWithTimeout to prevent infinite hangs on slow connections.
+                const resp = await fetchWithTimeout('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(event)
+                    body: JSON.stringify(event),
+                    timeout: 12000
                 });
                 const result = await resp.json();
                 if (result.id) {
@@ -976,10 +1003,12 @@ const syncManager = (() => {
             if (t.gtaskId) continue;
             try {
                 const task = { title: t.title, notes: t.description || '' };
-                const resp = await fetch('https://www.googleapis.com/tasks/v1/lists/@default/tasks', {
+                // SECURITY FIX: Use fetchWithTimeout to prevent infinite hangs.
+                const resp = await fetchWithTimeout('https://www.googleapis.com/tasks/v1/lists/@default/tasks', {
                     method: 'POST',
                     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(task)
+                    body: JSON.stringify(task),
+                    timeout: 12000
                 });
                 const result = await resp.json();
                 if (result.id) {
