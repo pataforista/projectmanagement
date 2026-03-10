@@ -716,7 +716,7 @@ function openProfileModal() {
 
   modal.querySelector('#modal-close').addEventListener('click', closeModal);
   modal.querySelector('#modal-cancel').addEventListener('click', closeModal);
-  modal.querySelector('#profile-save').addEventListener('click', () => {
+  modal.querySelector('#profile-save').addEventListener('click', async () => {
     const name = modal.querySelector('#profile-name').value.trim() || 'Usuario';
     const role = modal.querySelector('#profile-role').value.trim();
     const memberId = modal.querySelector('#profile-member-id').value.trim();
@@ -734,23 +734,37 @@ function openProfileModal() {
     const newPwd = modal.querySelector('#profile-pwd').value.trim();
     let recoveryCodeForDisplay = null;
     if (newPwd) {
-      const hashStr = str => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) hash = Math.imul(31, hash) + str.charCodeAt(i) | 0;
-        return hash.toString();
-      };
-      const generateRecoveryCode = () => {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        let code = '';
-        for (let i = 0; i < 16; i++) {
-          if (i > 0 && i % 4 === 0) code += '-';
-          code += chars[Math.floor(Math.random() * chars.length)];
-        }
-        return code;
-      };
-      recoveryCodeForDisplay = generateRecoveryCode();
-      localStorage.setItem('workspace_lock_hash', hashStr(newPwd));
-      localStorage.setItem('workspace_recovery_hash', hashStr(recoveryCodeForDisplay.replace(/-/g, '')));
+      if (newPwd.length < 8) {
+        if (window.showToast) showToast('La contraseña maestra debe tener al menos 8 caracteres.', 'warning');
+        return;
+      }
+      // SECURITY FIX: Use cryptographically secure RNG (OS entropy) instead of Math.random().
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const randomBytes = crypto.getRandomValues(new Uint8Array(16));
+      let code = '';
+      for (let i = 0; i < 16; i++) {
+        if (i > 0 && i % 4 === 0) code += '-';
+        code += chars[randomBytes[i] % chars.length];
+      }
+      recoveryCodeForDisplay = code;
+
+      // SECURITY FIX: Use Web Crypto SHA-256 with salt (matches app.js hashPassword).
+      // The legacy djb2 hash was trivially reversible and set a hash that app.js
+      // would flag as "legacy" and attempt to migrate on the next login.
+      const enc = new TextEncoder();
+      let saltB64 = localStorage.getItem('nexus_salt');
+      if (!saltB64) {
+        const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+        saltB64 = btoa(String.fromCharCode(...saltBytes));
+        localStorage.setItem('nexus_salt', saltB64);
+      }
+      const pwdHashBuf = await crypto.subtle.digest('SHA-256', enc.encode(newPwd + saltB64));
+      const pwdHashHex = Array.from(new Uint8Array(pwdHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const rcHashBuf = await crypto.subtle.digest('SHA-256', enc.encode(recoveryCodeForDisplay.replace(/-/g, '') + saltB64));
+      const rcHashHex = Array.from(new Uint8Array(rcHashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      localStorage.setItem('workspace_lock_hash', pwdHashHex);
+      localStorage.setItem('workspace_recovery_hash', rcHashHex);
     }
     localStorage.setItem('autolock_enabled', modal.querySelector('#profile-autolock').checked);
     localStorage.setItem('low_feedback_enabled', modal.querySelector('#profile-low-feedback').checked);

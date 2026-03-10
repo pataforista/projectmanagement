@@ -197,15 +197,35 @@ export const ChatManager = (() => {
         }
     }
 
+    const MAX_MESSAGE_LENGTH = 2000;
+    let _lastMessageTime = 0;
+    const MIN_MESSAGE_INTERVAL_MS = 500; // rate limit: max 2 messages/sec
+
     async function sendMessage() {
         const input = document.getElementById('chat-input');
         const text = input.value.trim();
         if (!text) return;
 
-        const actor = getCurrentWorkspaceActor();
+        // SECURITY FIX: Enforce message size limit to prevent memory exhaustion attacks.
+        if (text.length > MAX_MESSAGE_LENGTH) {
+            if (window.showToast) showToast(`El mensaje no puede superar ${MAX_MESSAGE_LENGTH} caracteres.`, 'warning');
+            return;
+        }
+
+        // SECURITY FIX: Basic rate limiting to prevent chat spam.
         const now = Date.now();
+        if (now - _lastMessageTime < MIN_MESSAGE_INTERVAL_MS) {
+            if (window.showToast) showToast('Estás enviando mensajes muy rápido.', 'warning');
+            return;
+        }
+        _lastMessageTime = now;
+
+        const actor = getCurrentWorkspaceActor();
+        // SECURITY FIX: Use cryptographically secure random suffix instead of Math.random().
+        const randBytes = crypto.getRandomValues(new Uint8Array(4));
+        const randHex = Array.from(randBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         const msg = {
-            id: 'msg-' + now + '-' + Math.floor(Math.random() * 1000),
+            id: 'msg-' + now + '-' + randHex,
             timestamp: now,
             createdAt: now,
             sender: actor.name || actor.label,

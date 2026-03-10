@@ -119,7 +119,12 @@ const store = (() => {
     }
 
     async function dispatch(action, payload) {
-        const _uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        // SECURITY FIX: Use crypto.getRandomValues() instead of Math.random() for record IDs.
+        // Math.random() is a deterministic PRNG that can produce collisions under load
+        // and must never be used for security-relevant identifiers.
+        const _randBytes = crypto.getRandomValues(new Uint8Array(4));
+        const _randHex = Array.from(_randBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        const _uid = `${Date.now()}-${_randHex}`;
         let storeName;
 
         switch (action) {
