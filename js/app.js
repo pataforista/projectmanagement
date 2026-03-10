@@ -1,16 +1,25 @@
-import { 
-    initUIToggles, 
-    refreshSidebarProjects, 
-    openSearch, 
-    closeSearch, 
-    handleSearch, 
-    openQuickAdd, 
-    exportData, 
-    initGlobalEffects 
+import {
+    initUIToggles,
+    refreshSidebarProjects,
+    openSearch,
+    closeSearch,
+    handleSearch,
+    openQuickAdd,
+    exportData,
+    initGlobalEffects
 } from './ui.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     initGlobalEffects();
+
+    // ── 0. Pre-init syncManager (needed before auth block to read config) ──────
+    // FIX: syncManager.init() se mueve aquí para que getConfig() funcione
+    // dentro del bloque de auth sin race condition.
+    try {
+        await syncManager.init();
+    } catch (e) {
+        console.warn('[Boot] syncManager pre-init failed:', e);
+    }
 
     // ── 0. App Lock (Auth) — Nexus Fortress ───────────────────────────────────
     const authOverlay = document.getElementById('auth-overlay');
@@ -131,21 +140,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const clientIdContainer = document.getElementById('auth-client-id-container');
                 const showClientIdBtn = document.getElementById('auth-show-client-id');
                 const setupClientIdInput = document.getElementById('auth-setup-client-id');
+                const setupSharedIdInput = document.getElementById('auth-setup-shared-id');
 
-                if (showClientIdBtn) {
+                const localWarningPanel = document.getElementById('auth-local-warning');
+                const localWarningBackBtn = document.getElementById('auth-local-warning-back');
+                const localWarningProceedBtn = document.getElementById('auth-local-warning-proceed');
+
+                // FIX: Si no hay clientId guardado, mostrar el campo directamente
+                // sin obligar al usuario a hacer click en el enlace auxiliar.
+                const existingClientId = syncManager.getConfig().clientId;
+                if (!existingClientId) {
+                    clientIdContainer.style.display = 'flex';
+                    if (showClientIdBtn) showClientIdBtn.style.display = 'none';
+                } else if (showClientIdBtn) {
                     showClientIdBtn.onclick = () => {
                         clientIdContainer.style.display = 'flex';
                         showClientIdBtn.style.display = 'none';
                         setupClientIdInput.focus();
                     };
+                    // Pre-rellenar el campo si ya hay un clientId guardado
+                    setupClientIdInput.value = existingClientId;
                 }
 
                 googleBtn.onclick = async () => {
                     const providedClientId = setupClientIdInput?.value.trim();
-                    const existingClientId = syncManager.getConfig().clientId;
 
-                    if (!providedClientId && !existingClientId) {
-                        if (window.showToast) showToast('Configura tu Google Client ID para continuar con el login.', 'warning');
+                    const currentClientId = providedClientId || existingClientId;
+
+                    if (!currentClientId) {
+                        if (window.showToast) showToast('Ingresa tu Google Client ID para continuar.', 'warning');
                         clientIdContainer.style.display = 'flex';
                         if (showClientIdBtn) showClientIdBtn.style.display = 'none';
                         setupClientIdInput.focus();
@@ -157,49 +180,64 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (window.feather) feather.replace();
 
                     try {
-                        const targetClientId = providedClientId || existingClientId;
-                        
-                        // CAPA A: Autenticación (Identity)
-                        const user = await syncManager.signIn(targetClientId);
-                        
-                        // Guardar el Client ID si funcionó
-                        if (providedClientId) {
-                            syncManager.saveConfig({ clientId: providedClientId });
+                        // CAPA A: Autenticación (Identity via OIDC / One-Tap)
+                        const user = await syncManager.signIn(currentClientId);
+
+                        // Guardar el Client ID si se proporcionó uno nuevo
+                        if (providedClientId && providedClientId !== existingClientId) {
+                            syncManager.saveConfig({ ...syncManager.getConfig(), clientId: providedClientId });
                         }
+
+                        // FIX: Actualizar el perfil de usuario en la sidebar INMEDIATAMENTE
+                        // después del signIn para evitar la race condition visual.
+                        if (window.updateUserProfileUI) window.updateUserProfileUI();
 
                         // Mostrar Paso 2: Conectar Drive
                         const driveStep = document.getElementById('auth-drive-connect-step');
                         const driveBtn = document.getElementById('auth-google-drive-link');
                         const userNameEl = document.getElementById('auth-user-name');
-                        
+
                         if (driveStep && userNameEl) {
                             userNameEl.textContent = user.name || user.email;
                             driveStep.style.display = 'flex';
                             googleBtn.style.display = 'none';
-                            
+
                             driveBtn.onclick = async () => {
                                 driveBtn.disabled = true;
-                                driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando...';
+                                driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando Drive...';
                                 if (window.feather) feather.replace();
-                                
+
                                 try {
-                                    const remoteData = await syncManager.loginAndCheckRemote(targetClientId);
+                                    // CAPTURAR: Shared Folder ID opcional para nuevos grupos
+                                    const providedSharedId = setupSharedIdInput?.value.trim();
+                                    if (providedSharedId) {
+                                        syncManager.saveConfig({ ...syncManager.getConfig(), sharedFolderId: providedSharedId });
+                                    }
+
+                                    // CAPA B: Autorización OAuth para Drive (no repite signIn)
+                                    await syncManager.authorize(currentClientId);
+                                    // Buscar workspace remoto con el accessToken recién obtenido
+                                    const remoteData = await syncManager.checkRemote();
                                     handleRemoteWorkspace(remoteData);
                                 } catch (err) {
-                                    showToast('Error al conectar con Drive', 'error');
+                                    console.error('[Auth] Drive authorization failed:', err);
+                                    if (window.showToast) showToast('Error al conectar con Drive. Intenta de nuevo.', 'error');
                                     driveBtn.disabled = false;
-                                    driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive (Opcional)';
+                                    driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive';
+                                    if (window.feather) feather.replace();
                                 }
                             };
                         }
 
-                        // Permitir continuar solo con identidad si lo desea
-                        authSubtitle.textContent = `Hola ${user.name || user.email}. Ahora autoriza Drive para activar sincronización entre dispositivos.`;
-                        
-                        // Vinculación obligatoria para evitar sobreescrituras entre dispositivos
-                        manualLink.textContent = "Se requiere conexión con Google Drive para continuar";
+                        authSubtitle.textContent = `¡Hola, ${user.name || user.email}! Ahora autoriza Drive para activar la sincronización.`;
+
+                        // FIX: Actualizar texto y comportamiento del link manual
+                        // SOLO DESPUÉS de que el usuario esté autenticado, para coherencia.
+                        manualLink.textContent = 'Continuar solo en local (sin sincronización)';
                         manualLink.onclick = () => {
-                            if (window.showToast) showToast('Para continuar debes autorizar Google Drive y activar sincronización inicial.', 'warning');
+                            // En lugar de ir directo, mostramos la advertencia local
+                            setupPanel.style.display = 'none';
+                            localWarningPanel.style.display = 'flex';
                         };
 
                     } catch (err) {
@@ -207,7 +245,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         googleBtn.disabled = false;
                         googleBtn.innerHTML = '<img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="18" height="18" alt="Google"> Entrar con Google';
                         if (window.feather) feather.replace();
-                        if (window.showToast) showToast('Error al autenticar con Google.', 'error');
+                        if (window.showToast) showToast('Error al autenticar con Google. Verifica tu Client ID.', 'error');
                     }
                 };
 
@@ -231,8 +269,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setupPasswordCreation();
                 }
 
+                // Configurar Botones del Warning de Modo Local
+                if (localWarningBackBtn && localWarningProceedBtn) {
+                    localWarningBackBtn.onclick = () => {
+                        localWarningPanel.style.display = 'none';
+                        setupPanel.style.display = 'flex';
+                    };
+                    localWarningProceedBtn.onclick = () => {
+                        localWarningPanel.style.display = 'none';
+                        authForm.style.display = 'flex';
+                        authSubtitle.textContent = 'Crea una contraseña maestra para proteger tus datos locales.';
+                        setupPasswordCreation();
+                    };
+                }
+
+                // FIX: El link manual en el estado inicial (antes del signIn)
+                // permite continuar en modo local sin bloquear al usuario, pero previa advertencia.
+                manualLink.textContent = 'Configuración manual (Solo local)';
                 manualLink.onclick = () => {
-                    if (window.showToast) showToast('Este workspace requiere vinculación con Google para evitar conflictos de sincronización.', 'warning');
+                    setupPanel.style.display = 'none';
+                    localWarningPanel.style.display = 'flex';
                 };
             } else {
                 // Fallback si por alguna razón no están los elementos nuevos
@@ -423,10 +479,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('[Boot] IndexedDB init failed:', e);
     }
 
-    // ── 2. Load & seed store ───────────────────────────────────────────────────
+    // ── 2. Load store ───────────────────────────────────────────────────
     try {
         await store.load();
-        await store.seedIfEmpty();
     } catch (e) {
         console.warn('[Boot] Store load failed:', e);
     }
@@ -511,6 +566,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     router.init();
 
     // ── 7. Load User Profile & Notifications ──────────────────────────────────
+    // FIX: updateUserProfileUI ya fue llamada durante el auth flow de Google.
+    // La llamamos de nuevo aquí como garantía para el flujo de unlock por contraseña.
     if (window.updateUserProfileUI) updateUserProfileUI();
     if (window.NotificationsManager) NotificationsManager.init();
     if (window.ChatManager) ChatManager.init();
@@ -518,12 +575,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
 
-    // ── 9. Try sync ────────────────────────────────────────────────────────────
+    // ── 9. Try sync pull ───────────────────────────────────────────────────────
+    // FIX: syncManager.init() ya fue llamado al inicio (antes del auth block).
+    // Aquí solo hacemos el pull inicial si ya hay un accessToken activo.
     try {
-        await syncManager.init();
         await syncManager.pull();
     } catch (e) {
-        console.warn('[Sync] Could not connect on boot:', e);
+        console.warn('[Sync] Could not pull on boot:', e);
     }
 
     // ── 10. Global Action Listeners ────────────────────────────────────────────

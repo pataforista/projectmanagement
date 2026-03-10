@@ -64,37 +64,13 @@ const store = (() => {
 
     // ── Seed if empty ─────────────────────────────────────────────────────────
     /**
-     * Si no hay proyectos existentes, crea un conjunto de datos inicial (semilla)
-     * e inserta estos valores por defecto en la base de datos y la memoria RAM.
+     * Ya no inyecta datos locales "dummy". Solo se asegura de inicializar
+     * si es que falta algo vital de estructura, actualmente no usado por diseño
+     * off-grid cloud-first, dejando que la BD inicie en blanco puro.
      */
     async function seedIfEmpty() {
         if (_state.projects.length > 0) return;
-
-        console.log('Seeding initial data...');
-        const now = Date.now();
-
-        const m1 = { id: 'u1', name: 'Mi usuario', role: 'Investigador Principal', avatar: 'C' };
-        const m2 = { id: 'u2', name: 'Equipo Alpha', role: 'Colaboradores', avatar: 'A' };
-        const m3 = { id: 'u3', name: 'Supervisor', role: 'Revisión', avatar: 'S' };
-
-        await dbAPI.put('members', m1);
-        await dbAPI.put('members', m2);
-        await dbAPI.put('members', m3);
-        _state.members = [m1, m2, m3];
-
-        const p1 = { id: 'p1', name: 'Proyecto de Investigación A', description: 'Investigación sobre metodologías ágiles en educación.', type: 'Investigación', status: 'activo', ownerId: 'u1', createdAt: now };
-        const p2 = { id: 'p2', name: 'Artículo: Cognición y Lenguaje', description: 'Redacción de paper para revista indexada.', type: 'Artículo', status: 'activo', ownerId: 'u1', createdAt: now };
-        const p3 = { id: 'p3', name: 'Clase Semestre A — Metodología', description: 'Preparación de material y dictado de clases.', type: 'Clase', status: 'activo', ownerId: 'u1', createdAt: now };
-
-        const t1 = { id: 't1', projectId: 'p2', title: 'Redactar introducción del artículo', status: 'En elaboración', priority: 'alta', dueDate: '2026-03-04', subtasks: [], tags: ['Escritura'], assigneeId: 'u1', createdAt: now };
-        const t2 = { id: 't2', projectId: 'p3', title: 'Definir pregunta de investigación central', status: 'Capturado', priority: 'media', dueDate: '2026-03-05', subtasks: [], tags: ['Planeación'], assigneeId: 'u2', createdAt: now };
-
-        await dbAPI.put('projects', p1); await dbAPI.put('projects', p2); await dbAPI.put('projects', p3);
-        await dbAPI.put('tasks', t1); await dbAPI.put('tasks', t2);
-
-        _state.projects = [p1, p2, p3];
-        _state.tasks = [t1, t2];
-        _notify('*');
+        console.log('Skip seeding: starting with pure blank state.');
     }
 
     // ── Subscription ──────────────────────────────────────────────────────────
@@ -131,6 +107,17 @@ const store = (() => {
      * @param {Object} payload - Datos de la entidad asociados al tipo de evento.
      * @returns {Promise<any>}
      */
+
+    // Debounced push: agrupa ráfagas de acciones en 1 solo push a Drive (evita saturar la red)
+    let _syncPushTimer = null;
+    function _schedulePush() {
+        if (!window.syncManager) return;
+        if (_syncPushTimer) clearTimeout(_syncPushTimer);
+        _syncPushTimer = setTimeout(() => {
+            if (!syncManager.isSyncing) syncManager.push();
+        }, 5000); // espera 5s antes de confirmar el push
+    }
+
     async function dispatch(action, payload) {
         const _uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         let storeName;
@@ -654,10 +641,10 @@ const store = (() => {
                 console.warn('Unknown action:', action);
         }
 
-        // Pillar 2: Reactive Sync Push
-        // Trigger Google Drive sync push if connected and not currently syncing
-        if (window.syncManager && !syncManager.isSyncing) {
-            syncManager.push();
+        // Pillar 2: Reactive Sync Push (debounced 5s — previene ráfagas de peticiones)
+        // Si el usuario hace varias acciones seguidas, sólo se ejecuta 1 push.
+        if (action !== 'HYDRATE_STORE') {
+            _schedulePush();
         }
     }
 

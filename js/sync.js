@@ -17,11 +17,11 @@ const syncManager = (() => {
     const defaultConfig = {
         clientId: '',
         fileName: 'workspace-team-data.json',
-        sharedFileId: '',
+        sharedFolderId: '',
         teamName: 'Equipo pequeño',
         autoSyncMinutes: 1,
     };
-    
+
     // ... rest of getConfig/saveConfig ...
 
     function getConfig() {
@@ -133,7 +133,7 @@ const syncManager = (() => {
             if (!client_id) return reject('No Google Client ID configured');
 
             await loadGIS();
-            
+
             google.accounts.id.initialize({
                 client_id: client_id,
                 callback: (response) => {
@@ -207,49 +207,42 @@ const syncManager = (() => {
         });
     }
 
-    /**
-     * Inicia el flujo de autenticación OAuth2 y devuelve una promesa con el accessToken.
-     */
-    async function login(optionalClientId) {
-        return new Promise(async (resolve, reject) => {
-            const cfg = getConfig();
-            const client_id = optionalClientId || cfg.clientId;
-            if (!client_id) return reject('No Google Client ID configured');
-
-            await loadGIS();
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: client_id,
-                scope: SCOPES,
-                callback: (resp) => {
-                    if (resp?.error) return reject(resp.error);
-                    accessToken = resp.access_token;
-                    localStorage.setItem(STATUS_KEY, 'true');
-                    updateSyncUI('online');
-                    resolve(accessToken);
-                },
-            });
-            tokenClient.requestAccessToken({ prompt: 'consent' });
-        });
-    }
 
     /**
      * Login + Busca el archivo de workspace en Drive y devuelve su contenido si existe.
+     * FIXED: Si ya hay un usuario autenticado (currentUser), NO vuelve a llamar signIn
+     * para evitar abrir el One-Tap de Google por segunda vez.
      */
     async function loginAndCheckRemote(optionalClientId) {
         try {
-            // First identify (OIDC)
-            await signIn(optionalClientId);
-            // Then authorize (OAuth) only if identity is confirmed
+            // Solo llama signIn si NO hay identidad ya confirmada en esta sesión
+            if (!currentUser) {
+                await signIn(optionalClientId);
+            }
+            // Siempre autorizar Drive (OAuth) ya que el accessToken puede no existir
             await authorize(optionalClientId);
-            
-            const cfg = getConfig();
-            const fileId = await findFile(cfg.fileName);
-            if (!fileId) return null;
-            return await getFileContent(fileId);
+            return await checkRemote();
         } catch (err) {
             console.error('[Sync] identity + authorize flow failed:', err);
             throw err;
         }
+    }
+
+    /**
+     * Busca el archivo del workspace en Drive con el accessToken actual.
+     * Requiere que authorize() ya haya sido llamado antes.
+     * @returns {Object|null} Contenido del archivo JSON remoto, o null si no existe.
+     */
+    async function checkRemote() {
+        if (!accessToken) throw new Error('[Sync] checkRemote: no accessToken disponible. Llama authorize() primero.');
+        const cfg = getConfig();
+
+        let folderId = cfg.sharedFolderId || await findFolder('Nexus_Workspace');
+        if (!folderId) return null;
+
+        const fileId = await findFile(cfg.fileName, folderId);
+        if (!fileId) return null;
+        return await getFileContent(fileId);
     }
 
     async function initTokenClient() {
@@ -283,7 +276,7 @@ const syncManager = (() => {
     async function init() {
         bindNetworkListeners();
         updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
-        
+
         const storedIdToken = localStorage.getItem(ID_TOKEN_KEY);
         if (storedIdToken) currentUser = decodeIdToken(storedIdToken);
 
@@ -388,25 +381,31 @@ const syncManager = (() => {
             const cfg = getConfig();
             const data = await getSnapshot();
 
-            let fileId = cfg.sharedFileId || localStorage.getItem('gdrive_file_id');
-            if (!fileId) fileId = await findFile(cfg.fileName);
+            // 1. Localizar o crear el Workspace Folder
+            let folderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+            if (!folderId) folderId = await findFolder('Nexus_Workspace');
+            if (!folderId) {
+                folderId = await createFolder('Nexus_Workspace');
+                localStorage.setItem('gdrive_folder_id', folderId);
+            }
+
+            // 2. Localizar el archivo core dentro del folder
+            let fileId = localStorage.getItem('gdrive_file_id');
+            if (!fileId) fileId = await findFile(cfg.fileName, folderId);
 
             if (fileId) {
-                // Pre-flight check to prevent blind overwrites
                 const remoteData = await getFileContentMetadata(fileId);
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
                 if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate) {
-                    // STRICT CONFLICT RESOLUTION: If remote is newer than our LAST PULL/PUSH, we MUST pull first.
-                    // No more 60-second grace period that allowed data loss.
                     if (window.showToast) showToast('⚠️ Hay cambios remotos más recientes. Por favor, "Traer cambios" primero.', 'warning', true);
                     console.warn('[Sync] Push blocked: remote is newer than last local sync point.');
                     return;
                 }
                 await updateFile(fileId, data);
             } else {
-                const newId = await createFile(cfg.fileName, data);
-                if (!cfg.sharedFileId) localStorage.setItem('gdrive_file_id', newId);
+                const newId = await createFile(cfg.fileName, data, folderId);
+                localStorage.setItem('gdrive_file_id', newId);
             }
 
             localStorage.setItem('last_sync_local', String(data.updatedAt));
@@ -431,7 +430,19 @@ const syncManager = (() => {
 
         try {
             const cfg = getConfig();
-            const fileId = cfg.sharedFileId || await findFile(cfg.fileName);
+
+            // 1. Localizar el Workspace Folder
+            let folderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+            if (!folderId) folderId = await findFolder('Nexus_Workspace');
+            if (!folderId) {
+                updateSyncUI('online');
+                return; // Nothing to pull if the folder doesn't exist
+            }
+            localStorage.setItem('gdrive_folder_id', folderId);
+
+            // 2. Localizar el archivo core
+            let fileId = localStorage.getItem('gdrive_file_id');
+            if (!fileId) fileId = await findFile(cfg.fileName, folderId);
             if (!fileId) {
                 updateSyncUI('online');
                 return;
@@ -466,6 +477,9 @@ const syncManager = (() => {
                 if (!isSyncing) await push();
             }
         }, ms);
+
+        // Start the micro-polling Chat Engine
+        startChatSync();
     }
 
     // Hardening: Network Timeout Wrapper to prevent infinite hanging
@@ -478,11 +492,12 @@ const syncManager = (() => {
             signal: controller.signal
         });
         clearTimeout(id);
+        clearTimeout(id);
         return response;
     }
 
-    async function findFile(name) {
-        const q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
+    async function findFolder(name) {
+        const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
         const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -490,8 +505,34 @@ const syncManager = (() => {
         return result.files && result.files[0] ? result.files[0].id : null;
     }
 
-    async function createFile(name, content) {
+    async function createFolder(name, parentId = null) {
+        const metadata = { name, mimeType: 'application/vnd.google-apps.folder' };
+        if (parentId) metadata.parents = [parentId];
+
+        const resp = await fetchWithTimeout('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata)
+        });
+        const result = await resp.json();
+        return result.id;
+    }
+
+    async function findFile(name, parentId = null) {
+        let q = `name='${name.replace(/'/g, "\\'")}' and trashed=false`;
+        if (parentId) q += ` and '${parentId}' in parents`;
+
+        const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const result = await resp.json();
+        return result.files && result.files[0] ? result.files[0].id : null;
+    }
+
+    async function createFile(name, content, parentId = null) {
         const metadata = { name, mimeType: 'application/json' };
+        if (parentId) metadata.parents = [parentId];
+
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
         form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
@@ -713,8 +754,8 @@ const syncManager = (() => {
               <input class="form-input" id="sync-file-name" value="${esc(cfg.fileName)}">
             </div>
             <div class="form-group">
-              <label class="form-label">Shared File ID (Opcional)</label>
-              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID del JSON compartido" value="${esc(cfg.sharedFileId)}">
+              <label class="form-label">Shared Folder ID (Opcional)</label>
+              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID de la Carpeta compartida" value="${esc(cfg.sharedFolderId)}">
             </div>
           </div>
           <div class="form-group">
@@ -767,11 +808,11 @@ const syncManager = (() => {
         overlay.querySelector('#sync-save-connect').addEventListener('click', async () => {
             const clientId = overlay.querySelector('#sync-client-id').value.trim();
             const fileName = overlay.querySelector('#sync-file-name').value.trim() || defaultConfig.fileName;
-            const sharedFileId = overlay.querySelector('#sync-shared-id').value.trim();
+            const sharedFolderId = overlay.querySelector('#sync-shared-id').value.trim();
             const autoSyncMinutes = Number(overlay.querySelector('#sync-auto-min').value || 5);
             const membersRaw = overlay.querySelector('#sync-members').value.trim();
 
-            saveConfig({ clientId, fileName, sharedFileId, autoSyncMinutes });
+            saveConfig({ clientId, fileName, sharedFolderId, autoSyncMinutes });
             await syncMembers(membersRaw);
             await authenticate();
             overlay.remove();
@@ -946,23 +987,134 @@ const syncManager = (() => {
         showToast('Sincronización completada.', 'success');
     }
 
-    return { 
-        init, 
-        signIn, 
-        authorize, 
-        loginAndCheckRemote, 
-        authenticate, 
-        disconnect, 
-        push, 
-        pull, 
-        syncNow, 
-        openPanel, 
-        getConfig, 
-        saveConfig, 
-        listDriveFiles, 
-        syncCalendar, 
-        syncGoogleTasks, 
-        syncTodoist, 
+    // ── CHAT ENGINE (Local-First P2P via Drive) ──────────────────────────────
+
+    let chatFolderId = localStorage.getItem('gdrive_chat_folder_id');
+    let chatSyncTimer = null;
+
+    async function getChatFolder() {
+        if (chatFolderId) return chatFolderId;
+        const cfg = getConfig();
+        let rootFolderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+        if (!rootFolderId) return null; // Aún no hay workspace
+
+        chatFolderId = await findFolder('chat_messages', rootFolderId);
+        if (!chatFolderId) {
+            chatFolderId = await createFolder('chat_messages', rootFolderId);
+        }
+        localStorage.setItem('gdrive_chat_folder_id', chatFolderId);
+        return chatFolderId;
+    }
+
+    async function uploadChatMessage(msg) {
+        if (!accessToken || !networkOnline) return false;
+        try {
+            const fId = await getChatFolder();
+            if (!fId) return false;
+
+            // Si la capa crypto está activa, podemos encriptarlo aquí.
+            let payload = msg;
+            if (window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
+                try { payload = await encryptRecord(msg); } catch (e) { }
+            }
+
+            const name = `msg_${msg.createdAt}_${msg.id}.json`;
+            await createFile(name, payload, fId);
+            return true;
+        } catch (e) {
+            console.error('[ChatSync] Upload failed:', e);
+            return false;
+        }
+    }
+
+    async function pollChat() {
+        if (!accessToken || !networkOnline || isSyncing) return;
+        try {
+            const fId = await getChatFolder();
+            if (!fId) return;
+
+            let token = localStorage.getItem('gdrive_chat_token');
+            if (!token) {
+                const tkRes = await fetchWithTimeout('https://www.googleapis.com/drive/v3/changes/getStartPageToken', {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                const tkData = await tkRes.json();
+                token = tkData.startPageToken;
+                localStorage.setItem('gdrive_chat_token', token);
+                return; // Empezamos a escuchar desde ahora
+            }
+
+            const res = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/changes?pageToken=${token}&spaces=drive&fields=changes(fileId,removed,file(name,parents)),newStartPageToken,nextPageToken`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const data = await res.json();
+
+            // Si el token expira o es inválido, reset
+            if (data.error && data.error.code === 400) {
+                localStorage.removeItem('gdrive_chat_token');
+                return;
+            }
+
+            if (data.changes && data.changes.length > 0) {
+                for (const change of data.changes) {
+                    if (!change.removed && change.file && change.file.name && change.file.name.startsWith('msg_')) {
+                        // Verificamos si pertenece a nuestra carpeta de chat (a veces drive no devuelve parents si no se pide bien, pero lo pedimos en fields)
+                        if (change.file.parents && change.file.parents.includes(fId)) {
+                            try {
+                                let msgData = await getFileContent(change.fileId);
+
+                                // Decrypt si aplica
+                                if (msgData.iv && window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
+                                    try { msgData = await decryptRecord(msgData); } catch (e) { }
+                                }
+
+                                // Inyectar a la base de datos local y excluirlo del monolithic sync
+                                msgData.visibility = 'local';
+
+                                // Revisamos si ya existe para evitar duplicados
+                                const exist = (store.get.messages ? store.get.messages() : []).find(m => m.id === msgData.id);
+                                if (!exist) {
+                                    await store.dispatch('ADD_MESSAGE', msgData);
+                                }
+                            } catch (e) { console.warn('[ChatSync] Failed DL msg', e); }
+                        }
+                    }
+                }
+            }
+
+            if (data.newStartPageToken) {
+                localStorage.setItem('gdrive_chat_token', data.newStartPageToken);
+            }
+        } catch (e) {
+            console.error('[ChatSync] Polling error:', e);
+        }
+    }
+
+    function startChatSync() {
+        if (chatSyncTimer) clearInterval(chatSyncTimer);
+        chatSyncTimer = setInterval(pollChat, 2500); // 2.5s Latencia!
+    }
+
+    return {
+        init,
+        signIn,
+        authorize,
+        loginAndCheckRemote,
+        checkRemote,
+        authenticate,
+        disconnect,
+        push,
+        pull,
+        syncNow,
+        openPanel,
+        getConfig,
+        saveConfig,
+        listDriveFiles,
+        syncCalendar,
+        syncGoogleTasks,
+        syncTodoist,
+        uploadChatMessage,
+        startChatSync,
         getAccessToken: () => accessToken,
         getUser: () => currentUser
     };

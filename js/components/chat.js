@@ -193,14 +193,24 @@ export const ChatManager = (() => {
         if (!text) return;
 
         const actor = getCurrentWorkspaceActor();
-
-        await store.dispatch('ADD_MESSAGE', {
-            sender: actor.label,
+        const now = Date.now();
+        const msg = {
+            id: 'msg-' + now + '-' + Math.floor(Math.random() * 1000),
+            timestamp: now,
+            createdAt: now,
+            sender: actor.name || actor.label,
             senderId: actor.id,
-            author: actor.label,
             text: text,
-            projectId: window.router?.current?.params?.projectId || null
-        });
+            visibility: 'local' // Evita que se suba en el JSON monolítico
+        };
+
+        // Guardar instantáneamente offline
+        await store.dispatch('ADD_MESSAGE', msg);
+
+        // Subir micro-archivo de chat en segundo plano
+        if (window.syncManager && window.syncManager.uploadChatMessage) {
+            window.syncManager.uploadChatMessage(msg).catch(e => console.error('Chat push error:', e));
+        }
 
         input.value = '';
     }
