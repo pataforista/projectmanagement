@@ -190,7 +190,7 @@ window.openImportInterconsultationModal = function () {
         <div class="form-group" style="padding:12px; background:var(--bg-surface-2); border-radius:8px; margin-bottom:16px;">
           <h3 style="margin:0 0 12px 0; font-size:1rem; display:flex; align-items:center; gap:6px;"><i data-feather="file-text" style="width:16px;height:16px;"></i> Importar de Google Sheets (Vía API)</h3>
           <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
-            Pega el enlace privado de tu navegador. <b>Requiere estar conectado a Google Drive</b> en el panel inferior. Las columnas soportadas son: <b>paciente</b>, <b>especialidad</b>, <b>estado</b>, <b>notas</b>.
+            Pega el enlace de tu hoja de cálculo. <b>Requiere estar conectado a Google Drive</b> (panel de sincronización). Si obtienes error 403, <b>desconecta y reconecta tu Google Drive</b> para otorgar el permiso de Sheets. Columnas soportadas: <b>paciente</b>, <b>especialidad</b>, <b>estado</b>, <b>notas</b>.
           </p>
           <label class="form-label">Enlace de Google Sheets</label>
           <div style="display:flex; gap:8px;">
@@ -254,14 +254,21 @@ window.openImportInterconsultationModal = function () {
       const btn = overlay.querySelector('#btn-run-sheets');
       btn.innerHTML = '<i class="feather" data-feather="loader"></i> Cargando...';
 
-      const apiUrl = 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/A1:Z';
+        const apiUrl = 'https://sheets.googleapis.com/v4/spreadsheets/' + spreadsheetId + '/values/A:Z';
       const res = await fetch(apiUrl, {
         headers: { Authorization: 'Bearer ' + token }
       });
 
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) throw new Error('Permiso denegado. Asegúrate de conectar tu Drive y dar permisos de Hoja de Cálculo.');
-        throw new Error('Error al descargar Sheets: ' + res.statusText);
+        let errMsg = 'Error al descargar Sheets: ' + res.statusText;
+        if (res.status === 401) {
+          errMsg = 'Token expirado. Reconecta tu Google Drive desde el panel de Sincronización (ícono abajo izquierda) y vuelve a intentarlo.';
+        } else if (res.status === 403) {
+          errMsg = 'Permiso denegado. Desconecta y vuelve a conectar tu Google Drive para otorgar permisos de Google Sheets. El token actual puede no incluir ese scope.';
+        } else if (res.status === 404) {
+          errMsg = 'Hoja de cálculo no encontrada. Verifica que el enlace sea correcto y que tu cuenta tenga acceso.';
+        }
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
