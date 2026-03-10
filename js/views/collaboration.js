@@ -13,22 +13,30 @@ function renderCollaboration(root) {
   const now = Date.now();
   const last24h = now - (24 * 60 * 60 * 1000);
 
-  const activityByUser = new Map();
+  // FIX: Use identity key (updatedById) as the map key instead of the display name.
+  // If a user changes their name between devices, the previous activity would appear
+  // as a different person when keyed by name. Identity key is stable across renames.
+  const activityByUser = new Map(); // key: identityKey → { name, interactions }
 
   tasks.forEach(task => {
     if (task.updatedAt && task.updatedAt >= last24h && task.updatedBy) {
-      activityByUser.set(task.updatedBy, (activityByUser.get(task.updatedBy) || 0) + 1);
+      const key = task.updatedById || `name:${task.updatedBy}`;
+      const entry = activityByUser.get(key) || { name: task.updatedBy, interactions: 0 };
+      entry.interactions += 1;
+      activityByUser.set(key, entry);
     }
   });
 
   messages.forEach(msg => {
     if (msg.timestamp && msg.timestamp >= last24h && msg.sender) {
-      activityByUser.set(msg.sender, (activityByUser.get(msg.sender) || 0) + 1);
+      const key = msg.senderId || `name:${msg.sender}`;
+      const entry = activityByUser.get(key) || { name: msg.sender, interactions: 0 };
+      entry.interactions += 1;
+      activityByUser.set(key, entry);
     }
   });
 
-  const activeUsers = Array.from(activityByUser.entries())
-    .map(([name, interactions]) => ({ name, interactions }))
+  const activeUsers = Array.from(activityByUser.values())
     .sort((a, b) => b.interactions - a.interactions);
 
   const unassignedTasks = tasks.filter(t => !t.assigneeId).length;

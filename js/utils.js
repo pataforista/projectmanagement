@@ -267,6 +267,10 @@ function getObsidianFileName(uri) {
 }
 
 // ── Settings Sync ────────────────────────────────────────────────────────────
+// SECURITY: nexus_salt is intentionally excluded — it is a per-device
+// PBKDF2 derivation parameter and must never travel in a shared Drive file.
+// workspace_lock_hash is also excluded; each user manages their own
+// local password independently of the team workspace file.
 export const SYNCABLE_SETTINGS_KEYS = [
     'workspace_user_name',
     'workspace_user_role',
@@ -274,7 +278,6 @@ export const SYNCABLE_SETTINGS_KEYS = [
     'workspace_user_member_id',
     'workspace_user_email',
     'workspace_team_label',
-    'nexus_salt',
     'autolock_enabled',
     'low_feedback_enabled'
 ];
@@ -319,8 +322,13 @@ function syncSettingsToLocalStorage(settings) {
 }
 
 // ── UUID ─────────────────────────────────────────────────────────────────────
+// SECURITY FIX: Use crypto.getRandomValues instead of Math.random().
+// Math.random() is a predictable PRNG — in a multi-device collaborative context
+// two simultaneous creates with the same timestamp could collide.
 export function generateUID() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    const arr = new Uint32Array(2);
+    crypto.getRandomValues(arr);
+    return Date.now().toString(36) + arr[0].toString(36) + arr[1].toString(36);
 }
 
 // Attach to window

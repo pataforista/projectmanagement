@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── Brute-Force Protection ──
     const LOCKOUT_KEY = 'nexus_lockout';
     const ATTEMPT_KEY = 'nexus_attempts';
+    // Separate counters for the recovery code flow to avoid sharing state
+    const RECOVERY_LOCKOUT_KEY = 'nexus_recovery_lockout';
+    const RECOVERY_ATTEMPT_KEY = 'nexus_recovery_attempts';
     const MAX_ATTEMPTS = 5;
     const LOCKOUT_MS = 30_000; // 30 seconds
 
@@ -77,6 +80,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const clearAttempts = () => {
         localStorage.removeItem(ATTEMPT_KEY);
         localStorage.removeItem(LOCKOUT_KEY);
+    };
+
+    // SECURITY FIX: Brute-force protection for the recovery code flow.
+    const isRecoveryLockedOut = () => {
+        const lockoutUntil = Number(localStorage.getItem(RECOVERY_LOCKOUT_KEY) || 0);
+        return Date.now() < lockoutUntil;
+    };
+
+    const getRecoveryRemainingLockout = () => {
+        const lockoutUntil = Number(localStorage.getItem(RECOVERY_LOCKOUT_KEY) || 0);
+        return Math.max(0, Math.ceil((lockoutUntil - Date.now()) / 1000));
+    };
+
+    const recordFailedRecoveryAttempt = () => {
+        const attempts = Number(localStorage.getItem(RECOVERY_ATTEMPT_KEY) || 0) + 1;
+        localStorage.setItem(RECOVERY_ATTEMPT_KEY, String(attempts));
+        if (attempts >= MAX_ATTEMPTS) {
+            localStorage.setItem(RECOVERY_LOCKOUT_KEY, String(Date.now() + LOCKOUT_MS));
+            localStorage.setItem(RECOVERY_ATTEMPT_KEY, '0');
+        }
+        return attempts;
+    };
+
+    const clearRecoveryAttempts = () => {
+        localStorage.removeItem(RECOVERY_ATTEMPT_KEY);
+        localStorage.removeItem(RECOVERY_LOCKOUT_KEY);
     };
 
     const generateRecoveryCode = () => {
@@ -252,20 +281,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 function handleRemoteWorkspace(remoteData) {
                     if (remoteData && remoteData.updatedAt) {
                         if (window.showToast) showToast('Workspace detectado en Google Drive', 'success');
-                        const remoteHash = remoteData.settings?.workspace_lock_hash;
-                        if (remoteHash) {
-                            localStorage.setItem('workspace_lock_hash', remoteHash);
-                            if (remoteData.settings.workspace_recovery_hash) {
-                                localStorage.setItem('workspace_recovery_hash', remoteData.settings.workspace_recovery_hash);
-                            }
-                            location.reload();
-                            return;
-                        }
+                        // SECURITY FIX: workspace_lock_hash and workspace_recovery_hash are
+                        // personal per-device credentials and must NEVER be imported from the
+                        // shared Drive file. Each user must set their own master password.
+                        // Importing a remote hash would allow any team member with Drive access
+                        // to take over another user's workspace by replacing the hash.
                     }
-                    // No hay workspace o no tiene contraseña
+                    // Proceed to local password setup regardless of remote state
                     setupPanel.style.display = 'none';
                     authForm.style.display = 'flex';
-                    authSubtitle.textContent = "Conexión exitosa. Crea una contraseña maestra para proteger tus datos sincronizados.";
+                    authSubtitle.textContent = "Conexión exitosa. Crea tu contraseña maestra personal para proteger tus datos.";
                     setupPasswordCreation();
                 }
 
@@ -300,9 +325,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 authForm.onsubmit = async (e) => {
                     e.preventDefault();
                     const pwd = authPassword.value.trim();
-                    if (pwd.length < 4) {
+                    if (pwd.length < 8) {
                         authPassword.style.border = '1px solid var(--accent-warning)';
-                        setTimeout(() => authPassword.style.border = '', 1000);
+                        authSubtitle.textContent = 'La contraseña maestra debe tener al menos 8 caracteres.';
+                        setTimeout(() => authPassword.style.border = '', 1500);
                         return;
                     }
                     const hash = await hashStr(pwd);
@@ -414,17 +440,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (authRecoverySubmit) {
                 authRecoverySubmit.onclick = async () => {
+                    // SECURITY FIX: Apply brute-force protection to recovery code attempts.
+                    if (isRecoveryLockedOut()) {
+                        const secs = getRecoveryRemainingLockout();
+                        authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
+                        authRecoveryCode.value = '';
+                        return;
+                    }
+
                     const savedRecoveryHash = localStorage.getItem('workspace_recovery_hash');
                     const entered = normalizeCode(authRecoveryCode.value.trim());
                     const inputHash = await hashStr(entered);
                     if (savedRecoveryHash && inputHash === savedRecoveryHash) {
+                        clearRecoveryAttempts();
                         authRecoveryPanel.style.display = 'none';
                         authSubtitle.textContent = "Crea una nueva contraseña.";
                         authNewpwdPanel.style.display = 'flex';
                         authNewpwdInput.focus();
                     } else {
+                        const attempts = recordFailedRecoveryAttempt();
                         authRecoveryCode.style.border = '1px solid var(--accent-danger)';
                         authRecoveryCode.value = '';
+                        if (isRecoveryLockedOut()) {
+                            authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
+                        } else {
+                            authSubtitle.textContent = `Código incorrecto. Intentos restantes: ${MAX_ATTEMPTS - attempts}.`;
+                        }
                         setTimeout(() => authRecoveryCode.style.border = '', 1000);
                     }
                 };
@@ -433,9 +474,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (authNewpwdSubmit) {
                 authNewpwdSubmit.onclick = async () => {
                     const newPwd = authNewpwdInput.value.trim();
-                    if (newPwd.length < 4) {
+                    if (newPwd.length < 8) {
                         authNewpwdInput.style.border = '1px solid var(--accent-warning)';
-                        setTimeout(() => authNewpwdInput.style.border = '', 1000);
+                        authSubtitle.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
+                        setTimeout(() => authNewpwdInput.style.border = '', 1500);
                         return;
                     }
                     const newRecoveryCode = generateRecoveryCode();
