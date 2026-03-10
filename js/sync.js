@@ -193,11 +193,17 @@ const syncManager = (() => {
     }
 
     function clearStoredIdentity() {
+        // FIX: Only clear the Google identity token and in-memory currentUser.
+        // Do NOT wipe the local display profile (name, email, avatar) — these are
+        // set by the user and should persist across Google session expirations.
+        // Erasing them silently corrupts the audit trail (all subsequent actions
+        // are recorded as 'Usuario' instead of the real person).
+        // If re-authentication is needed, a toast will inform the user.
         currentUser = null;
         localStorage.removeItem(ID_TOKEN_KEY);
-        localStorage.removeItem('workspace_user_name');
-        localStorage.removeItem('workspace_user_email');
-        localStorage.removeItem('workspace_user_avatar');
+        if (window.showToast) {
+            showToast('Tu sesión de Google ha expirado. Vuelve a iniciar sesión para sincronizar.', 'warning', true);
+        }
         if (window.updateUserProfileUI) window.updateUserProfileUI();
     }
 
@@ -384,7 +390,10 @@ const syncManager = (() => {
             cycles: store.get.cycles().filter(isShared),
             decisions: store.get.decisions().filter(isShared),
             documents: (store.get.documents ? store.get.documents() : []).filter(isShared),
-            members: store.get.members(),
+            // PRIVACY FIX: Strip email from member records in the shared snapshot.
+            // Member emails are personal data and must not be stored in plaintext
+            // in the shared Drive file (even when E2EE is active for other stores).
+            members: store.get.members().map(({ email: _email, ...rest }) => rest),
             logs: store.get.logs ? store.get.logs() : [],
             messages: (store.get.messages ? store.get.messages() : []).filter(isShared),
             annotations: (store.get.annotations ? store.get.annotations() : []).filter(isShared),
@@ -447,8 +456,16 @@ const syncManager = (() => {
                 const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
                 if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate) {
-                    if (window.showToast) showToast('⚠️ Hay cambios remotos más recientes. Por favor, "Traer cambios" primero.', 'warning', true);
-                    console.warn('[Sync] Push blocked: remote is newer than last local sync point.');
+                    // AUTO-RETRY FIX: Instead of blocking indefinitely, auto-pull the remote
+                    // changes first, then retry the push. The isSyncing flag must be released
+                    // before calling pull() to avoid a deadlock.
+                    console.warn('[Sync] Push blocked: remote is newer. Auto-pulling first, then retrying push.');
+                    if (window.showToast) showToast('Sincronizando cambios remotos antes de subir…', 'info');
+                    isSyncing = false;
+                    updateSyncUI('online');
+                    await pull();
+                    // After pull updates last_sync_local, retry push (not recursive — guard via isSyncing).
+                    await push();
                     return;
                 }
                 await updateFile(fileId, data);
@@ -540,7 +557,6 @@ const syncManager = (() => {
             ...options,
             signal: controller.signal
         });
-        clearTimeout(id);
         clearTimeout(id);
         return response;
     }
