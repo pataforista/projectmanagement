@@ -270,7 +270,7 @@ const syncManager = (() => {
     }
 
     /**
-     * Inicializa el estado de la sincronización en la UI e intenta inicializar 
+     * Inicializa el estado de la sincronización en la UI e intenta inicializar
      * el cliente de token de Google si existe el Client ID persistido.
      */
     async function init() {
@@ -294,7 +294,7 @@ const syncManager = (() => {
     }
 
     /**
-     * Fuerza la petición de un token de acceso OAuth (abriendo el consent screen 
+     * Fuerza la petición de un token de acceso OAuth (abriendo el consent screen
      * de Google si es necesario) para iniciar la sincronización activa.
      */
     async function authenticate() {
@@ -419,8 +419,8 @@ const syncManager = (() => {
     }
 
     /**
-     * Descarga (Pull) el archivo JSON desde Google Drive. 
-     * Si la versión remota es más nueva que la local, actualiza la base de datos 
+     * Descarga (Pull) el archivo JSON desde Google Drive.
+     * Si la versión remota es más nueva que la local, actualiza la base de datos
      * mediante la hidratación global del Store.
      */
     async function pull() {
@@ -725,7 +725,7 @@ const syncManager = (() => {
     }
 
     /**
-     * Construye y muestra dinámicamente el modal de configuración de sincronización 
+     * Construye y muestra dinámicamente el modal de configuración de sincronización
      * en pantalla, incluyendo accesos para configurar Drive e importar desde otras apps (CSV/MD).
      */
     function openPanel() {
@@ -876,7 +876,7 @@ const syncManager = (() => {
     async function syncCalendar() {
         if (!accessToken || localStorage.getItem('sync_gcal') !== 'true') return;
         console.log('[Sync] Syncing Google Calendar...');
-        // Logic to push/pull events would go here. 
+        // Logic to push/pull events would go here.
         // For now, we'll implement a simple push of "Sessions" as events.
         const sessions = store.get.sessions();
         for (const s of sessions) {
@@ -991,6 +991,50 @@ const syncManager = (() => {
 
     let chatFolderId = localStorage.getItem('gdrive_chat_folder_id');
     let chatSyncTimer = null;
+    const CHAT_OUTBOX_KEY = 'chat_outbox_v1';
+
+    function readChatOutbox() {
+        try {
+            const raw = localStorage.getItem(CHAT_OUTBOX_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            console.warn('[ChatSync] Invalid outbox data, resetting.', e);
+            return [];
+        }
+    }
+
+    function writeChatOutbox(messages) {
+        localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(messages.slice(-250)));
+    }
+
+    function enqueueChatMessage(msg) {
+        const outbox = readChatOutbox();
+        if (!outbox.find(item => item.id === msg.id)) {
+            outbox.push(msg);
+            writeChatOutbox(outbox);
+        }
+        if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('chat:outbox-updated', { detail: { count: outbox.length } }));
+        }
+        return outbox.length;
+    }
+
+    function removeFromChatOutbox(messageId) {
+        const outbox = readChatOutbox();
+        const filtered = outbox.filter(item => item.id !== messageId);
+        if (filtered.length !== outbox.length) {
+            writeChatOutbox(filtered);
+            if (window.dispatchEvent) {
+                window.dispatchEvent(new CustomEvent('chat:outbox-updated', { detail: { count: filtered.length } }));
+            }
+        }
+        return filtered.length;
+    }
+
+    function getChatOutboxSize() {
+        return readChatOutbox().length;
+    }
 
     async function getChatFolder() {
         if (chatFolderId) return chatFolderId;
@@ -1007,10 +1051,16 @@ const syncManager = (() => {
     }
 
     async function uploadChatMessage(msg) {
-        if (!accessToken || !networkOnline) return false;
+        if (!accessToken || !networkOnline) {
+            enqueueChatMessage(msg);
+            return false;
+        }
         try {
             const fId = await getChatFolder();
-            if (!fId) return false;
+            if (!fId) {
+                enqueueChatMessage(msg);
+                return false;
+            }
 
             // Si la capa crypto está activa, podemos encriptarlo aquí.
             let payload = msg;
@@ -1020,10 +1070,23 @@ const syncManager = (() => {
 
             const name = `msg_${msg.createdAt}_${msg.id}.json`;
             await createFile(name, payload, fId);
+            removeFromChatOutbox(msg.id);
             return true;
         } catch (e) {
             console.error('[ChatSync] Upload failed:', e);
+            enqueueChatMessage(msg);
             return false;
+        }
+    }
+
+    async function flushChatOutbox() {
+        if (!accessToken || !networkOnline || isSyncing) return;
+        const outbox = readChatOutbox();
+        if (outbox.length === 0) return;
+
+        for (const message of outbox) {
+            const ok = await uploadChatMessage(message);
+            if (!ok) break;
         }
     }
 
@@ -1092,7 +1155,19 @@ const syncManager = (() => {
 
     function startChatSync() {
         if (chatSyncTimer) clearInterval(chatSyncTimer);
-        chatSyncTimer = setInterval(pollChat, 2500); // 2.5s Latencia!
+        chatSyncTimer = setInterval(async () => {
+            await flushChatOutbox();
+            await pollChat();
+        }, 2500); // 2.5s Latencia!
+    }
+
+    function getChatSyncStatus() {
+        return {
+            linked: Boolean(accessToken),
+            online: Boolean(networkOnline),
+            pending: getChatOutboxSize(),
+            user: currentUser
+        };
     }
 
     return {
@@ -1114,6 +1189,7 @@ const syncManager = (() => {
         syncGoogleTasks,
         syncTodoist,
         uploadChatMessage,
+        getChatSyncStatus,
         startChatSync,
         getAccessToken: () => accessToken,
         getUser: () => currentUser

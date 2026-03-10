@@ -22,7 +22,10 @@ export const ChatManager = (() => {
             </div>
             <div class="chat-panel hidden" id="chat-panel">
                 <div class="chat-header">
-                    <h3>Chat de Equipo</h3>
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <h3>Chat de Equipo</h3>
+                        <small id="chat-sync-status" style="font-size:0.68rem; color:var(--text-muted);">Sincronizando estado...</small>
+                    </div>
                     <button class="btn btn-icon btn-sm" id="chat-close"><i data-feather="x"></i></button>
                 </div>
                 <div class="chat-messages" id="chat-messages"></div>
@@ -173,6 +176,13 @@ export const ChatManager = (() => {
         // Store subscription
         store.subscribe('messages', renderMessages);
 
+
+        window.addEventListener('chat:outbox-updated', updateSyncStatus);
+        window.addEventListener('online', updateSyncStatus);
+        window.addEventListener('offline', updateSyncStatus);
+
+        updateSyncStatus();
+
         if (window.feather) feather.replace();
     }
 
@@ -213,6 +223,34 @@ export const ChatManager = (() => {
         }
 
         input.value = '';
+        updateSyncStatus();
+    }
+
+
+    function updateSyncStatus() {
+        const statusEl = document.getElementById('chat-sync-status');
+        if (!statusEl) return;
+
+        const status = window.syncManager?.getChatSyncStatus
+            ? window.syncManager.getChatSyncStatus()
+            : { linked: false, online: navigator.onLine, pending: 0 };
+
+        if (!status.linked) {
+            statusEl.textContent = 'Cuenta no vinculada · Chat solo local';
+            return;
+        }
+
+        if (!status.online) {
+            statusEl.textContent = `Sin conexión · ${status.pending || 0} pendientes`;
+            return;
+        }
+
+        if ((status.pending || 0) > 0) {
+            statusEl.textContent = `En cola: ${status.pending} mensajes`;
+            return;
+        }
+
+        statusEl.textContent = 'Cuenta vinculada · Chat sincronizado';
     }
 
     function renderMessages(messages) {
