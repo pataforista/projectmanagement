@@ -57,7 +57,7 @@ function renderMedical(root) {
                   <td style="padding:12px; color:var(--text-muted); font-size:0.8rem;">${i.createdAt ? new Date(i.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                   <td style="padding:12px;">
                     <button class="btn btn-icon btn-sm" onclick="openInterconsultationModal('${i.id}')"><i data-feather="edit-2"></i></button>
-                    ${i.obsidianUri ? `<a href="${i.obsidianUri}" class="btn btn-icon btn-sm" title="Ver en Obsidian"><i data-feather="external-link"></i></a>` : ''}
+                    ${i.obsidianUri ? `<a href="${esc(safeExternalUrl(i.obsidianUri))}" target="_blank" rel="noopener noreferrer" class="btn btn-icon btn-sm" title="Ver en Obsidian"><i data-feather="external-link"></i></a>` : ''}
                   </td>
                 </tr>
                 `;
