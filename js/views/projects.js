@@ -251,6 +251,16 @@ function showProjectTab(root, p, tab) {
         </div>
 
         ${extCard}
+
+        <div class="card glass-panel" style="grid-column: span 2;">
+          <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="display:flex;align-items:center;gap:6px;"><i data-feather="hard-drive" style="width:16px;height:16px;"></i> Archivos de Google Drive</h3>
+            <button class="btn btn-secondary btn-sm" id="btn-add-drive-file"><i data-feather="plus"></i> Agregar archivo</button>
+          </div>
+          <div class="card-body" id="drive-files-list">
+            ${renderDriveFilesList(p.driveFiles || [])}
+          </div>
+        </div>
       </div>`;
 
     feather.replace();
@@ -269,6 +279,9 @@ function showProjectTab(root, p, tab) {
 
     thoughtBtn?.addEventListener('click', addThoughtFn);
     thoughtInput?.addEventListener('keypress', e => { if (e.key === 'Enter') addThoughtFn(); });
+
+    content.querySelector('#btn-add-drive-file')?.addEventListener('click', () => openDriveFilePicker(p, content));
+    bindDriveFileDeleteBtns(content, p);
 
     content.querySelectorAll('.del-thought-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -451,6 +464,173 @@ function detailRow(label, value) {
     <span style="color:var(--text-muted);">${label}</span>
     <span style="font-weight:500;">${value}</span>
   </div>`;
+}
+
+function renderDriveFilesList(files) {
+  if (!files || files.length === 0) {
+    return `<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:16px;">No hay archivos vinculados. Agrega un enlace de Google Drive.</div>`;
+  }
+  return `<div style="display:flex; flex-direction:column; gap:8px;">
+    ${files.map(f => `
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-surface-2); border-radius:8px; border:1px solid var(--border-color);">
+        <i data-feather="${getDriveFileIcon(f.mimeType)}" style="width:16px;height:16px;flex-shrink:0;color:var(--accent-primary);"></i>
+        <a href="${esc(f.url)}" target="_blank" rel="noopener" style="flex:1; font-size:0.85rem; font-weight:500; color:var(--text-primary); text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.name)}">${esc(f.name)}</a>
+        <span style="font-size:0.68rem; color:var(--text-muted); flex-shrink:0;">${f.addedAt ? new Date(f.addedAt).toLocaleDateString('es-MX', { day:'2-digit', month:'short' }) : ''}</span>
+        <button class="btn btn-icon btn-sm del-drive-file-btn" data-fileid="${esc(f.id)}" title="Quitar enlace" style="flex-shrink:0;"><i data-feather="x" style="width:12px;height:12px;"></i></button>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function getDriveFileIcon(mimeType) {
+  if (!mimeType) return 'file';
+  if (mimeType.includes('folder')) return 'folder';
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'grid';
+  if (mimeType.includes('document') || mimeType.includes('word')) return 'file-text';
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return 'monitor';
+  if (mimeType.includes('pdf')) return 'file';
+  if (mimeType.includes('image')) return 'image';
+  if (mimeType.includes('video')) return 'video';
+  if (mimeType.includes('audio')) return 'music';
+  return 'file';
+}
+
+async function openDriveFilePicker(p, root) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:580px;">
+      <div class="modal-header">
+        <h2><i data-feather="hard-drive"></i> Vincular archivo de Google Drive</h2>
+        <button class="btn btn-icon" id="drivepicker-close"><i data-feather="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="padding:12px; background:var(--bg-surface-2); border-radius:8px; margin-bottom:16px;">
+          <h3 style="margin:0 0 10px 0; font-size:0.9rem;">Pegar enlace manualmente</h3>
+          <div style="display:flex; gap:8px;">
+            <input class="form-input" id="drive-manual-url" placeholder="https://drive.google.com/file/d/..." style="flex:1;">
+            <button class="btn btn-primary" id="btn-add-manual-link"><i data-feather="link"></i> Agregar</button>
+          </div>
+          <p style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">Acepta cualquier enlace de Google Drive, Docs, Sheets, Slides o carpetas.</p>
+        </div>
+
+        <div style="padding:12px; background:var(--bg-surface-2); border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0; font-size:0.9rem;">Archivos recientes en tu Drive</h3>
+            <button class="btn btn-secondary btn-sm" id="btn-load-drive-files"><i data-feather="refresh-cw" style="width:12px;height:12px;"></i> Cargar</button>
+          </div>
+          <div id="drive-file-browser" style="max-height:280px; overflow-y:auto;">
+            <div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:20px;">Presiona "Cargar" para ver tus archivos recientes. Requiere conexión a Google Drive.</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  feather.replace();
+
+  overlay.querySelector('#drivepicker-close').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('#btn-add-manual-link').addEventListener('click', async () => {
+    const url = overlay.querySelector('#drive-manual-url').value.trim();
+    if (!url || !url.startsWith('http')) return showToast('Ingresa un enlace válido de Google Drive.', 'error');
+
+    const name = extractDriveLinkName(url);
+    const fileEntry = { id: 'manual-' + Date.now(), name, url, mimeType: '', addedAt: Date.now() };
+    const updatedFiles = [...(p.driveFiles || []), fileEntry];
+    await store.dispatch('UPDATE_PROJECT', { id: p.id, driveFiles: updatedFiles });
+    const updated = store.get.projectById(p.id);
+    Object.assign(p, updated);
+    if (root) {
+      const listEl = root.querySelector('#drive-files-list');
+      if (listEl) { listEl.innerHTML = renderDriveFilesList(p.driveFiles || []); feather.replace(); }
+      bindDriveFileDeleteBtns(root, p);
+    }
+    overlay.remove();
+    showToast('Archivo vinculado al proyecto.', 'success');
+  });
+
+  overlay.querySelector('#btn-load-drive-files').addEventListener('click', async () => {
+    const token = window.syncManager?.getAccessToken?.();
+    if (!token) {
+      overlay.querySelector('#drive-file-browser').innerHTML = `<div style="font-size:0.8rem; color:var(--accent-danger); text-align:center; padding:16px;">No conectado a Google Drive. Abre el panel de Sincronización y conecta tu cuenta primero.</div>`;
+      return;
+    }
+    overlay.querySelector('#drive-file-browser').innerHTML = `<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:16px;"><i data-feather="loader"></i> Cargando archivos...</div>`;
+    feather.replace();
+
+    const files = await window.syncManager.listDriveFiles();
+    if (!files.length) {
+      overlay.querySelector('#drive-file-browser').innerHTML = `<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:16px;">No se encontraron archivos o hubo un error al cargar.</div>`;
+      return;
+    }
+
+    overlay.querySelector('#drive-file-browser').innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        ${files.map(f => `
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:var(--bg-card); cursor:pointer;" class="drive-file-row" data-id="${esc(f.id)}" data-name="${esc(f.name)}" data-url="${esc(f.webViewLink || '')}" data-mime="${esc(f.mimeType || '')}">
+            <img src="${esc(f.iconLink || '')}" width="18" height="18" alt="" style="flex-shrink:0;" onerror="this.style.display='none'">
+            <span style="flex:1; font-size:0.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(f.name)}">${esc(f.name)}</span>
+            <span style="font-size:0.68rem; color:var(--text-muted); flex-shrink:0;">${esc(f.owners?.[0]?.displayName || '')}</span>
+            <button class="btn btn-primary btn-xs" style="flex-shrink:0;">Vincular</button>
+          </div>
+        `).join('')}
+      </div>`;
+
+    overlay.querySelectorAll('.drive-file-row').forEach(row => {
+      row.querySelector('button').addEventListener('click', async () => {
+        const fileEntry = {
+          id: row.dataset.id,
+          name: row.dataset.name,
+          url: row.dataset.url,
+          mimeType: row.dataset.mime,
+          addedAt: Date.now()
+        };
+        const updatedFiles = [...(p.driveFiles || []), fileEntry];
+        await store.dispatch('UPDATE_PROJECT', { id: p.id, driveFiles: updatedFiles });
+        const updated = store.get.projectById(p.id);
+        Object.assign(p, updated);
+        if (root) {
+          const listEl = root.querySelector('#drive-files-list');
+          if (listEl) { listEl.innerHTML = renderDriveFilesList(p.driveFiles || []); feather.replace(); }
+          bindDriveFileDeleteBtns(root, p);
+        }
+        overlay.remove();
+        showToast(`"${row.dataset.name}" vinculado al proyecto.`, 'success');
+      });
+    });
+  });
+}
+
+function extractDriveLinkName(url) {
+  try {
+    const u = new URL(url);
+    // Try to get a meaningful name from the URL
+    const pathParts = u.pathname.split('/').filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && lastPart !== 'edit' && lastPart !== 'view' && !lastPart.match(/^[a-zA-Z0-9-_]{25,}$/)) {
+      return decodeURIComponent(lastPart);
+    }
+    return 'Archivo de Drive';
+  } catch {
+    return 'Archivo de Drive';
+  }
+}
+
+function bindDriveFileDeleteBtns(root, p) {
+  root.querySelectorAll('.del-drive-file-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fileId = btn.dataset.fileid;
+      const updatedFiles = (p.driveFiles || []).filter(f => f.id !== fileId);
+      await store.dispatch('UPDATE_PROJECT', { id: p.id, driveFiles: updatedFiles });
+      const updated = store.get.projectById(p.id);
+      Object.assign(p, updated);
+      const listEl = root.querySelector('#drive-files-list');
+      if (listEl) { listEl.innerHTML = renderDriveFilesList(p.driveFiles || []); feather.replace(); }
+      bindDriveFileDeleteBtns(root, p);
+    });
+  });
 }
 
 window.renderProjects = renderProjects;
