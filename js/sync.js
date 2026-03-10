@@ -143,6 +143,7 @@ const syncManager = (() => {
 
             google.accounts.id.initialize({
                 client_id: client_id,
+                use_fedcm_for_prompt: true,
                 callback: (response) => {
                     if (!response.credential) {
                         settleOnce(reject, 'No credential returned');
@@ -446,16 +447,19 @@ const syncManager = (() => {
             const cfg = getConfig();
             const data = await getSnapshot();
 
+            // Helper: treat stored "undefined"/"null" strings as missing values
+            const validId = v => (v && v !== 'undefined' && v !== 'null') ? v : null;
+
             // 1. Localizar o crear el Workspace Folder
-            let folderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+            let folderId = cfg.sharedFolderId || validId(localStorage.getItem('gdrive_folder_id'));
             if (!folderId) folderId = await findFolder('Nexus_Workspace');
             if (!folderId) {
                 folderId = await createFolder('Nexus_Workspace');
-                localStorage.setItem('gdrive_folder_id', folderId);
+                if (folderId) localStorage.setItem('gdrive_folder_id', folderId);
             }
 
             // 2. Localizar el archivo core dentro del folder
-            let fileId = localStorage.getItem('gdrive_file_id');
+            let fileId = validId(localStorage.getItem('gdrive_file_id'));
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
 
             if (fileId) {
@@ -506,8 +510,11 @@ const syncManager = (() => {
         try {
             const cfg = getConfig();
 
+            // Helper: treat stored "undefined"/"null" strings as missing values
+            const validId = v => (v && v !== 'undefined' && v !== 'null') ? v : null;
+
             // 1. Localizar el Workspace Folder
-            let folderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+            let folderId = cfg.sharedFolderId || validId(localStorage.getItem('gdrive_folder_id'));
             if (!folderId) folderId = await findFolder('Nexus_Workspace');
             if (!folderId) {
                 updateSyncUI('online');
@@ -516,7 +523,7 @@ const syncManager = (() => {
             localStorage.setItem('gdrive_folder_id', folderId);
 
             // 2. Localizar el archivo core
-            let fileId = localStorage.getItem('gdrive_file_id');
+            let fileId = validId(localStorage.getItem('gdrive_file_id'));
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
             if (!fileId) {
                 updateSyncUI('online');
@@ -589,6 +596,7 @@ const syncManager = (() => {
             body: JSON.stringify(metadata)
         });
         const result = await resp.json();
+        if (!result.id) throw new Error(`[Sync] createFolder failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
         return result.id;
     }
 
@@ -618,6 +626,7 @@ const syncManager = (() => {
             timeout: 15000
         });
         const result = await resp.json();
+        if (!result.id) throw new Error(`[Sync] createFile failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
         return result.id;
     }
 
@@ -635,11 +644,15 @@ const syncManager = (() => {
     }
 
     async function getFileContent(id) {
+        if (!id || id === 'undefined' || id === 'null') {
+            console.error('[Sync] getFileContent: invalid fileId —', id);
+            return null;
+        }
         const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
             timeout: 15000
         });
-        if (!resp.ok) throw new Error("File not found or no permissions");
+        if (!resp.ok) throw new Error(`File not found or no permissions (${resp.status})`);
         return resp.json();
     }
 
