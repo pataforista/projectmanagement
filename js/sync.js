@@ -134,22 +134,43 @@ const syncManager = (() => {
 
             await loadGIS();
 
+            let settled = false;
+            const settleOnce = (fn, payload) => {
+                if (settled) return;
+                settled = true;
+                fn(payload);
+            };
+
             google.accounts.id.initialize({
                 client_id: client_id,
                 callback: (response) => {
-                    if (response.credential) {
-                        localStorage.setItem(ID_TOKEN_KEY, response.credential);
-                        currentUser = decodeIdToken(response.credential);
-                        syncIdentityToWorkspaceProfile(currentUser);
-                        console.log('[Sync] Identity confirmed:', currentUser.email);
-                        if (window.updateUserProfileUI) window.updateUserProfileUI();
-                        resolve(currentUser);
-                    } else {
-                        reject('No credential returned');
+                    if (!response.credential) {
+                        settleOnce(reject, 'No credential returned');
+                        return;
                     }
+
+                    localStorage.setItem(ID_TOKEN_KEY, response.credential);
+                    currentUser = decodeIdToken(response.credential);
+
+                    if (!currentUser || isExpiredIdToken(currentUser)) {
+                        clearStoredIdentity();
+                        settleOnce(reject, 'Invalid or expired Google identity token');
+                        return;
+                    }
+
+                    syncIdentityToWorkspaceProfile(currentUser);
+                    console.log('[Sync] Identity confirmed:', currentUser.email);
+                    if (window.updateUserProfileUI) window.updateUserProfileUI();
+                    settleOnce(resolve, currentUser);
                 }
             });
-            google.accounts.id.prompt(); // One Tap or standard prompt
+
+            google.accounts.id.prompt((notification) => {
+                if (settled) return;
+                if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+                    settleOnce(reject, 'Google sign-in prompt was closed or skipped');
+                }
+            });
         });
     }
 
@@ -164,6 +185,20 @@ const syncManager = (() => {
         } catch (e) {
             return null;
         }
+    }
+
+    function isExpiredIdToken(userPayload) {
+        if (!userPayload?.exp) return false;
+        return Date.now() >= Number(userPayload.exp) * 1000;
+    }
+
+    function clearStoredIdentity() {
+        currentUser = null;
+        localStorage.removeItem(ID_TOKEN_KEY);
+        localStorage.removeItem('workspace_user_name');
+        localStorage.removeItem('workspace_user_email');
+        localStorage.removeItem('workspace_user_avatar');
+        if (window.updateUserProfileUI) window.updateUserProfileUI();
     }
 
     function syncIdentityToWorkspaceProfile(user) {
@@ -278,7 +313,15 @@ const syncManager = (() => {
         updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
 
         const storedIdToken = localStorage.getItem(ID_TOKEN_KEY);
-        if (storedIdToken) currentUser = decodeIdToken(storedIdToken);
+        if (storedIdToken) {
+            const decodedUser = decodeIdToken(storedIdToken);
+            if (!decodedUser || isExpiredIdToken(decodedUser)) {
+                clearStoredIdentity();
+            } else {
+                currentUser = decodedUser;
+                syncIdentityToWorkspaceProfile(currentUser);
+            }
+        }
 
         const cfg = getConfig();
         configureAutoSync(cfg.autoSyncMinutes);
@@ -313,7 +356,13 @@ const syncManager = (() => {
         if (window.google?.accounts?.oauth2 && accessToken) {
             google.accounts.oauth2.revoke(accessToken);
         }
+        if (window.google?.accounts?.id) {
+            google.accounts.id.disableAutoSelect();
+        }
+
         accessToken = null;
+        tokenClient = null;
+        clearStoredIdentity();
         localStorage.setItem(STATUS_KEY, 'false');
         updateSyncUI('offline');
     }
