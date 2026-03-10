@@ -181,7 +181,7 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
           <div class="ai-chat-container">
             <div class="ai-messages" id="ai-chat-messages">
                 <div class="ai-msg ai-msg-system">
-                    Hola Carlos. Soy tu asistente de investigación local. ¿En qué puedo ayudarte con este manuscrito?
+                    Hola. Soy tu asistente de investigación local. ¿En qué puedo ayudarte con este manuscrito?
                 </div>
             </div>
             <div class="ai-input-wrap">

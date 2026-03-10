@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (setupPanel && googleBtn && manualLink) {
                 setupPanel.style.display = 'flex';
                 authForm.style.display = 'none';
-                authSubtitle.textContent = "Bienvenido. Identifica tu cuenta de Google para comenzar.";
+                authSubtitle.textContent = "Inicia sesión con Google para vincular este workspace desde el inicio.";
 
                 const clientIdContainer = document.getElementById('auth-client-id-container');
                 const showClientIdBtn = document.getElementById('auth-show-client-id');
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const existingClientId = syncManager.getConfig().clientId;
 
                     if (!providedClientId && !existingClientId) {
-                        if (window.showToast) showToast('Por favor, ingresa un Google Client ID para continuar.', 'warning');
+                        if (window.showToast) showToast('Configura tu Google Client ID para continuar con el login.', 'warning');
                         clientIdContainer.style.display = 'flex';
                         if (showClientIdBtn) showClientIdBtn.style.display = 'none';
                         setupClientIdInput.focus();
@@ -194,15 +194,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
 
                         // Permitir continuar solo con identidad si lo desea
-                        authSubtitle.textContent = `Hola ${user.name}. Puedes conectar Drive ahora o seguir solo local.`;
+                        authSubtitle.textContent = `Hola ${user.name || user.email}. Ahora autoriza Drive para activar sincronización entre dispositivos.`;
                         
-                        // Si no conecta Drive, puede configurar contraseña manual
-                        manualLink.textContent = "Continuar sin Drive (Solo local)";
+                        // Vinculación obligatoria para evitar sobreescrituras entre dispositivos
+                        manualLink.textContent = "Se requiere conexión con Google Drive para continuar";
                         manualLink.onclick = () => {
-                            setupPanel.style.display = 'none';
-                            authForm.style.display = 'flex';
-                            authSubtitle.textContent = "Crea una contraseña maestra para proteger tus datos locales.";
-                            setupPasswordCreation();
+                            if (window.showToast) showToast('Para continuar debes autorizar Google Drive y activar sincronización inicial.', 'warning');
                         };
 
                     } catch (err) {
@@ -230,15 +227,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // No hay workspace o no tiene contraseña
                     setupPanel.style.display = 'none';
                     authForm.style.display = 'flex';
-                    authSubtitle.textContent = "Conexión exitosa. Crea una contraseña maestra para proteger tus datos.";
+                    authSubtitle.textContent = "Conexión exitosa. Crea una contraseña maestra para proteger tus datos sincronizados.";
                     setupPasswordCreation();
                 }
 
                 manualLink.onclick = () => {
-                    setupPanel.style.display = 'none';
-                    authForm.style.display = 'flex';
-                    authSubtitle.textContent = "Crea una contraseña maestra para tu Workspace local.";
-                    setupPasswordCreation();
+                    if (window.showToast) showToast('Este workspace requiere vinculación con Google para evitar conflictos de sincronización.', 'warning');
                 };
             } else {
                 // Fallback si por alguna razón no están los elementos nuevos

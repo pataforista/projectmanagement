@@ -140,6 +140,7 @@ const syncManager = (() => {
                     if (response.credential) {
                         localStorage.setItem(ID_TOKEN_KEY, response.credential);
                         currentUser = decodeIdToken(response.credential);
+                        syncIdentityToWorkspaceProfile(currentUser);
                         console.log('[Sync] Identity confirmed:', currentUser.email);
                         if (window.updateUserProfileUI) window.updateUserProfileUI();
                         resolve(currentUser);
@@ -162,6 +163,21 @@ const syncManager = (() => {
             return JSON.parse(jsonPayload);
         } catch (e) {
             return null;
+        }
+    }
+
+    function syncIdentityToWorkspaceProfile(user) {
+        if (!user) return;
+        const name = user.name || user.given_name || user.email || 'Usuario';
+        const email = String(user.email || '').trim().toLowerCase();
+        const avatar = name.charAt(0).toUpperCase() || 'U';
+
+        localStorage.setItem('workspace_user_name', name);
+        localStorage.setItem('workspace_user_email', email);
+        localStorage.setItem('workspace_user_avatar', avatar);
+
+        if (!localStorage.getItem('workspace_user_role')) {
+            localStorage.setItem('workspace_user_role', 'Miembro');
         }
     }
 
