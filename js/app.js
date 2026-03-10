@@ -400,6 +400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Buttons migrated from inline onclick (CSP prep) ────────────────────────
     document.getElementById('btn-sync-toggle')?.addEventListener('click', () => syncManager.openPanel());
+    document.getElementById('btn-sync-now')?.addEventListener('click', () => syncManager.syncNow());
     document.getElementById('btn-export')?.addEventListener('click', () => exportData());
     document.getElementById('btn-lock')?.addEventListener('click', () => {
         if (window.lockWorkspace) lockWorkspace();

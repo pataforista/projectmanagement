@@ -784,7 +784,27 @@ const syncManager = (() => {
         }
     }
 
-    return { init, authenticate, disconnect, push, pull, openPanel, getConfig, listDriveFiles, syncCalendar, syncGoogleTasks, syncTodoist, getAccessToken: () => accessToken };
+    async function syncNow() {
+        if (!accessToken) {
+            showToast('Primero conecta Google Drive para sincronizar.', 'warning');
+            openPanel();
+            return;
+        }
+        if (!networkOnline) {
+            showToast('Sin conexión. No se puede sincronizar ahora.', 'warning');
+            return;
+        }
+        if (isSyncing) {
+            showToast('Sincronización en curso…', 'info');
+            return;
+        }
+        showToast('Sincronizando…', 'info');
+        await pull();
+        await push();
+        showToast('Sincronización completada.', 'success');
+    }
+
+    return { init, authenticate, disconnect, push, pull, syncNow, openPanel, getConfig, listDriveFiles, syncCalendar, syncGoogleTasks, syncTodoist, getAccessToken: () => accessToken };
 })();
 
 export { syncManager };
