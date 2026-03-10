@@ -1,4 +1,4 @@
-﻿/**
+/**
  * views/writing.js — Manuscript Mode (Scrivener-like)
  */
 
@@ -348,7 +348,8 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
           { id: 'img', icon: 'image', label: 'Imagen' },
           { id: 'ref', icon: 'link', label: 'Cita Pandoc [@key]' },
           { id: 'title', icon: 'type', label: 'Título H2' },
-          { id: 'quarto', icon: 'code', label: 'Bloque Quarto' }
+          { id: 'quarto', icon: 'code', label: 'Bloque Quarto' },
+          { id: 'zotero-note', icon: 'file-text', label: 'Nota de Zotero' }
         ];
 
         slashMenu.innerHTML = options.map(o => `
@@ -385,6 +386,40 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
                   insert = `[@${chosen}]`;
                 }
               }
+            }
+            if (action === 'zotero-note') {
+              const lib = store.get.library() || [];
+              if (!lib.length) {
+                showToast('Sincroniza Zotero primero.', 'warning');
+                return;
+              }
+              const choices = lib.slice(0, 15).map((item, idx) =>
+                `${idx + 1}. ${item.title.substring(0, 50)}`
+              ).join('\n');
+              const pick = prompt(`Selecciona referencia para importar sus NOTAS:\n${choices}\n\nNúmero:`);
+              if (pick) {
+                const num = parseInt(pick, 10);
+                const item = lib[num - 1];
+                if (item && item.zoteroKey) {
+                  showToast('Cargando notas...', 'info');
+                  zoteroApi.fetchItemNotes(item.zoteroKey).then(notes => {
+                    if (notes && notes.length > 0) {
+                      const noteText = notes.join('\n\n---\n\n');
+                      const start = editor.selectionStart;
+                      const end = editor.selectionEnd;
+                      const text = editor.value;
+                      editor.value = text.substring(0, start - 1) + noteText + text.substring(end);
+                      editor.focus();
+                      updateWordCount();
+                      showToast('Notas importadas.', 'success');
+                    } else {
+                      showToast('No se encontraron notas para esta referencia.', 'info');
+                    }
+                  }).catch(err => showToast(err.message, 'error'));
+                }
+              }
+              closeSlashMenu();
+              return;
             }
 
             const start = editor.selectionStart;

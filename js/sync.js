@@ -2,12 +2,14 @@ import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './ut
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/spreadsheets.readonly';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
+    const ID_TOKEN_KEY = 'google_id_token';
 
     let tokenClient = null;
     let accessToken = null;
+    let currentUser = null; // Profile from ID Token
     let isSyncing = false;
     let autoSyncTimer = null;
     let networkOnline = navigator.onLine;
@@ -19,6 +21,8 @@ const syncManager = (() => {
         teamName: 'Equipo pequeño',
         autoSyncMinutes: 1,
     };
+    
+    // ... rest of getConfig/saveConfig ...
 
     function getConfig() {
         const raw = localStorage.getItem(CONFIG_KEY);
@@ -99,10 +103,12 @@ const syncManager = (() => {
     }
 
     async function loadGIS() {
-        if (window.google?.accounts?.oauth2) return;
+        if (window.google?.accounts?.oauth2 && window.google?.accounts?.id) return;
         await new Promise((resolve, reject) => {
             const existing = document.querySelector('script[data-gis="true"]');
             if (existing) {
+                // If already appended but maybe not loaded, wait. Or if loaded, resolve.
+                if (window.google?.accounts?.id) return resolve();
                 existing.addEventListener('load', resolve, { once: true });
                 existing.addEventListener('error', reject, { once: true });
                 return;
@@ -114,6 +120,120 @@ const syncManager = (() => {
             script.onerror = reject;
             document.head.appendChild(script);
         });
+    }
+
+    /**
+     * CAPA A: AUTENTICACIÓN (Identity via OIDC)
+     * Obtiene el ID Token de Google para identificar al usuario.
+     */
+    async function signIn(optionalClientId) {
+        return new Promise(async (resolve, reject) => {
+            const cfg = getConfig();
+            const client_id = optionalClientId || cfg.clientId;
+            if (!client_id) return reject('No Google Client ID configured');
+
+            await loadGIS();
+            
+            google.accounts.id.initialize({
+                client_id: client_id,
+                callback: (response) => {
+                    if (response.credential) {
+                        localStorage.setItem(ID_TOKEN_KEY, response.credential);
+                        currentUser = decodeIdToken(response.credential);
+                        console.log('[Sync] Identity confirmed:', currentUser.email);
+                        if (window.updateUserProfileUI) window.updateUserProfileUI();
+                        resolve(currentUser);
+                    } else {
+                        reject('No credential returned');
+                    }
+                }
+            });
+            google.accounts.id.prompt(); // One Tap or standard prompt
+        });
+    }
+
+    function decodeIdToken(token) {
+        try {
+            const base64Url = token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+                return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+            }).join(''));
+            return JSON.parse(jsonPayload);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * CAPA B: AUTORIZACIÓN (OAuth 2.0)
+     * Obtiene el Access Token para servicios específicos (Drive, etc.)
+     */
+    async function authorize(optionalClientId) {
+        return new Promise(async (resolve, reject) => {
+            const cfg = getConfig();
+            const client_id = optionalClientId || cfg.clientId;
+            if (!client_id) return reject('No Google Client ID configured');
+
+            await loadGIS();
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: client_id,
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp?.error) return reject(resp.error);
+                    accessToken = resp.access_token;
+                    localStorage.setItem(STATUS_KEY, 'true');
+                    updateSyncUI('online');
+                    resolve(accessToken);
+                },
+            });
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        });
+    }
+
+    /**
+     * Inicia el flujo de autenticación OAuth2 y devuelve una promesa con el accessToken.
+     */
+    async function login(optionalClientId) {
+        return new Promise(async (resolve, reject) => {
+            const cfg = getConfig();
+            const client_id = optionalClientId || cfg.clientId;
+            if (!client_id) return reject('No Google Client ID configured');
+
+            await loadGIS();
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: client_id,
+                scope: SCOPES,
+                callback: (resp) => {
+                    if (resp?.error) return reject(resp.error);
+                    accessToken = resp.access_token;
+                    localStorage.setItem(STATUS_KEY, 'true');
+                    updateSyncUI('online');
+                    resolve(accessToken);
+                },
+            });
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        });
+    }
+
+    /**
+     * Login + Busca el archivo de workspace en Drive y devuelve su contenido si existe.
+     */
+    async function loginAndCheckRemote(optionalClientId) {
+        try {
+            // First identify (OIDC)
+            await signIn(optionalClientId);
+            // Then authorize (OAuth) only if identity is confirmed
+            await authorize(optionalClientId);
+            
+            const cfg = getConfig();
+            const fileId = await findFile(cfg.fileName);
+            if (!fileId) return null;
+            return await getFileContent(fileId);
+        } catch (err) {
+            console.error('[Sync] identity + authorize flow failed:', err);
+            throw err;
+        }
     }
 
     async function initTokenClient() {
@@ -147,11 +267,17 @@ const syncManager = (() => {
     async function init() {
         bindNetworkListeners();
         updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
+        
+        const storedIdToken = localStorage.getItem(ID_TOKEN_KEY);
+        if (storedIdToken) currentUser = decodeIdToken(storedIdToken);
+
         const cfg = getConfig();
         configureAutoSync(cfg.autoSyncMinutes);
         if (cfg.clientId) {
             try {
-                await initTokenClient();
+                // We don't auto-authorize Drive without user action to follow "minimal scopes" principle.
+                // But we load GIS so it's ready.
+                await loadGIS();
             } catch {
                 updateSyncUI('error');
             }
@@ -804,7 +930,26 @@ const syncManager = (() => {
         showToast('Sincronización completada.', 'success');
     }
 
-    return { init, authenticate, disconnect, push, pull, syncNow, openPanel, getConfig, listDriveFiles, syncCalendar, syncGoogleTasks, syncTodoist, getAccessToken: () => accessToken };
+    return { 
+        init, 
+        signIn, 
+        authorize, 
+        loginAndCheckRemote, 
+        authenticate, 
+        disconnect, 
+        push, 
+        pull, 
+        syncNow, 
+        openPanel, 
+        getConfig, 
+        saveConfig, 
+        listDriveFiles, 
+        syncCalendar, 
+        syncGoogleTasks, 
+        syncTodoist, 
+        getAccessToken: () => accessToken,
+        getUser: () => currentUser
+    };
 })();
 
 export { syncManager };

@@ -185,7 +185,8 @@ const zoteroApi = (() => {
         setCredentials,
         syncLibrary,
         exportAsBibTeX,
-        exportAsCSLJSON
+        exportAsCSLJSON,
+        fetchItemNotes
     };
 })();
 

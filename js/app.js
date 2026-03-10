@@ -1,9 +1,16 @@
-﻿/**
- * app.js — Bootstrap: init DB → load store → register SW → init router + search
- * All view modules must be loaded before this file.
- */
+import { 
+    initUIToggles, 
+    refreshSidebarProjects, 
+    openSearch, 
+    closeSearch, 
+    handleSearch, 
+    openQuickAdd, 
+    exportData, 
+    initGlobalEffects 
+} from './ui.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    initGlobalEffects();
 
     // ── 0. App Lock (Auth) — Nexus Fortress ───────────────────────────────────
     const authOverlay = document.getElementById('auth-overlay');
@@ -112,30 +119,164 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (!savedHash) {
             authOverlay.classList.add('open');
-            authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-            authForm.onsubmit = async (e) => {
-                e.preventDefault();
-                const pwd = authPassword.value.trim();
-                if (pwd.length < 4) {
-                    authPassword.style.border = '1px solid var(--accent-warning)';
-                    setTimeout(() => authPassword.style.border = '', 1000);
-                    return;
-                }
-                // Hash password with SHA-256 + salted PBKDF2-derived salt
-                const hash = await hashStr(pwd);
-                const recoveryCode = generateRecoveryCode();
-                const recoveryHash = await hashStr(normalizeCode(recoveryCode));
-                localStorage.setItem('workspace_lock_hash', hash);
-                localStorage.setItem('workspace_recovery_hash', recoveryHash);
-                // Derive encryption key and activate the crypto layer
-                if (cryptoLayer) await cryptoLayer.unlock(pwd);
+            const setupPanel = document.getElementById('auth-setup-panel');
+            const googleBtn = document.getElementById('auth-google-link');
+            const manualLink = document.getElementById('auth-manual-setup');
+
+            if (setupPanel && googleBtn && manualLink) {
+                setupPanel.style.display = 'flex';
                 authForm.style.display = 'none';
-                authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
-                showCodeDisplay(recoveryCode, () => {
-                    authOverlay.classList.remove('open');
-                    resolve();
-                });
-            };
+                authSubtitle.textContent = "Bienvenido. Identifica tu cuenta de Google para comenzar.";
+
+                const clientIdContainer = document.getElementById('auth-client-id-container');
+                const showClientIdBtn = document.getElementById('auth-show-client-id');
+                const setupClientIdInput = document.getElementById('auth-setup-client-id');
+
+                if (showClientIdBtn) {
+                    showClientIdBtn.onclick = () => {
+                        clientIdContainer.style.display = 'flex';
+                        showClientIdBtn.style.display = 'none';
+                        setupClientIdInput.focus();
+                    };
+                }
+
+                googleBtn.onclick = async () => {
+                    const providedClientId = setupClientIdInput?.value.trim();
+                    const existingClientId = syncManager.getConfig().clientId;
+
+                    if (!providedClientId && !existingClientId) {
+                        if (window.showToast) showToast('Por favor, ingresa un Google Client ID para continuar.', 'warning');
+                        clientIdContainer.style.display = 'flex';
+                        if (showClientIdBtn) showClientIdBtn.style.display = 'none';
+                        setupClientIdInput.focus();
+                        return;
+                    }
+
+                    googleBtn.disabled = true;
+                    googleBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Conectando...';
+                    if (window.feather) feather.replace();
+
+                    try {
+                        const targetClientId = providedClientId || existingClientId;
+                        
+                        // CAPA A: Autenticación (Identity)
+                        const user = await syncManager.signIn(targetClientId);
+                        
+                        // Guardar el Client ID si funcionó
+                        if (providedClientId) {
+                            syncManager.saveConfig({ clientId: providedClientId });
+                        }
+
+                        // Mostrar Paso 2: Conectar Drive
+                        const driveStep = document.getElementById('auth-drive-connect-step');
+                        const driveBtn = document.getElementById('auth-google-drive-link');
+                        const userNameEl = document.getElementById('auth-user-name');
+                        
+                        if (driveStep && userNameEl) {
+                            userNameEl.textContent = user.name || user.email;
+                            driveStep.style.display = 'flex';
+                            googleBtn.style.display = 'none';
+                            
+                            driveBtn.onclick = async () => {
+                                driveBtn.disabled = true;
+                                driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando...';
+                                if (window.feather) feather.replace();
+                                
+                                try {
+                                    const remoteData = await syncManager.loginAndCheckRemote(targetClientId);
+                                    handleRemoteWorkspace(remoteData);
+                                } catch (err) {
+                                    showToast('Error al conectar con Drive', 'error');
+                                    driveBtn.disabled = false;
+                                    driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive (Opcional)';
+                                }
+                            };
+                        }
+
+                        // Permitir continuar solo con identidad si lo desea
+                        authSubtitle.textContent = `Hola ${user.name}. Puedes conectar Drive ahora o seguir solo local.`;
+                        
+                        // Si no conecta Drive, puede configurar contraseña manual
+                        manualLink.textContent = "Continuar sin Drive (Solo local)";
+                        manualLink.onclick = () => {
+                            setupPanel.style.display = 'none';
+                            authForm.style.display = 'flex';
+                            authSubtitle.textContent = "Crea una contraseña maestra para proteger tus datos locales.";
+                            setupPasswordCreation();
+                        };
+
+                    } catch (err) {
+                        console.error('[Auth] Google sign-in failed:', err);
+                        googleBtn.disabled = false;
+                        googleBtn.innerHTML = '<img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="18" height="18" alt="Google"> Entrar con Google';
+                        if (window.feather) feather.replace();
+                        if (window.showToast) showToast('Error al autenticar con Google.', 'error');
+                    }
+                };
+
+                function handleRemoteWorkspace(remoteData) {
+                    if (remoteData && remoteData.updatedAt) {
+                        if (window.showToast) showToast('Workspace detectado en Google Drive', 'success');
+                        const remoteHash = remoteData.settings?.workspace_lock_hash;
+                        if (remoteHash) {
+                            localStorage.setItem('workspace_lock_hash', remoteHash);
+                            if (remoteData.settings.workspace_recovery_hash) {
+                                localStorage.setItem('workspace_recovery_hash', remoteData.settings.workspace_recovery_hash);
+                            }
+                            location.reload();
+                            return;
+                        }
+                    }
+                    // No hay workspace o no tiene contraseña
+                    setupPanel.style.display = 'none';
+                    authForm.style.display = 'flex';
+                    authSubtitle.textContent = "Conexión exitosa. Crea una contraseña maestra para proteger tus datos.";
+                    setupPasswordCreation();
+                }
+
+                manualLink.onclick = () => {
+                    setupPanel.style.display = 'none';
+                    authForm.style.display = 'flex';
+                    authSubtitle.textContent = "Crea una contraseña maestra para tu Workspace local.";
+                    setupPasswordCreation();
+                };
+            } else {
+                // Fallback si por alguna razón no están los elementos nuevos
+                authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
+                setupPasswordCreation();
+            }
+
+            function setupPasswordCreation() {
+                authForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    const pwd = authPassword.value.trim();
+                    if (pwd.length < 4) {
+                        authPassword.style.border = '1px solid var(--accent-warning)';
+                        setTimeout(() => authPassword.style.border = '', 1000);
+                        return;
+                    }
+                    const hash = await hashStr(pwd);
+                    const recoveryCode = generateRecoveryCode();
+                    const recoveryHash = await hashStr(normalizeCode(recoveryCode));
+                    localStorage.setItem('workspace_lock_hash', hash);
+                    localStorage.setItem('workspace_recovery_hash', recoveryHash);
+                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                    authForm.style.display = 'none';
+                    authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
+                    showCodeDisplay(recoveryCode, () => {
+                        authOverlay.classList.remove('open');
+                        // Forzar una sincronización inicial si estamos conectados
+                        if (syncManager.getAccessToken()) {
+                            syncManager.push().then(() => {
+                                if (window.showToast) showToast('Workspace sincronizado con Drive por primera vez', 'success');
+                                resolve();
+                            });
+                        } else {
+                            resolve();
+                        }
+                    });
+                };
+            }
         } else {
             authOverlay.classList.add('open');
             authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
@@ -450,260 +591,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 });
 
-// ── Global Helper Functions ──────────────────────────────────────────────────
-
-/**
- * Inicializa los controladores de eventos para los botones de la interfaz
- * de usuario, como el menú lateral (sidebar), cambio de tema, y perfil de usuario.
- */
-function initUIToggles() {
-    const container = document.querySelector('.app-container');
-    const sidebarBtn = document.getElementById('btn-sidebar-toggle');
-    const themeBtn = document.getElementById('btn-theme-toggle');
-
-    // Sidebar Toggle
-    if (localStorage.getItem('sidebar-collapsed') === 'true') {
-        container?.classList.add('collapsed-sidebar');
+// ── 13. Expose Globals for legacy support or inline handlers ──────────────────
+window.exportData = exportData;
+window.openQuickAdd = openQuickAdd;
+window.openSearch = openSearch;
+window.closeSearch = closeSearch;
+window.handleSearch = handleSearch;
+window.lockWorkspace = () => {
+    if (localStorage.getItem('workspace_lock_hash')) {
+        location.reload();
+    } else {
+        if (window.showToast) showToast('Primero configura una contraseña en Perfil.', 'info');
     }
+};
 
-    sidebarBtn?.addEventListener('click', () => {
-        const isCollapsed = container?.classList.toggle('collapsed-sidebar');
-        localStorage.setItem('sidebar-collapsed', !!isCollapsed);
-    });
-
-    // Theme Toggle
-    const savedTheme = localStorage.getItem('app-theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', savedTheme);
-
-    themeBtn?.addEventListener('click', () => {
-        let currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const themes = ['dark', 'light', 'rosel', 'celada', 'zen'];
-        const currentIdx = themes.indexOf(currentTheme);
-        const newTheme = themes[(currentIdx + 1) % themes.length];
-        document.documentElement.setAttribute('data-theme', newTheme);
-        localStorage.setItem('app-theme', newTheme);
-        if (window.showToast) window.showToast('Tema cambiado a: ' + newTheme, 'info');
-    });
-
-    // Mobile Menu
-    const mobileMenuBtn = document.getElementById('btn-mobile-menu');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
-    const sidebar = document.querySelector('.sidebar');
-
-    const toggleMobileMenu = () => {
-        sidebar?.classList.toggle('open');
-        sidebarOverlay?.classList.toggle('open');
-    };
-
-    mobileMenuBtn?.addEventListener('click', toggleMobileMenu);
-    sidebarOverlay?.addEventListener('click', toggleMobileMenu);
-
-    document.querySelectorAll('.nav-item').forEach(el => {
-        el.addEventListener('click', () => {
-            if (window.innerWidth <= 768) {
-                sidebar?.classList.remove('open');
-                sidebarOverlay?.classList.remove('open');
-            }
-        });
-    });
-
-    document.getElementById('btn-user-profile')?.addEventListener('click', () => {
-        if (window.openProfileModal) openProfileModal();
-    });
-}
-
-/**
- * Refresca la lista de proyectos mostrados en el menú lateral.
- * Renderiza los proyectos jerárquicamente anidados según su `parentId`.
- */
-function refreshSidebarProjects() {
-    // ✅ FIX: The HTML element is id="sidebar-projects" — no "-list" suffix.
-    const container = document.getElementById('sidebar-projects');
-    if (!container) return;
-    const allProjects = store.get.projects().filter(p => p.status !== 'archivado');
-
-    const renderNode = (parentId, depth = 0) => {
-        const children = allProjects.filter(p => (parentId === null ? !p.parentId : p.parentId === parentId));
-        if (children.length === 0) return '';
-
-        return children.map(p => {
-            const taskCount = store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length;
-            return `
-                <div class="nested-project-wrapper" data-id="${p.id}">
-                    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true" style="padding-left: ${16 + (depth * 14)}px;">
-                        <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
-                        <span class="nav-item-text">${esc(p.name)}</span>
-                        ${taskCount > 0 ? `<span class="nav-count">${taskCount}</span>` : ''}
-                    </a>
-                    <div class="project-children">
-                        ${renderNode(p.id, depth + 1)}
-                    </div>
-                </div>
-            `;
-        }).join('');
-    };
-
-    container.innerHTML = renderNode(null);
-
-    // Re-bind listeners
-    container.querySelectorAll('.sidebar-project-item').forEach(item => {
-        item.addEventListener('dragstart', handleProjectDragStart);
-        item.addEventListener('dragover', handleProjectDragOver);
-        item.addEventListener('drop', handleProjectDrop);
-        item.addEventListener('dragend', handleProjectDragEnd);
-    });
-}
-
-// Drag & Drop Helpers
-let dragSrcEl = null;
-function handleProjectDragStart(e) {
-    dragSrcEl = this;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.innerHTML);
-    this.style.opacity = '0.4';
-}
-function handleProjectDragOver(e) { if (e.preventDefault) e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return false; }
-function handleProjectDragEnter() { this.classList.add('drag-over'); }
-function handleProjectDragLeave() { this.classList.remove('drag-over'); }
-function handleProjectDrop(e) {
-    if (e.stopPropagation) e.stopPropagation();
-    if (dragSrcEl !== this) {
-        const srcId = dragSrcEl.dataset.id;
-        const tgtId = this.dataset.id;
-
-        // Logical nesting: if Ctrl is held, nest it. Otherwise reorder.
-        if (e.ctrlKey) {
-            store.dispatch('UPDATE_PROJECT', { id: srcId, parentId: tgtId });
-            showToast('Proyecto anidado.', 'info');
-        } else {
-            // Reordering logic
-            const all = store.get.projects().filter(p => p.status !== 'archivado');
-            const srcIdx = all.findIndex(p => p.id === srcId);
-            const tgtIdx = all.findIndex(p => p.id === tgtId);
-            if (srcIdx > -1 && tgtIdx > -1) {
-                const [moved] = all.splice(srcIdx, 1);
-                all.splice(tgtIdx, 0, moved);
-                // Also reset parentId if reordering at top level? Or keep it?
-                // For now, let's just reorder and clear parentId to bring to same level
-                const targetParent = all[tgtIdx].parentId || null;
-                store.dispatch('UPDATE_PROJECT', { id: srcId, parentId: targetParent });
-                store.dispatch('UPDATE_PROJECT_ORDERS', all.map((p, i) => ({ id: p.id, order: i })));
-            }
-        }
-    }
-    return false;
-}
-function handleProjectDragEnd() {
-    this.style.opacity = '1';
-    document.querySelectorAll('.sidebar-project-item').forEach(item => item.classList.remove('drag-over'));
-}
-
-// Search Logic
-/**
- * Abre el overlay de búsqueda rápida global.
- */
-function openSearch() {
-    document.getElementById('search-overlay')?.classList.add('open');
-    document.getElementById('search-input')?.focus();
-    handleSearch('');
-}
-function closeSearch() {
-    document.getElementById('search-overlay')?.classList.remove('open');
-    if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
-}
-/**
- * Ejecuta la búsqueda en tiempo real sobre proyectos y tareas en el estado actual.
- * Modifica el DOM para renderizar los resultados coincidentes.
- * @param {string} q - El texto o consulta de búsqueda.
- */
-function handleSearch(q) {
-    const results = document.getElementById('search-results');
-    if (!results) return;
-    if (!q.trim()) { results.innerHTML = `<div class="search-hint">Escribe para buscar...</div>`; return; }
-    const ql = q.toLowerCase();
-    const matchedProjs = store.get.projects().filter(p => p.name.toLowerCase().includes(ql)).slice(0, 4);
-    const matchedTasks = store.get.allTasks().filter(t => t.title.toLowerCase().includes(ql)).slice(0, 8);
-
-    if (!matchedTasks.length && !matchedProjs.length) {
-        results.innerHTML = `<div class="search-hint">Sin resultados para "${esc(q)}".</div>`;
-        return;
-    }
-    results.innerHTML = [
-        ...matchedProjs.map(p => `
-            <div class="search-result-item" onclick="router.navigate('/project/${p.id}'); closeSearch();">
-                <i data-feather="briefcase" style="color:${p.color || 'var(--accent-primary)'}"></i>
-                <div class="res-info"><span class="res-title">${esc(p.name)}</span><span class="res-meta">Proyecto</span></div>
-            </div>`),
-        ...matchedTasks.map(t => `
-            <div class="search-result-item" onclick="router.navigate('/backlog'); closeSearch();">
-                <i data-feather="check-square"></i>
-                <div class="res-info"><span class="res-title">${esc(t.title)}</span><span class="res-meta">Tarea</span></div>
-            </div>`)
-    ].join('');
-    if (window.feather) feather.replace();
-}
-
-// Global Quick Add
-function openQuickAdd() {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.id = 'quick-overlay';
-    overlay.innerHTML = `
-        <div class="modal" style="max-width:340px;">
-            <div class="modal-header"><h2>Nuevo…</h2><button class="btn btn-icon" id="qa-close"><i data-feather="x"></i></button></div>
-            <div class="modal-body" style="gap:8px;">
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openTaskModal();"><i data-feather="check-square"></i> Tarea</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openProjectModal();"><i data-feather="briefcase"></i> Proyecto</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openCycleModal();"><i data-feather="refresh-cw"></i> Ciclo</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openDecisionModal();"><i data-feather="zap"></i> Decisión</button>
-            </div>
-        </div>`;
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    document.body.appendChild(overlay);
-    if (window.feather) feather.replace();
-    overlay.querySelector('#qa-close')?.addEventListener('click', () => overlay.remove());
-}
-
-// Export Helper
-async function exportData() {
-    try {
-        const data = {
-            version: '1.0', exportedAt: new Date().toISOString(),
-            projects: store.get.projects(), tasks: store.get.allTasks(),
-            cycles: store.get.cycles(), decisions: store.get.decisions()
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `workspace-backup-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        if (window.showToast) showToast('Datos exportados con éxito');
-    } catch (err) {
-        if (window.showToast) showToast('Error al exportar datos', 'error');
-    }
-}
-
-// UI Effects
-document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn');
-    if (!btn) return;
-
-    // Support both mouse and touch events for coords
-    const x = e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-    const y = e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
-
-    const rect = btn.getBoundingClientRect();
-    const size = Math.max(rect.width, rect.height) * 1.5;
-    const ripple = document.createElement('span');
-    ripple.className = 'ripple';
-    ripple.style.cssText = `width:${size}px;height:${size}px;left:${x - rect.left - size / 2}px;top:${y - rect.top - size / 2}px;`;
-    btn.appendChild(ripple);
-    ripple.addEventListener('animationend', () => ripple.remove());
-});
-
-// PWA Logic Extensions
+// ── 14. PWA Installation Logic ──────────────────────────────────────────────
 let deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -715,37 +617,24 @@ window.addEventListener('beforeinstallprompt', (e) => {
     }
 });
 
-const btnInstall = document.getElementById('pwa-install-btn');
-const btnDismiss = document.getElementById('pwa-install-dismiss');
+document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.style.display = 'none';
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+    }
+});
 
-if (btnInstall) {
-    btnInstall.addEventListener('click', async () => {
-        const banner = document.getElementById('pwa-install-banner');
-        if (banner) banner.style.display = 'none';
-        if (deferredInstallPrompt) {
-            deferredInstallPrompt.prompt();
-            const { outcome } = await deferredInstallPrompt.userChoice;
-            deferredInstallPrompt = null;
-        }
-    });
-}
-if (btnDismiss) {
-    btnDismiss.addEventListener('click', () => {
-        const banner = document.getElementById('pwa-install-banner');
-        if (banner) banner.style.display = 'none';
-        localStorage.setItem('pwa-install-dismissed', 'true');
-    });
-}
+document.getElementById('pwa-install-dismiss')?.addEventListener('click', () => {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.style.display = 'none';
+    localStorage.setItem('pwa-install-dismissed', 'true');
+});
 
 window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
     const banner = document.getElementById('pwa-install-banner');
     if (banner) banner.style.display = 'none';
 });
-
-// Expose globals
-window.refreshCurrentView = () => { /* Logic to refresh active view if needed */ };
-window.exportData = exportData;
-window.openQuickAdd = openQuickAdd;
-window.openSearch = openSearch;
-window.closeSearch = closeSearch;
