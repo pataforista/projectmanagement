@@ -41,6 +41,13 @@ function closeModal() {
 // Close on Escape
 window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
+/**
+ * Re-renders the current view after a modal action (create/edit/delete).
+ */
+function refreshCurrentView() {
+  if (window.router) window.router._dispatch();
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Task Modal
 // ────────────────────────────────────────────────────────────────────────────
