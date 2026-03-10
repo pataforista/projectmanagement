@@ -84,6 +84,22 @@ function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
 }
 
+/**
+ * Solo permite URLs http/https para evitar esquemas peligrosos (ej. javascript:).
+ * Retorna '#' cuando la URL no es válida o usa un protocolo no permitido.
+ */
+function safeExternalUrl(rawUrl) {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '#';
+    try {
+        const parsed = new URL(value, window.location.origin);
+        const allowedProtocols = new Set(['http:', 'https:']);
+        return allowedProtocols.has(parsed.protocol) ? parsed.href : '#';
+    } catch {
+        return '#';
+    }
+}
+
 function computeIdentityKey({ email, memberId, name }) {
     const cleanEmail = normalizeEmail(email);
     if (cleanEmail) return `email:${cleanEmail}`;

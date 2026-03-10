@@ -52,7 +52,7 @@ function renderMedical(root) {
                   <td style="padding:12px; color:var(--text-secondary); font-size:0.85rem;">${esc(i.specialty)}</td>
                   <td style="padding:12px;"><span class="badge ${getStatusBadgeClass(i.status)}">${i.status}</span></td>
                   <td style="padding:12px;">
-                    ${i.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(i.assigneeId)?.name)}" style="width:24px;height:24px;font-size:0.75rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:auto;">${(store.get.memberById(i.assigneeId)?.avatar || '?')}</div>` : '<span style="color:var(--text-muted); font-size:0.8rem;">—</span>'}
+                    ${i.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(i.assigneeId)?.name)}" style="width:24px;height:24px;font-size:0.75rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:auto;">${esc(store.get.memberById(i.assigneeId)?.avatar || '?')}</div>` : '<span style="color:var(--text-muted); font-size:0.8rem;">—</span>'}
                   </td>
                   <td style="padding:12px; color:var(--text-muted); font-size:0.8rem;">${i.createdAt ? new Date(i.createdAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
                   <td style="padding:12px;">
