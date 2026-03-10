@@ -49,7 +49,7 @@ function renderBacklog(root) {
     const p = store.get.projectById(pid);
     const linkWrap = root.querySelector('#backlog-drive-link-container');
     if (p && p.driveUrl) {
-      linkWrap.innerHTML = `<a href="${esc(p.driveUrl)}" target="_blank" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
+      linkWrap.innerHTML = `<a href="${esc(safeExternalUrl(p.driveUrl))}" target="_blank" rel="noopener noreferrer" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
       feather.replace();
     } else {
       linkWrap.innerHTML = '';

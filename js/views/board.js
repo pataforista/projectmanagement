@@ -48,7 +48,7 @@ function renderBoard(root) {
     const p = store.get.projectById(pid);
     const linkWrap = root.querySelector('#board-drive-link-container');
     if (p && p.driveUrl) {
-      linkWrap.innerHTML = `<a href="${esc(p.driveUrl)}" target="_blank" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
+      linkWrap.innerHTML = `<a href="${esc(safeExternalUrl(p.driveUrl))}" target="_blank" rel="noopener noreferrer" class="btn btn-icon btn-secondary" title="Abrir Google Drive" style="margin:0 8px;"><i data-feather="external-link"></i></a>`;
       feather.replace();
     } else {
       linkWrap.innerHTML = '';
@@ -117,7 +117,7 @@ function kanbanCard(t) {
           ${t.dueDate ? `<i data-feather="calendar"></i>${fmtDate(t.dueDate)}` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:4px;">
-          ${t.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}" style="width:18px;height:18px;font-size:0.6rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">${(store.get.memberById(t.assigneeId)?.avatar || '?')}</div>` : ''}
+          ${t.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}" style="width:18px;height:18px;font-size:0.6rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">${esc(store.get.memberById(t.assigneeId)?.avatar || '?')}</div>` : ''}
           <button class="btn btn-icon btn-sm task-move-btn d-mobile-only" title="Mover estado" style="padding:2px; color:var(--text-muted);"><i data-feather="more-horizontal" style="width:14px;height:14px;"></i></button>
           <span class="priority-pip ${t.priority || 'baja'}"></span>
           <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="padding:2px; margin-left:4px; opacity:0; transition:opacity 0.2s; color:var(--text-muted);"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>
