@@ -92,8 +92,8 @@ function computeIdentityKey({ email, memberId, name }) {
 }
 
 function getCurrentWorkspaceUser() {
-    const name = localStorage.getItem('workspace_user_name') || 'Carlos';
-    const role = localStorage.getItem('workspace_user_role') || 'Owner';
+    const name = localStorage.getItem('workspace_user_name') || 'Usuario';
+    const role = localStorage.getItem('workspace_user_role') || 'Miembro';
     const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
     const memberId = localStorage.getItem('workspace_user_member_id') || '';
     const email = normalizeEmail(localStorage.getItem('workspace_user_email') || '');

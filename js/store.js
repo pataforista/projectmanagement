@@ -73,7 +73,7 @@ const store = (() => {
         console.log('Seeding initial data...');
         const now = Date.now();
 
-        const m1 = { id: 'u1', name: 'Carlos (Tú)', role: 'Investigador Principal', avatar: 'C' };
+        const m1 = { id: 'u1', name: 'Mi usuario', role: 'Investigador Principal', avatar: 'C' };
         const m2 = { id: 'u2', name: 'Equipo Alpha', role: 'Colaboradores', avatar: 'A' };
         const m3 = { id: 'u3', name: 'Supervisor', role: 'Revisión', avatar: 'S' };
 
