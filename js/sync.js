@@ -465,8 +465,12 @@ const syncManager = (() => {
             const cfg = getConfig();
             const data = await getSnapshot();
 
-            // Helper: treat stored "undefined"/"null" strings as missing values
-            const validId = v => (v && v !== 'undefined' && v !== 'null') ? v : null;
+            // Helper: treat stored "undefined"/"null" strings or full URLs as missing values
+            const validId = v => {
+                if (!v || v === 'undefined' || v === 'null') return null;
+                if (typeof v === 'string' && v.includes('http')) return null; // AUTO-PURGE corrupted data
+                return v;
+            };
 
             // 1. Localizar o crear el Workspace Folder
             let folderId = cfg.sharedFolderId || validId(localStorage.getItem('gdrive_folder_id'));
@@ -929,7 +933,14 @@ const syncManager = (() => {
         overlay.querySelector('#sync-save-connect').addEventListener('click', async () => {
             const clientId = overlay.querySelector('#sync-client-id').value.trim();
             const fileName = overlay.querySelector('#sync-file-name').value.trim() || defaultConfig.fileName;
-            const sharedFolderId = overlay.querySelector('#sync-shared-id').value.trim();
+            let sharedFolderId = overlay.querySelector('#sync-shared-id').value.trim();
+
+            if (sharedFolderId) {
+                // Múltiples formatos de URL de Google Drive. Extraemos el ID de 33 caracteres:
+                // https://drive.google.com/drive/folders/1qDgWShPIyVgUTnDIpB1bAwQx5ZzCSU6r?usp=drive_link
+                const match = sharedFolderId.match(/[-\w]{25,}/);
+                if (match) sharedFolderId = match[0];
+            }
             const autoSyncMinutes = Number(overlay.querySelector('#sync-auto-min').value || 5);
             const membersRaw = overlay.querySelector('#sync-members').value.trim();
 
@@ -1166,7 +1177,12 @@ const syncManager = (() => {
     async function getChatFolder() {
         if (chatFolderId) return chatFolderId;
         const cfg = getConfig();
-        let rootFolderId = cfg.sharedFolderId || localStorage.getItem('gdrive_folder_id');
+        let storedId = localStorage.getItem('gdrive_folder_id');
+        if (storedId && storedId.includes('http')) {
+            localStorage.removeItem('gdrive_folder_id'); // Purgar URL inválida
+            storedId = null;
+        }
+        let rootFolderId = cfg.sharedFolderId || storedId;
         if (!rootFolderId) return null; // Aún no hay workspace
 
         chatFolderId = await findFolder('chat_messages', rootFolderId);
@@ -1228,6 +1244,7 @@ const syncManager = (() => {
                 const tkRes = await fetchWithTimeout('https://www.googleapis.com/drive/v3/changes/getStartPageToken', {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
+                if (!tkRes.ok) return; // Prevent parsing 503/Offline response
                 const tkData = await tkRes.json();
                 token = tkData.startPageToken;
                 localStorage.setItem('gdrive_chat_token', token);
@@ -1237,6 +1254,10 @@ const syncManager = (() => {
             const res = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/changes?pageToken=${token}&spaces=drive&fields=changes(fileId,removed,file(name,parents)),newStartPageToken,nextPageToken`, {
                 headers: { Authorization: `Bearer ${accessToken}` }
             });
+            if (!res.ok) {
+                if (res.status === 401) localStorage.removeItem('nexus_gdrive_access_token');
+                return;
+            }
             const data = await res.json();
 
             // Si el token expira o es inválido, reset
@@ -1280,12 +1301,24 @@ const syncManager = (() => {
         }
     }
 
+    let isChatPollingActive = false; // Lock para la red
     function startChatSync() {
-        if (chatSyncTimer) clearInterval(chatSyncTimer);
-        chatSyncTimer = setInterval(async () => {
-            await flushChatOutbox();
-            await pollChat();
-        }, 2500); // 2.5s Latencia!
+        if (chatSyncTimer) clearTimeout(chatSyncTimer);
+        const loop = async () => {
+            if (!isChatPollingActive) {
+                isChatPollingActive = true;
+                try {
+                    await flushChatOutbox();
+                    await pollChat();
+                } catch (e) {
+                    // Silenciar errores de red offline
+                } finally {
+                    isChatPollingActive = false;
+                }
+            }
+            chatSyncTimer = setTimeout(loop, 2500); // 2.5s Latencia, ahora seguros
+        };
+        loop();
     }
 
     function getChatSyncStatus() {

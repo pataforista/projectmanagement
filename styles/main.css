@@ -77,20 +77,21 @@
 [data-theme="light"] {
     --bg-base: #f8f9fa;
     --bg-surface: rgba(255, 255, 255, 0.85);
-    --bg-surface-2: rgba(241, 243, 245, 0.9);
-    --bg-surface-hover: rgba(233, 236, 239, 1);
+  /* ── Light Theme ── */
+  --bg-base: #ffffff;
+  --bg-surface: #f8f9fa;
+  --bg-surface-2: #ffffff;
+  --surface-tonal: #f1f3f5;
+  --text-primary: #1a1a1a;
+  --text-secondary: #495057;
+  --text-muted: #555e6b; /* Increased contrast from #6b7280 */
+  --border-color: #dee2e6;
+  --border-highlight: #ced4da;
+    --border-focus: rgba(94, 106, 210, 0.6);
     --bg-panel: rgba(255, 255, 255, 0.6);
     --bg-input: rgba(0, 0, 0, 0.04);
     --bg-overlay: rgba(0, 0, 0, 0.4);
-
-    --border-color: rgba(0, 0, 0, 0.08);
-    --border-highlight: rgba(0, 0, 0, 0.12);
-    --border-focus: rgba(94, 106, 210, 0.6);
-
-    --text-primary: #1a1d23;
-    --text-secondary: #4b5563;
-    --text-muted: #6b7280;
-    /* Improved contrast from #9ca3af */
+    --bg-surface-hover: rgba(233, 236, 239, 1);
 
     --accent-primary: #5e6ad2;
     --accent-primary-glow: rgba(94, 106, 210, 0.15);
@@ -190,22 +191,21 @@
 }
 
 [data-theme="zen"] {
-    --bg-base: #f4eee0;
-    --bg-surface: rgba(244, 238, 224, 0.85);
-    --bg-surface-2: rgba(230, 222, 202, 0.9);
-    --bg-surface-hover: rgba(210, 200, 180, 0.95);
+  /* ── Zen Theme (Low Contrast Beige) ── */
+  --bg-base: #f4f1ea;
+  --bg-surface: #efebe3;
+  --bg-surface-2: #f4f1ea;
+  --surface-tonal: #e5e0d4;
+  --text-primary: #2c2925;
+  --text-secondary: #5c5852;
+  --text-muted: #4a463f; /* Increased contrast from #5c5852 (which was same as secondary) */
+  --border-color: #dcd7ca;
+  --border-highlight: #c7c0ae;
+    --border-focus: #bc4749;
     --bg-panel: rgba(244, 238, 224, 0.7);
     --bg-input: rgba(0, 0, 0, 0.05);
     --bg-overlay: rgba(26, 26, 26, 0.4);
-
-    --border-color: rgba(26, 26, 26, 0.15);
-    --border-highlight: rgba(26, 26, 26, 0.25);
-    --border-focus: #bc4749;
-
-    --text-primary: #1a1a1a;
-    --text-secondary: #3d3d3d;
-    --text-muted: #5c5852;
-    /* Improved contrast from #706b64 */
+    --bg-surface-hover: rgba(210, 200, 180, 0.95);
 
     --accent-primary: #bc4749;
     /* Cinnabar Red */

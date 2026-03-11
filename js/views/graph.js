@@ -52,7 +52,7 @@ export const renderGraph = (root) => {
                     <button class="btn btn-secondary btn-sm" id="btn-export-vault" title="Exportar todos los documentos como vault Markdown (Zettlr / Logseq)">
                         <i data-feather="archive"></i> Vault ZIP
                     </button>
-                    <button class="btn btn-secondary btn-sm" onclick="app.navigate('writing')">Volver a Escritura</button>
+                    <button class="btn btn-secondary btn-sm" onclick="router.navigate('/writing')">Volver a Escritura</button>
                 </div>
             </header>
             <div id="graph-container" style="flex:1; background:var(--bg-surface); position:relative;">

@@ -1888,3 +1888,138 @@
         font-size: 1rem;
     }
 }
+
+/* ── Kanban Board ───────────────────────────────────────────────────────────── */
+.board-container {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 0 32px 32px;
+    align-items: flex-start;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-highlight) transparent;
+}
+
+.board-column {
+    min-width: 300px;
+    max-width: 300px;
+    background: var(--bg-surface-2);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 160px);
+}
+
+.board-column-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.01);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.board-column-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+}
+
+.board-column-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--bg-surface-hover);
+    padding: 2px 8px;
+    border-radius: 999px;
+    margin-left: auto;
+}
+
+.board-cards {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    min-height: 120px; /* Base drop zone height */
+    padding-bottom: 60px; /* Extra generous drop zone padding */
+    transition: background var(--dur-fast);
+}
+
+.board-cards.drag-over {
+    background: rgba(94, 106, 210, 0.08);
+    border-radius: var(--radius-md);
+}
+
+.kanban-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    cursor: grab;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: var(--shadow-sm);
+}
+
+.kanban-card:hover {
+    border-color: var(--border-highlight);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.kanban-card.dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+}
+
+.kanban-card-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.kanban-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.kanban-card-date {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.kanban-card-date.overdue {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
+.board-add-btn {
+    padding: 12px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-top: 1px solid var(--border-color);
+    transition: color 0.3s, background 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.board-add-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-hover);
+}
+

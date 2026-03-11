@@ -29,34 +29,41 @@ function renderIntegrations(root) {
               </span>
             </div>
           </div>
-          <div class="integration-body">
-             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
-              Sincroniza tus datos de equipo mediante Drive Workspace.
-            </p>
-            <div class="integration-services">
-              <label class="checkbox-item">
-                <input type="checkbox" checked disabled> 
-                <span>Google Drive (Backup & Team)</span>
-              </label>
-              <label class="checkbox-item">
-                <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}> 
-                <span>Google Calendar (Eventos)</span>
-              </label>
-              <label class="checkbox-item">
-                <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}> 
-                <span>Google Tasks (Tareas)</span>
-              </label>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:16px;">
-              <button class="btn btn-secondary btn-sm" onclick="syncManager?.openPanel()" style="flex:1;">
-                <i data-feather="settings" style="width:14px;height:14px;margin-right:4px;"></i> Configurar
-              </button>
-              <button class="btn btn-primary btn-sm" id="btn-integration-sync-now" style="flex:1;">
-                <i data-feather="refresh-cw" style="width:14px;height:14px;margin-right:4px;"></i> Sincronizar Ahora
-              </button>
+            <div class="integration-body">
+              <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
+                Sincroniza tus datos de equipo mediante Drive Workspace.
+              </p>
+              <div class="integration-services">
+                <label class="checkbox-item">
+                  <input type="checkbox" checked disabled> 
+                  <span>Google Drive (Backup & Team)</span>
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}> 
+                  <span>Google Calendar (Eventos)</span>
+                </label>
+                <label class="checkbox-item">
+                  <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}> 
+                  <span>Google Tasks (Tareas)</span>
+                </label>
+              </div>
+              
+              <!-- Clarification Note for Drive Uploads -->
+              <div style="margin-top:12px; padding:10px; background:rgba(94, 106, 210, 0.05); border-radius:8px; border:1px dashed var(--border-highlight); font-size:0.75rem; color:var(--text-secondary);">
+                <i data-feather="info" style="width:12px; height:12px; margin-right:4px; vertical-align:middle;"></i>
+                <strong>Nota:</strong> Los archivos subidos manualmente a Drive no aparecerán automáticamente. Primero regístralos en el proyecto y el sistema los sincronizará.
+              </div>
+
+              <div style="display:flex;gap:8px;margin-top:16px;">
+                <button class="btn btn-secondary btn-sm" onclick="syncManager?.openPanel()" style="flex:1;">
+                  <i data-feather="settings" style="width:14px;height:14px;margin-right:4px;"></i> Configurar
+                </button>
+                <button class="btn btn-primary btn-sm" id="btn-integration-sync-now" style="flex:1;">
+                  <i data-feather="refresh-cw" style="width:14px;height:14px;margin-right:4px;"></i> Sincronizar Ahora
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
         <!-- Zotero -->
         <div class="card glass-panel integration-card">
