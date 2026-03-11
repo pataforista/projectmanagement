@@ -38,7 +38,7 @@ class ELabFTWAPI {
         }
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/v2/experiments`, {
+            const response = await fetchWithTimeout(`${this.baseUrl}/api/v2/experiments`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

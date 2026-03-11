@@ -34,7 +34,7 @@ class OllamaAPI {
      */
     async generate(prompt, systemPrompt = '') {
         try {
-            const response = await fetch(`${this.baseUrl}/api/generate`, {
+            const response = await fetchWithTimeout(`${this.baseUrl}/api/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

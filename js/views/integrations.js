@@ -1,4 +1,4 @@
-﻿/**
+/**
  * views/integrations.js — Integrations Hub
  */
 
@@ -427,7 +427,7 @@ function renderIntegrations(root) {
       const uid = root.querySelector('#int-zot-uid').value.trim();
       const key = root.querySelector('#int-zot-key').value.trim();
       if (!uid || !key) throw new Error("Faltan credenciales");
-      const res = await fetch(`https://api.zotero.org/users/${uid}/items/top?v=3&limit=1`, { headers: { 'Zotero-API-Key': key } });
+      const res = await fetchWithTimeout(`https://api.zotero.org/users/${uid}/items/top?v=3&limit=1`, { headers: { 'Zotero-API-Key': key } });
       if (!res.ok) throw new Error("Acceso denegado o usuario inválido");
     });
   });
@@ -436,7 +436,7 @@ function renderIntegrations(root) {
     testApi('#btn-test-todoist', 'Probar', async () => {
       const token = root.querySelector('#int-todoist-token').value.trim();
       if (!token) throw new Error("Falta el API Token");
-      const res = await fetch('https://api.todoist.com/rest/v2/projects', { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetchWithTimeout('https://api.todoist.com/rest/v2/projects', { headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) throw new Error("Token revocado o inválido");
     });
   });
@@ -447,7 +447,7 @@ function renderIntegrations(root) {
       const sandbox = root.querySelector('#int-zenodo-sandbox').checked;
       if (!token) throw new Error("Falta el API Token");
       const base = sandbox ? 'https://sandbox.zenodo.org/api' : 'https://zenodo.org/api';
-      const res = await fetch(`${base}/deposit/depositions?size=1`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetchWithTimeout(`${base}/deposit/depositions?size=1`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (!res.ok) throw new Error("Token incorrecto o cuenta restringida");
     });
   });
@@ -457,7 +457,7 @@ function renderIntegrations(root) {
       let url = root.querySelector('#int-ollama-url').value.trim();
       if (!url) throw new Error("Falta la URL del servidor local");
       url = url.endsWith('/') ? url.slice(0, -1) : url;
-      const res = await fetch(`${url}/api/tags`);
+      const res = await fetchWithTimeout(`${url}/api/tags`);
       if (!res.ok) throw new Error(`El servidor respondió con error ${res.status}`);
       await res.json();
     });
@@ -469,7 +469,7 @@ function renderIntegrations(root) {
       const key = root.querySelector('#int-elab-key').value.trim();
       if (!url || !key) throw new Error("Falta la URL o la API Key");
       url = url.endsWith('/') ? url.slice(0, -1) : url;
-      const res = await fetch(`${url}/api/v2/experiments?limit=1`, { headers: { 'Authorization': key } });
+      const res = await fetchWithTimeout(`${url}/api/v2/experiments?limit=1`, { headers: { 'Authorization': key } });
       if (!res.ok) throw new Error(`Credenciales denegadas en ${url}`);
     });
   });

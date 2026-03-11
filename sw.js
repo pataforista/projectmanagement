@@ -74,21 +74,14 @@ self.addEventListener('fetch', event => {
 
     event.respondWith((async () => {
         try {
-            const isAPI = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com');
+            const isDynamic = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com');
 
-            // 1. API: Network-first
-            if (isAPI) {
+            // 1. API: Network-first, NEVER cached in static shell
+            if (isDynamic) {
                 try {
-                    const response = await fetch(event.request);
-                    if (response && response.status === 200) {
-                        const cache = await caches.open(CACHE_NAME);
-                        cache.put(event.request, response.clone());
-                    }
-                    return response;
+                    return await fetch(event.request);
                 } catch (err) {
-                    const cached = await caches.match(event.request);
-                    if (cached) return cached;
-                    throw err;
+                    throw err; // APIs and dynamic endpoints must fail explicitly when offline
                 }
             }
 

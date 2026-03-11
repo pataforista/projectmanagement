@@ -26,7 +26,7 @@ const zoteroApi = (() => {
         // Fetch top-level items, returning full data and bib
         const url = `${BASE_URL}/users/${creds.userId}/items/top?v=3&format=json&include=data,bib&limit=100`;
 
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             method: 'GET',
             headers: {
                 'Zotero-API-Version': '3',
@@ -171,7 +171,7 @@ const zoteroApi = (() => {
 
         const url = `${BASE_URL}/users/${creds.userId}/items/${itemKey}/children?itemType=note&v=3&format=json`;
 
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             method: 'GET',
             headers: {
                 'Zotero-API-Version': '3',

@@ -1058,10 +1058,11 @@ const syncManager = (() => {
         const tasks = store.get.activeTasks().filter(t => !t.todoistId);
         for (const t of tasks) {
             try {
-                const resp = await fetch('https://api.todoist.com/rest/v2/tasks', {
+                const resp = await fetchWithTimeout('https://api.todoist.com/rest/v2/tasks', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: t.title, description: t.description || '' })
+                    body: JSON.stringify({ content: t.title, description: t.description || '' }),
+                    timeout: 12000
                 });
                 const result = await resp.json();
                 if (result.id) store.dispatch('UPDATE_TASK', { id: t.id, todoistId: result.id });
@@ -1081,8 +1082,9 @@ const syncManager = (() => {
                 includeItemsFromAllDrives: 'true',
                 fields: 'files(id,name,mimeType,thumbnailLink,webViewLink,iconLink,size,driveId,ownedByMe,owners(displayName,emailAddress),shared)',
             });
-            const resp = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+            const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
+                timeout: 12000,
             });
             const result = await resp.json();
             return result.files || [];
@@ -1316,6 +1318,11 @@ const syncManager = (() => {
         uploadChatMessage,
         getChatSyncStatus,
         startChatSync,
+        // Expose isSyncing as a getter so store.js debounce guard can read it.
+        // (The private `isSyncing` variable was never in the public API, so
+        //  store.js saw `syncManager.isSyncing === undefined` and the guard
+        //  never fired, potentially triggering duplicate pushes.)
+        get isSyncing() { return isSyncing; },
         getAccessToken: () => accessToken,
         getUser: () => currentUser
     };

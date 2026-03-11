@@ -61,66 +61,86 @@ function validateRecord(record, shape) {
 
 // ── Store Schemas ────────────────────────────────────────────────────────────
 
+// Allow any value (used for mixed-type or complex nested fields)
+const isAny = () => true;
+
 const SCHEMAS = {
     projects: {
         id: isStr, name: isStr, description: isStr, type: isStr,
         status: isStr, color: isStr, createdAt: isNum, order: isNum,
-        parentId: isStr, thoughts: isStr
+        parentId: isStr, thoughts: isStr, goal: isStr, visibility: isStr,
+        ownerId: isStr, createdBy: isStr, createdById: isStr,
+        startDate: isStr, endDate: isStr, obsidianUri: isStr, driveUrl: isStr,
     },
     tasks: {
         id: isStr, projectId: isStr, title: isStr, description: isStr,
         status: isStr, priority: isStr, dueDate: isStr, createdAt: isNum,
-        cycleId: isStr, subtasks: isArr, tags: isArr, dependencies: isArr,
-        assignee: isStr, effort: isNum, parentId: isStr
+        updatedAt: isNum, cycleId: isStr, subtasks: isArr, tags: isArr,
+        dependencies: isArr, assignee: isStr, assigneeId: isStr, effort: isNum,
+        parentId: isStr, visibility: isStr, type: isStr,
+        createdBy: isStr, createdById: isStr,
+        updatedBy: isStr, updatedById: isStr,
+        referenceIds: isArr,
     },
     cycles: {
         id: isStr, projectId: isStr, name: isStr, goal: isStr,
-        status: isStr, startDate: isStr, endDate: isStr, createdAt: isNum
+        status: isStr, startDate: isStr, endDate: isStr, createdAt: isNum,
+        createdBy: isStr, createdById: isStr,
     },
     decisions: {
         id: isStr, projectId: isStr, title: isStr, description: isStr,
-        outcome: isStr, createdAt: isNum, relatedTaskIds: isArr
+        // 'decision' field holds the actual decision text (different from 'description')
+        decision: isStr, context: isStr, impact: isStr,
+        outcome: isStr, createdAt: isNum, relatedTaskIds: isArr, date: isStr,
+        ownerId: isStr,
     },
     documents: {
-        id: isStr, projectId: isStr, title: isStr, content: isStr,
-        updatedAt: isNum, sections: isArr
+        id: isStr, projectId: isStr, title: isStr,
+        // content is an array of block objects — NOT a plain string
+        content: isAny,
+        updatedAt: isNum, sections: isArr,
     },
     members: {
-        id: isStr, name: isStr, role: isStr, email: isStr, createdAt: isNum
+        id: isStr, name: isStr, role: isStr, createdAt: isNum,
+        // email is intentionally omitted: stripped from the shared snapshot for privacy
     },
     messages: {
         id: isStr, projectId: isStr, author: isStr, text: isStr,
-        timestamp: isNum, type: isStr
+        timestamp: isNum, type: isStr, visibility: isStr,
     },
     annotations: {
         id: isStr, projectId: isStr, documentId: isStr, selectedText: isStr,
-        comment: isStr, author: isStr, resolved: isBool, createdAt: isNum
+        comment: isStr, author: isStr, resolved: isBool, createdAt: isNum,
     },
     snapshots: {
-        id: isStr, projectId: isStr, title: isStr, content: isStr,
-        delta: isStr, timestamp: isNum
+        id: isStr, projectId: isStr, title: isStr,
+        // content and delta can be arrays or objects depending on version strategy
+        content: isAny,
+        delta: isAny,
+        timestamp: isNum,
     },
     logs: {
         id: isStr, action: isStr, entity: isStr, entityId: isStr,
-        actor: isStr, timestamp: isNum
+        actor: isStr, timestamp: isNum,
     },
     library: {
         id: isStr, type: isStr, title: isStr, author: isStr, year: isNum,
-        doi: isStr, abstract: isStr, tags: isArr, url: isStr
+        doi: isStr, abstract: isStr, tags: isArr, url: isStr, itemType: isStr,
     },
     sessions: {
         id: isStr, title: isStr, description: isStr, date: isStr,
         startTime: isStr, endTime: isStr, projectId: isStr, gcalId: isStr,
-        createdAt: isNum
+        createdAt: isNum, type: isStr, createdBy: isStr, createdById: isStr,
+        ownerId: isStr,
     },
     timeLogs: {
         id: isStr, taskId: isStr, projectId: isStr, minutes: isNum,
-        note: isStr, createdAt: isNum
+        note: isStr, createdAt: isNum,
     },
     notifications: {
         id: isStr, type: isStr, title: isStr, text: isStr,
-        read: isBool, projectId: isStr, timestamp: isNum
-    }
+        read: isBool, projectId: isStr, timestamp: isNum,
+    },
 };
 
 // Allowed top-level keys in a HYDRATE_STORE payload

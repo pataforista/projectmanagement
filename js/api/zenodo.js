@@ -49,7 +49,7 @@ const zenodoApi = (() => {
      *     description: 'Description.', access_right: 'open', license: 'cc-by' }
      */
     async function createDeposition(metadata) {
-        const res = await fetch(`${baseUrl()}/deposit/depositions`, {
+        const res = await fetchWithTimeout(`${baseUrl()}/deposit/depositions`, {
             method: 'POST',
             headers: headers(),
             body: JSON.stringify({ metadata })
@@ -76,7 +76,7 @@ const zenodoApi = (() => {
         const form = new FormData();
         form.append('file', blob, filename);
 
-        const res = await fetch(`${baseUrl()}/deposit/depositions/${depositionId}/files`, {
+        const res = await fetchWithTimeout(`${baseUrl()}/deposit/depositions/${depositionId}/files`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }, // no Content-Type: browser sets multipart boundary
             body: form
@@ -94,7 +94,7 @@ const zenodoApi = (() => {
      * @returns {Promise<Object>} Published record with {doi, doi_url, …}
      */
     async function publishDeposition(depositionId) {
-        const res = await fetch(`${baseUrl()}/deposit/depositions/${depositionId}/actions/publish`, {
+        const res = await fetchWithTimeout(`${baseUrl()}/deposit/depositions/${depositionId}/actions/publish`, {
             method: 'POST',
             headers: headers()
         });

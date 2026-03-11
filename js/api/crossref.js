@@ -19,7 +19,7 @@ const crossrefApi = (() => {
         const url = `${BASE_URL}/${encodeURIComponent(cleanDoi)}?mailto=${encodeURIComponent(CONTACT_EMAIL)}`;
 
         try {
-            const response = await fetch(url);
+            const response = await fetchWithTimeout(url);
             if (!response.ok) {
                 if (response.status === 404) throw new Error('DOI no encontrado en CrossRef.');
                 throw new Error(`Error de CrossRef: ${response.status} ${response.statusText}`);

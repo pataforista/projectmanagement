@@ -205,17 +205,24 @@ export const initDB = () => new Promise(async (resolve, reject) => {
   });
 
   // First attempt
-  let result = await openDB().catch(async (err) => {
-    // If first open fails for any reason, try deleting and re-opening
-    console.warn('[DB] Open failed, clearing database:', err);
-    await new Promise((res) => {
-      const del = indexedDB.deleteDatabase(DB_NAME);
-      del.onsuccess = del.onerror = res;
-    });
-    return await openDB();
-  });
+  let result = null;
+  try {
+    result = await openDB();
+  } catch (err) {
+    if (err && err.name === 'VersionError') {
+      console.warn('[DB] Handled VersionError, DB deleted, retrying...');
+      // openDB already deletes it internally on VersionError, we just wait a bit and retry
+      await new Promise(r => setTimeout(r, 500));
+      result = await openDB();
+    } else {
+      console.warn('[DB] Open failed temporarily (likely locked), retrying in 2 seconds...', err);
+      // Wait for filesystem lock to release instead of destructive wipe
+      await new Promise(r => setTimeout(r, 2000));
+      result = await openDB();
+    }
+  }
 
-  // null means "VersionError occurred, DB deleted, retry"
+  // If signal retry was requested natively in VersionError handler:
   if (result === null) {
     result = await openDB();
   }

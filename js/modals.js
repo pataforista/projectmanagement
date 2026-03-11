@@ -948,7 +948,7 @@ function openHelpModal() {
       <h4 style="margin-bottom:14px; font-weight:600;">Crear una Contraseña</h4>
       ${step(1, '⚙️', 'Ve a Integraciones', 'En el menú lateral, haz clic en <strong>Integraciones</strong>.')}
       ${step(2, '🔒', 'Encuentra la tarjeta de Seguridad', 'Desplázate hasta la tarjeta <strong>Seguridad</strong> (la última de la pantalla).')}
-      ${step(3, '⌨️', 'Escribe tu contraseña', 'En el campo <strong>Nueva Contraseña</strong>, escribe una clave de al menos 4 caracteres. Elige algo que recuerdes fácilmente.')}
+      ${step(3, '⌨️', 'Escribe tu contraseña', 'En el campo <strong>Nueva Contraseña</strong>, escribe una clave de al menos 8 caracteres. Elige algo que recuerdes fácilmente.')}
       ${step(4, '💾', 'Guarda', 'Haz clic en <strong>Guardar Seguridad</strong>. Verás que la tarjeta cambia a "Protegido" en verde.')}
       ${step(5, '🔄', 'Activa el bloqueo automático', 'Marca la casilla <strong>Bloquear al minimizar</strong> si quieres que la app se bloquee sola cuando cambias de aplicación.')}
 

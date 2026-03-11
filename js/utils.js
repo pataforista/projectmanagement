@@ -181,6 +181,31 @@ function isTaskAssignedToCurrentUser(task) {
     return !!member && task.assigneeId === member.id;
 }
 
+// ── Network Fetch with Timeout ────────────────────────────────────────────────
+/**
+ * Ejecuta fetch() con un límite de tiempo para evitar que la UI se cuelgue 
+ * si la red es muy lenta o inestable (ej. portales cautivos).
+ * @param {string} url - URL destino
+ * @param {object} options - Opciones de fetch, incluyendo 'timeout' (en ms)
+ * @returns {Promise<Response>}
+ */
+export async function fetchWithTimeout(url, options = {}) {
+    const { timeout = 12000, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...fetchOptions, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            throw new Error(`La petición de red excedió el tiempo límite (${(timeout/1000).toFixed(1)}s). Verifica tu conexión.`);
+        }
+        throw error;
+    }
+}
+
 // ── Date formatting ───────────────────────────────────────────────────────────
 function fmtDate(dateStr) {
     if (!dateStr) return '';
@@ -367,5 +392,6 @@ window.isMobileRuntime = isMobileRuntime;
 window.renderCompatibilityNotice = renderCompatibilityNotice;
 window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
+window.fetchWithTimeout = fetchWithTimeout;
 
 export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage };
