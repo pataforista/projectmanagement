@@ -228,7 +228,7 @@ const syncManager = (() => {
      * CAPA B: AUTORIZACIÓN (OAuth 2.0)
      * Obtiene el Access Token para servicios específicos (Drive, etc.)
      */
-    async function authorize(optionalClientId) {
+    async function authorize(optionalClientId, forceConsent = false) {
         return new Promise(async (resolve, reject) => {
             const cfg = getConfig();
             const client_id = optionalClientId || cfg.clientId;
@@ -239,14 +239,23 @@ const syncManager = (() => {
                 client_id: client_id,
                 scope: SCOPES,
                 callback: (resp) => {
-                    if (resp?.error) return reject(resp.error);
+                    if (resp?.error) {
+                        // If the silent refresh was rejected (e.g. user revoked access),
+                        // retry with the consent screen.
+                        if (!forceConsent && resp.error === 'interaction_required') {
+                            return authorize(optionalClientId, true).then(resolve).catch(reject);
+                        }
+                        return reject(resp.error);
+                    }
                     accessToken = resp.access_token;
                     localStorage.setItem(STATUS_KEY, 'true');
                     updateSyncUI('online');
                     resolve(accessToken);
                 },
             });
-            tokenClient.requestAccessToken({ prompt: 'consent' });
+            // Use empty prompt for silent refresh if already authorized.
+            // Only force the consent screen on first use or when explicitly needed.
+            tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
         });
     }
 
@@ -335,9 +344,17 @@ const syncManager = (() => {
         configureAutoSync(cfg.autoSyncMinutes);
         if (cfg.clientId) {
             try {
-                // We don't auto-authorize Drive without user action to follow "minimal scopes" principle.
-                // But we load GIS so it's ready.
                 await loadGIS();
+                // If the user was previously connected, attempt a silent token refresh.
+                // This restores the accessToken after a page reload without interrupting the user.
+                // The prompt:'' in authorize() ensures no UI is shown if permission still exists.
+                if (localStorage.getItem(STATUS_KEY) === 'true') {
+                    authorize(cfg.clientId).catch(() => {
+                        // Silent refresh failed (e.g. user revoked access) — reset status.
+                        localStorage.setItem(STATUS_KEY, 'false');
+                        updateSyncUI('offline');
+                    });
+                }
             } catch {
                 updateSyncUI('error');
             }
@@ -357,7 +374,8 @@ const syncManager = (() => {
                 return;
             }
         }
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        // Use empty prompt for silent refresh; the token client will prompt if needed.
+        tokenClient.requestAccessToken({ prompt: '' });
     }
 
     function disconnect() {
