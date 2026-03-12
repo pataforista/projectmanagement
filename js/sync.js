@@ -2,7 +2,13 @@ import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './ut
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+    // drive.file only allows access to files created by THIS app instance for THIS user,
+    // which blocks cross-account collaboration (Account B cannot find Account A's workspace
+    // file even in a shared folder). The 'drive' scope allows reading/writing any Drive
+    // file the signed-in user has access to, which is required for shared workspaces.
+    // For private/internal team use this works without Google app verification
+    // (users will see the standard "unverified app" consent screen on first auth).
+    const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
     const ID_TOKEN_KEY = 'google_id_token';
