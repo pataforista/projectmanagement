@@ -2,6 +2,45 @@
  * components.js — Shared UI components used across views
  */
 
+// ── Shared Utilities (UI Helpers) ──────────────────────────────────────────
+/**
+ * Renders a circular avatar with initials or an image.
+ */
+function renderAvatar(userId, name, size = 30) {
+  const initials = (name || userId || '—').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const color = stringToColor(name || userId || 'user');
+  return `<div class="avatar" title="${esc(name || userId)}" style="width:${size}px; height:${size}px; background:${color}; font-size:${size * 0.4}px;">
+    ${initials}
+  </div>`;
+}
+
+/**
+ * Renders a capsule-style tag with pastel coloring.
+ */
+function renderTag(label, type = 'neutral') {
+  const colors = {
+    primary: 'var(--accent-primary-bg), var(--accent-primary)',
+    success: 'var(--accent-success-bg), var(--accent-success)',
+    warning: 'var(--accent-warning-bg), var(--accent-warning)',
+    danger: 'var(--accent-danger-bg), var(--accent-danger)',
+    purple: 'var(--accent-purple-bg), var(--accent-purple)',
+    teal: 'var(--accent-teal-bg), var(--accent-teal)',
+    neutral: 'var(--bg-input), var(--text-muted)'
+  };
+  const [bg, fg] = (colors[type] || colors.neutral).split(', ');
+  return `<span class="capsule-tag" style="background:${bg}; color:${fg};">${esc(label)}</span>`;
+}
+
+function stringToColor(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 55%, 45%)`;
+}
+
+
 // ── Stat Pill (Dashboard) ────────────────────────────────────────────────────
 /**
  * Renderiza una pequeña "píldora" estadística para tableros de resumen.
@@ -42,10 +81,14 @@ function taskItem(t) {
     <li class="task-item ${urgentClass}" data-task-id="${t.id}">
       <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}"></div>
       <div class="task-details">
-        <span class="task-title ${isDone ? 'done' : ''}">${esc(t.title)}</span>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <span class="task-title ${isDone ? 'done' : ''}">${esc(t.title)}</span>
+          ${t.assigneeId ? renderAvatar(t.assigneeId, t.assigneeName, 22) : ''}
+        </div>
         <span class="task-meta">
           ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'}">● ${esc(proj.name)}</span>` : ''}
           ${t.dueDate ? `<i data-feather="calendar"></i><span style="${isOverdue ? 'color:var(--accent-danger)' : (isUrgent ? 'color:var(--accent-warning)' : '')}">${fmtDate(t.dueDate)}</span>` : ''}
+          ${t.tags ? t.tags.split(',').map(tag => renderTag(tag.trim(), 'neutral')).join('') : ''}
           ${statusBadge(t.status)}
         </span>
       </div>
@@ -172,23 +215,25 @@ function decisionCard(d) {
   return `
     <div class="decision-card" data-decision-id="${d.id}">
       <div class="decision-card-header">
-        <div>
-          <div class="decision-title">${esc(d.title)}</div>
-          <div class="decision-meta">
-            ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'};">● ${esc(proj.name)}</span>` : ''}
-            <span><i data-feather="user" style="width:10px;height:10px;"></i> ${esc(d.ownerId || '—')}</span>
-            <span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(d.date)}</span>
+        <div style="display:flex; gap:12px; align-items:center;">
+          ${renderAvatar(d.ownerId || '?', d.ownerName || 'Unknown', 32)}
+          <div>
+            <div class="decision-title">${esc(d.title)}</div>
+            <div class="decision-meta">
+              ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'};">● ${esc(proj.name)}</span>` : ''}
+              <span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(d.date)}</span>
+            </div>
           </div>
         </div>
-        <div style="display:flex;gap:6px;align-items:flex-start;flex-shrink:0;">
+        <div style="display:flex; gap:6px; align-items:flex-start; flex-shrink:0;">
           <span class="badge ${impactColor}">Impacto ${d.impact || '—'}</span>
           <button class="btn btn-icon btn-sm dec-del-btn" data-id="${d.id}" style="padding:4px;">
             <i data-feather="trash-2" style="width:12px;height:12px;"></i>
           </button>
         </div>
       </div>
-      ${d.context ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:6px;"><strong>Contexto:</strong> ${esc(d.context)}</div>` : ''}
-      ${d.decision ? `<div class="decision-body"><strong>Decisión:</strong> ${esc(d.decision)}</div>` : ''}
+      ${d.context ? `<div style="font-size:0.78rem; color:var(--text-secondary); margin-top:12px; line-height:1.6;"><strong>Contexto:</strong> ${esc(d.context)}</div>` : ''}
+      ${d.decision ? `<div class="decision-body" style="margin-top:8px; padding:12px; background:var(--bg-input); border-radius:var(--radius-sm); border-left:3px solid var(--accent-primary);"><strong>Decisión:</strong> ${esc(d.decision)}</div>` : ''}
     </div>`;
 }
 
@@ -199,3 +244,5 @@ window.cycleWidget = cycleWidget;
 window.miniProjectCard = miniProjectCard;
 window.cycleCard = cycleCard;
 window.decisionCard = decisionCard;
+window.renderAvatar = renderAvatar;
+window.renderTag = renderTag;

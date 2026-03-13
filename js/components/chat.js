@@ -106,43 +106,64 @@ export const ChatManager = (() => {
             }
             .chat-msg {
                 max-width: 85%;
-                padding: 8px 12px;
-                border-radius: 12px;
-                font-size: 0.85rem;
+                padding: 10px 14px;
+                border-radius: 18px;
+                font-size: 0.88rem;
                 position: relative;
+                line-height: 1.5;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            @keyframes slideUp {
+                from { opacity: 0; transform: translateY(8px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             .chat-msg.sent {
                 align-self: flex-end;
                 background: var(--accent-primary);
                 color: white;
-                border-bottom-right-radius: 2px;
+                border-bottom-right-radius: 4px;
             }
             .chat-msg.received {
                 align-self: flex-start;
-                background: var(--bg-secondary);
+                background: var(--bg-surface-2);
                 color: var(--text-primary);
-                border-bottom-left-radius: 2px;
+                border-bottom-left-radius: 4px;
+                border: 1px solid var(--border-color);
             }
+            .chat-row {
+                display: flex;
+                gap: 8px;
+                align-items: flex-end;
+                margin-bottom: 4px;
+            }
+            .chat-row.sent { flex-direction: row-reverse; }
             .chat-msg-meta {
                 display: block;
                 font-size: 0.65rem;
-                opacity: 0.7;
-                margin-bottom: 2px;
+                opacity: 0.6;
+                margin-top: 4px;
             }
             .chat-input-area {
-                padding: 12px;
+                padding: 16px;
                 border-top: 1px solid var(--border-color);
                 display: flex;
-                gap: 8px;
+                gap: 10px;
+                background: var(--bg-surface);
             }
             .chat-input-area input {
                 flex: 1;
                 background: var(--bg-input);
                 border: 1px solid var(--border-color);
-                border-radius: 8px;
-                padding: 6px 12px;
+                border-radius: 20px;
+                padding: 10px 16px;
                 color: var(--text-primary);
-                font-size: 0.85rem;
+                font-size: 0.9rem;
+                transition: all 0.2s;
+            }
+            .chat-input-area input:focus {
+                border-color: var(--accent-primary);
+                background: var(--bg-surface-hover);
             }
             .hidden { display: none !important; }
             @media (max-width: 640px) {
@@ -295,14 +316,17 @@ export const ChatManager = (() => {
             .map(m => {
                 const isMe = (m.senderId && m.senderId === currentUser.id) || m.sender === currentUser.label || m.sender === currentUser.name;
                 const userColor = stringToColor(m.sender);
+                const initials = (m.sender || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                
                 return `
-                    <div class="chat-msg ${isMe ? 'sent' : 'received'}" style="${!isMe ? `--sender-color:${userColor}` : '--sender-color:rgba(255,255,255,0.8)'}">
-                        <span class="chat-msg-sender" style="color:var(--sender-color); font-weight:700; display:block; font-size:0.7rem; margin-bottom:4px;">
-                            ${isMe ? 'Tú' : esc(m.sender)}
-                        </span>
-                        <div class="chat-msg-text">${esc(m.text)}</div>
-                        <div class="chat-msg-meta" style="font-size:0.6rem; margin-top:4px; opacity:0.6; text-align:right;">
-                            ${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <div class="chat-row ${isMe ? 'sent' : 'received'}">
+                        ${!isMe ? `<div class="avatar" style="width:24px; height:24px; font-size:10px; background:${userColor}; flex-shrink:0;">${initials}</div>` : ''}
+                        <div class="chat-msg ${isMe ? 'sent' : 'received'}">
+                            ${!isMe ? `<span style="color:${userColor}; font-weight:700; display:block; font-size:0.7rem; margin-bottom:4px;">${esc(m.sender)}</span>` : ''}
+                            <div class="chat-msg-text">${esc(m.text)}</div>
+                            <div class="chat-msg-meta" style="text-align:${isMe ? 'right' : 'left'};">
+                                ${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                         </div>
                     </div>
                 `;

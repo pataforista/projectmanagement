@@ -619,7 +619,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── 3. Register service worker ─────────────────────────────────────────────
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js').then(reg => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
             reg.onupdatefound = () => {
                 const newSW = reg.installing;
                 newSW.onstatechange = () => {
@@ -665,7 +665,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (let name of cacheNames) await caches.delete(name);
         localStorage.clear();
         sessionStorage.clear();
-        window.location.href = '/';
+        window.location.href = window.location.pathname;
     };
 
     // ── 4. Register all views with router ──────────────────────────────────────

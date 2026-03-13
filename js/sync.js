@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -19,6 +19,8 @@ const syncManager = (() => {
     let isSyncing = false;
     let autoSyncTimer = null;
     let networkOnline = navigator.onLine;
+    let tokenTimestamp = 0; // Epoch when accessToken was issued
+    let syncPausedUntil = 0; // Circuit Breaker timestamp
 
     const defaultConfig = {
         clientId: '',
@@ -254,6 +256,7 @@ const syncManager = (() => {
                         return reject(resp.error);
                     }
                     accessToken = resp.access_token;
+                    tokenTimestamp = Date.now();
                     localStorage.setItem(STATUS_KEY, 'true');
                     updateSyncUI('online');
                     resolve(accessToken);
@@ -434,8 +437,13 @@ const syncManager = (() => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
                 return acc;
-            }, {})
+            }, {}),
+            workspaceSalt: getWorkspaceSaltBase64()
         };
+
+        // INTEGRITY FIX: Compute SHA-256 Checksum of the snapshot payload (excluding metadata.checksum itself)
+        data.metadata.checksum = await computeChecksum(data);
+        return data;
 
         // E2EE Layer: Encrypt sensitive stores if key is available
         if (hasKey() && !isLocked()) {
@@ -463,7 +471,14 @@ const syncManager = (() => {
      * accidentales si el archivo remoto es más nuevo.
      */
     async function push() {
-        if (!accessToken || isSyncing || !networkOnline) return;
+        if (!accessToken || isSyncing || !networkOnline || isSyncPaused()) return;
+
+        // AUTH FIX: Proactive refresh if token is near expiration (>50 min)
+        await ensureValidToken();
+
+        // INFRASTRUCTURE FIX: Check for sufficient storage before starting push
+        if (!(await checkStorageCapacity())) return;
+
         isSyncing = true;
         updateSyncUI('syncing');
 
@@ -491,23 +506,21 @@ const syncManager = (() => {
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
 
             if (fileId) {
-                const remoteData = await getFileContentMetadata(fileId);
-                const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
-
-                if (remoteData && remoteData.updatedAt && remoteData.updatedAt > localUpdate) {
-                    // AUTO-RETRY FIX: Instead of blocking indefinitely, auto-pull the remote
-                    // changes first, then retry the push. The isSyncing flag must be released
-                    // before calling pull() to avoid a deadlock.
-                    console.warn('[Sync] Push blocked: remote is newer. Auto-pulling first, then retrying push.');
-                    if (window.showToast) showToast('Sincronizando cambios remotos antes de subir…', 'info');
-                    isSyncing = false;
-                    updateSyncUI('online');
-                    await pull();
-                    // After pull updates last_sync_local, retry push (not recursive — guard via isSyncing).
-                    await push();
-                    return;
+                const etag = localStorage.getItem(`gdrive_etag_${fileId}`);
+                try {
+                    await updateFile(fileId, data, etag);
+                } catch (updateErr) {
+                    if (updateErr.message === '412_PRECONDITION_FAILED') {
+                        console.warn('[Sync] Push blocked by ETag (412 Precondition Failed). Auto-pulling changes...');
+                        if (window.showToast) showToast('Fusionando cambios recientes antes de subir...', 'info');
+                        isSyncing = false;
+                        updateSyncUI('online');
+                        await pull();
+                        await push(); // Retry after pull
+                        return;
+                    }
+                    throw updateErr;
                 }
-                await updateFile(fileId, data);
             } else {
                 const newId = await createFile(cfg.fileName, data, folderId);
                 localStorage.setItem('gdrive_file_id', newId);
@@ -531,7 +544,14 @@ const syncManager = (() => {
      * mediante la hidratación global del Store.
      */
     async function pull() {
-        if (!accessToken || isSyncing || !networkOnline) return;
+        if (!accessToken || isSyncing || !networkOnline || isSyncPaused()) return;
+
+        // AUTH FIX: Proactive refresh
+        await ensureValidToken();
+
+        // INFRASTRUCTURE FIX: Check storage before pulling potentially large data
+        if (!(await checkStorageCapacity())) return;
+
         isSyncing = true;
         updateSyncUI('syncing');
 
@@ -560,6 +580,20 @@ const syncManager = (() => {
 
             localStorage.setItem('gdrive_file_id', fileId);
             const remoteData = await getFileContent(fileId);
+
+            // INTEGRITY FIX: Verify remote checksum if present
+            if (remoteData?.metadata?.checksum) {
+                const receivedChecksum = remoteData.metadata.checksum;
+                delete remoteData.metadata.checksum; // Must remove to match how it was computed
+                const computed = await computeChecksum(remoteData);
+                if (computed !== receivedChecksum) {
+                    console.error('[Sync] Data Corruption detected! Checksums mismatch.');
+                    if (window.showToast) showToast('Error de integridad: El archivo remoto está corrupto. Abortando.', 'error', true);
+                    return;
+                }
+                remoteData.metadata.checksum = receivedChecksum; // Restore for consistency
+            }
+
             const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
             if (remoteData?.updatedAt > localUpdate) {
                 await seedFromRemote(remoteData);
@@ -592,17 +626,106 @@ const syncManager = (() => {
         startChatSync();
     }
 
-    // Hardening: Network Timeout Wrapper to prevent infinite hanging
-    async function fetchWithTimeout(resource, options = {}) {
+    function isSyncPaused() {
+        if (syncPausedUntil && Date.now() < syncPausedUntil) {
+            const remaining = Math.ceil((syncPausedUntil - Date.now()) / 1000 / 60);
+            console.warn(`[Sync] Sincronización pausada por Circuit Breaker. Reintentando en ${remaining} min.`);
+            return true;
+        }
+        return false;
+    }
+
+    async function ensureValidToken() {
+        if (!accessToken) return;
+        const GDrive_TOKEN_LIFE = 50 * 60 * 1000; // 50 minutes (Google tokens usually last 60)
+        if (Date.now() - tokenTimestamp > GDrive_TOKEN_LIFE) {
+            console.log('[Sync] Token near expiration. Performing proactive refresh...');
+            try {
+                await authorize(getConfig().clientId, false);
+            } catch (e) {
+                console.warn('[Sync] Proactive refresh failed, relying on reactive interceptor.', e);
+            }
+        }
+    }
+
+    // Hardening: Network Timeout + Exponential Backoff + 401 Interceptor + Circuit Breaker
+    async function fetchWithTimeout(resource, options = {}, retryCount = 0) {
+        if (isSyncPaused()) {
+            throw new Error('SYNC_PAUSED_BY_CIRCUIT_BREAKER');
+        }
         const { timeout = 12000 } = options;
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), timeout);
-        const response = await fetch(resource, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
+        const MAX_RETRIES = 3;
+
+        try {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            const response = await fetch(resource, {
+                ...options,
+                signal: controller.signal
+            });
+            clearTimeout(id);
+
+            // 401 Interceptor: Silent Token Refresh
+            if (response.status === 401 && accessToken) {
+                console.warn('[Sync] 401 Unauthorized detected. Attempting silent token refresh...');
+                try {
+                    const newAccessToken = await authorize(getConfig().clientId, false);
+                    const newOptions = { ...options };
+                    if (newOptions.headers && newOptions.headers.Authorization) {
+                        newOptions.headers.Authorization = `Bearer ${newAccessToken}`;
+                    }
+                    return await fetch(resource, newOptions);
+                } catch (e) {
+                    console.error('[Sync] Silent refresh failed:', e);
+                }
+            }
+
+            // Circuit Breaker & Quota Detection
+            const isQuotaError = response.status === 429 || 
+                                (response.status === 403 && response.statusText?.toLowerCase().includes('quota')) ||
+                                (response.status === 403 && response.statusText?.toLowerCase().includes('rate limit'));
+
+            if (isQuotaError && retryCount >= MAX_RETRIES) {
+                console.error('[Sync] Persistent Quota/Rate Limit error. Tripping Circuit Breaker.');
+                syncPausedUntil = Date.now() + 5 * 60 * 1000; // Pause for 5 minutes
+                if (window.showToast) showToast('Sincronización pausada temporalmente por exceso de tráfico (429/403).', 'warning');
+                updateSyncUI('error');
+            }
+
+            // Exponential Backoff: Handle 429 (Rate Limit) or 5xx (Server Error)
+            if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+                const delay = Math.pow(2, retryCount) * 1000 + (Math.random() * 100); // Backoff + jitter
+                console.warn(`[Sync] Request failed (${response.status}). Retrying in ${Math.round(delay)}ms...`);
+                await new Promise(r => setTimeout(r, delay));
+                return await fetchWithTimeout(resource, options, retryCount + 1);
+            }
+
+            return response;
+        } catch (err) {
+            // Handle timeout/abort retry
+            if (err.name === 'AbortError' && retryCount < MAX_RETRIES) {
+                console.warn(`[Sync] Timeout detected. Retry ${retryCount + 1}/${MAX_RETRIES}...`);
+                return await fetchWithTimeout(resource, options, retryCount + 1);
+            }
+            throw err;
+        }
+    }
+
+    async function checkStorageCapacity() {
+        if (navigator.storage && navigator.storage.estimate) {
+            try {
+                const { usage, quota } = await navigator.storage.estimate();
+                const remaining = quota - usage;
+                if (remaining < 100 * 1024 * 1024) { // < 100MB
+                    console.warn('[Sync] Low storage detected:', (remaining / 1024 / 1024).toFixed(2), 'MB left');
+                    if (window.showToast) showToast('Espacio insuficiente en disco para sincronización segura.', 'warning', true);
+                    return false;
+                }
+            } catch (e) {
+                console.warn('[Sync] Could not estimate storage capacity.');
+            }
+        }
+        return true;
     }
 
     async function findFolder(name) {
@@ -658,16 +781,23 @@ const syncManager = (() => {
         return result.id;
     }
 
-    async function updateFile(id, content) {
+    async function updateFile(id, content, etag = null) {
+        const headers = {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        };
+        if (etag) {
+            headers['If-Match'] = etag;
+        }
         const response = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify(content),
             timeout: 15000,
         });
+        if (response.status === 412) {
+            throw new Error('412_PRECONDITION_FAILED');
+        }
         if (!response.ok) throw new Error(`No se pudo actualizar archivo en Drive (${response.status})`);
     }
 
@@ -681,6 +811,10 @@ const syncManager = (() => {
             timeout: 15000
         });
         if (!resp.ok) throw new Error(`File not found or no permissions (${resp.status})`);
+        
+        const etag = resp.headers.get('ETag');
+        if (etag) localStorage.setItem(`gdrive_etag_${id}`, etag);
+
         return resp.json();
     }
 
@@ -705,6 +839,15 @@ const syncManager = (() => {
 
         if (data.settings) {
             syncSettingsToLocalStorage(data.settings);
+        }
+
+        if (data.e2ee && data.workspaceSalt) {
+            const locked = injectWorkspaceSalt(data.workspaceSalt);
+            if (locked) {
+                if (window.showToast) showToast('Se actualizó la llave desde Drive. Por favor ingresa tu contraseña.', 'warning', true);
+                if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
+                return; // Abort hydration
+            }
         }
 
         let hydrationData = data;
@@ -1321,7 +1464,7 @@ const syncManager = (() => {
                     isChatPollingActive = false;
                 }
             }
-            chatSyncTimer = setTimeout(loop, 2500); // 2.5s Latencia, ahora seguros
+            chatSyncTimer = setTimeout(loop, 30000); // 30s Latencia para evitar cuotas de Google
         };
         loop();
     }

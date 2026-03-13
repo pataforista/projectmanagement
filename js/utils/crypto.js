@@ -16,6 +16,41 @@
 // ── Module State ────────────────────────────────────────────────────────────
 let _cryptoKey = null; // CryptoKey object — lives only in RAM
 let _isLocked = true;
+let _activeSalt = null; // Stores currently used Salt (for syncing)
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+
+function bufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunkSize = 8192; // Safe chunk size for avoid stack overflow
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+}
+
+function base64ToBuffer(b64) {
+    const binaryStr = atob(b64);
+    const length = binaryStr.length;
+    const bytes = new Uint8Array(length);
+    for (let i = 0; i < length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes;
+}
+
+/**
+ * Computes a SHA-256 checksum of the input data (string or object).
+ * Returns a hex string.
+ */
+export async function computeChecksum(data) {
+    const json = typeof data === 'string' ? data : JSON.stringify(data);
+    const enc = new TextEncoder();
+    const buf = enc.encode(json);
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // Stores that contain sensitive data and should be encrypted
 export const ENCRYPTED_STORES = new Set([
@@ -37,6 +72,8 @@ export const ENCRYPTED_STORES = new Set([
  * readable without any re-encryption.
  */
 async function getOrCreateSalt() {
+    if (_activeSalt) return _activeSalt;
+
     const email = localStorage.getItem('workspace_user_email') || '';
     if (email) {
         const scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
@@ -49,22 +86,49 @@ async function getOrCreateSalt() {
                 localStorage.setItem(scopedKey, saltB64);
             } else {
                 const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-                saltB64 = btoa(String.fromCharCode(...saltBytes));
+                saltB64 = bufferToBase64(saltBytes);
                 localStorage.setItem(scopedKey, saltB64);
             }
         }
-        return new Uint8Array(atob(saltB64).split('').map(c => c.charCodeAt(0)));
+        _activeSalt = base64ToBuffer(saltB64);
+        return _activeSalt;
     }
 
     // Local-only mode: use (or create) the legacy global salt.
     let saltB64 = localStorage.getItem('nexus_salt');
     if (saltB64) {
-        return new Uint8Array(atob(saltB64).split('').map(c => c.charCodeAt(0)));
+        _activeSalt = base64ToBuffer(saltB64);
+        return _activeSalt;
     }
     const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-    saltB64 = btoa(String.fromCharCode(...saltBytes));
+    saltB64 = bufferToBase64(saltBytes);
     localStorage.setItem('nexus_salt', saltB64);
-    return saltBytes;
+    _activeSalt = saltBytes;
+    return _activeSalt;
+}
+
+export function getWorkspaceSaltBase64() {
+    if (!_activeSalt) return null;
+    return bufferToBase64(_activeSalt);
+}
+
+export function injectWorkspaceSalt(saltB64) {
+    if (!saltB64) return false;
+    const currentB64 = getWorkspaceSaltBase64();
+    if (saltB64 !== currentB64) {
+        console.warn('[Fortress] Remote salt differs from local. Updating salt and locking vault.');
+        const email = localStorage.getItem('workspace_user_email') || '';
+        if (email) {
+            const scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
+            localStorage.setItem(scopedKey, saltB64);
+        } else {
+            localStorage.setItem('nexus_salt', saltB64);
+        }
+        _activeSalt = base64ToBuffer(saltB64);
+        lock();
+        return true; // Indicates the app was locked and needs re-auth
+    }
+    return false;
 }
 
 /**
@@ -103,7 +167,7 @@ export async function deriveKey(password) {
  */
 export async function hashPassword(password) {
     const saltBytes = await getOrCreateSalt();
-    const saltB64 = btoa(String.fromCharCode(...saltBytes));
+    const saltB64 = bufferToBase64(saltBytes);
     const enc = new TextEncoder();
     const data = enc.encode(password + saltB64);
     const hashBuf = await crypto.subtle.digest('SHA-256', data);
@@ -149,8 +213,8 @@ export async function encryptRecord(record) {
 
     return {
         __encrypted: true,
-        iv: btoa(String.fromCharCode(...iv)),
-        data: btoa(String.fromCharCode(...new Uint8Array(cipherBuf)))
+        iv: bufferToBase64(iv),
+        data: bufferToBase64(cipherBuf)
     };
 }
 
@@ -168,8 +232,8 @@ export async function decryptRecord(envelope) {
         // (e.g. a record encrypted by a different account and stored as-is) would
         // throw InvalidCharacterError here, which must be treated the same as an
         // OperationError — skip the record rather than crashing the whole store load.
-        const iv = new Uint8Array(atob(envelope.iv).split('').map(c => c.charCodeAt(0)));
-        const cipherBuf = new Uint8Array(atob(envelope.data).split('').map(c => c.charCodeAt(0)));
+        const iv = base64ToBuffer(envelope.iv);
+        const cipherBuf = base64ToBuffer(envelope.data);
 
         const plainBuf = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv },

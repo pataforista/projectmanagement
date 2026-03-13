@@ -84,8 +84,9 @@
               Cloud</a>
           </div>
           <div id="auth-client-id-container" style="display:none; flex-direction:column; gap:4px; margin-top:4px;">
-            <input type="text" id="auth-setup-client-id" class="form-input"
-              placeholder="xxxx.apps.googleusercontent.com" style="font-size:0.8rem; padding:8px;">
+            <input type="text" id="auth-setup-client-id" name="client_id" class="form-input"
+              placeholder="xxxx.apps.googleusercontent.com" style="font-size:0.8rem; padding:8px;"
+              autocomplete="username">
           </div>
           <button type="button" id="auth-show-client-id"
             style="background:none; border:none; color:var(--text-muted); font-size:0.75rem; cursor:pointer; text-align:left; padding:0; text-decoration:underline;">Mostrar
@@ -113,8 +114,9 @@
           <div style="display:flex; flex-direction:column; gap:4px;">
             <label style="font-size:0.75rem; color:var(--text-muted);">Shared Folder ID (Opcional, para unirte a un
               grupo)</label>
-            <input type="text" id="auth-setup-shared-id" class="form-input"
-              placeholder="Pega el ID de la Carpeta compartida aquí" style="font-size:0.8rem; padding:8px;">
+            <input type="text" id="auth-setup-shared-id" name="shared_folder_id" class="form-input"
+              placeholder="Pega el ID de la Carpeta compartida aquí" style="font-size:0.8rem; padding:8px;"
+              autocomplete="off">
           </div>
           <button type="button" id="auth-google-drive-link" class="btn btn-primary"
             style="justify-content:center; gap:8px;">
@@ -148,7 +150,7 @@
       </div>
 
       <form id="auth-form" style="display:flex; flex-direction:column; gap:16px;">
-        <input type="password" id="auth-password" class="form-input" placeholder="Contraseña" required autofocus>
+        <input type="password" id="auth-password" name="password" class="form-input" placeholder="Contraseña" required autofocus autocomplete="current-password">
         <button type="submit" class="btn btn-primary" style="justify-content:center;">Desbloquear</button>
       </form>
 
@@ -164,7 +166,8 @@
       <div id="auth-recovery-panel" style="display:none; flex-direction:column; gap:12px; margin-top:8px;">
         <input type="text" id="auth-recovery-code" class="form-input" placeholder="XXXX-XXXX-XXXX-XXXX"
           autocomplete="off"
-          style="text-transform:uppercase; font-family:var(--font-mono); letter-spacing:2px; text-align:center;">
+          style="text-transform:uppercase; font-family:var(--font-mono); letter-spacing:2px; text-align:center;"
+          autocomplete="one-time-code">
         <div style="display:flex; gap:8px;">
           <button type="button" id="auth-recovery-back" class="btn btn-secondary"
             style="flex:1; justify-content:center;">Volver</button>
@@ -201,8 +204,8 @@
       <div id="auth-newpwd-panel" style="display:none; flex-direction:column; gap:12px; margin-top:8px;">
         <p style="color:var(--accent-success); font-size:0.85rem; text-align:center; margin:0;">Codigo correcto. Crea
           una nueva contrasena.</p>
-        <input type="password" id="auth-newpwd-input" class="form-input"
-          placeholder="Nueva contrasena (min. 4 caracteres)">
+        <input type="password" id="auth-newpwd-input" name="new_password" class="form-input"
+          placeholder="Nueva contrasena (min. 4 caracteres)" autocomplete="new-password">
         <button type="button" id="auth-newpwd-submit" class="btn btn-primary" style="justify-content:center;">Guardar
           contrasena</button>
       </div>

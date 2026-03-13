@@ -34,7 +34,7 @@ function runNodeSyntaxCheck(filePath) {
 
   return {
     ok: result.status === 0,
-    stderr: result.stderr.trim(),
+    stderr: (result.stderr || '').trim(),
     filePath
   };
 }

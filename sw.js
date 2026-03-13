@@ -5,42 +5,42 @@
 
 const CACHE_NAME = 'workspace-v12';
 const SHELL_ASSETS = [
-    '/',
-    '/index.html',
-    '/manifest.json',
-    '/styles/main.css',
-    '/styles/components.css',
-    '/styles/animations.css',
-    '/styles/skeletons.css',
-    '/js/db.js',
-    '/js/utils.js',
-    '/js/utils/crypto.js',
-    '/js/store.js',
-    '/js/sync.js',
-    '/js/modals.js',
-    '/js/notifications.js',
-    '/js/app.js',
-    '/js/router.js',
-    '/js/components.js',
-    '/js/views/dashboard.js',
-    '/js/views/projects.js',
-    '/js/views/backlog.js',
-    '/js/views/cycles.js',
-    '/js/views/board.js',
-    '/js/views/calendar.js',
-    '/js/views/document.js',
-    '/js/views/decisions.js',
-    '/js/views/graph.js',
-    '/js/views/canvas.js',
-    '/js/views/integrations.js',
-    '/js/views/library.js',
-    '/js/views/logs.js',
-    '/js/views/matrix.js',
-    '/js/views/medical.js',
-    '/js/views/writing.js',
-    '/js/views/collaboration.js',
-    '/js/vendor/feather.min.js',
-    '/icons/icon-192.png'
+    './',
+    'index.html',
+    'manifest.json',
+    'styles/main.css',
+    'styles/components.css',
+    'styles/animations.css',
+    'styles/skeletons.css',
+    'js/db.js',
+    'js/utils.js',
+    'js/utils/crypto.js',
+    'js/store.js',
+    'js/sync.js',
+    'js/modals.js',
+    'js/notifications.js',
+    'js/app.js',
+    'js/router.js',
+    'js/components.js',
+    'js/views/dashboard.js',
+    'js/views/projects.js',
+    'js/views/backlog.js',
+    'js/views/cycles.js',
+    'js/views/board.js',
+    'js/views/calendar.js',
+    'js/views/document.js',
+    'js/views/decisions.js',
+    'js/views/graph.js',
+    'js/views/canvas.js',
+    'js/views/integrations.js',
+    'js/views/library.js',
+    'js/views/logs.js',
+    'js/views/matrix.js',
+    'js/views/medical.js',
+    'js/views/writing.js',
+    'js/views/collaboration.js',
+    'js/vendor/feather.min.js',
+    'icons/icon-192.png'
 ];
 
 self.addEventListener('install', event => {
@@ -127,12 +127,12 @@ self.addEventListener('push', event => {
     event.waitUntil(
         self.registration.showNotification('Workspace', {
             body: data,
-            icon: '/icons/icon-192.png'
+            icon: 'icons/icon-192.png'
         })
     );
 });
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-    event.waitUntil(clients.openWindow('/'));
+    event.waitUntil(clients.openWindow('./'));
 });
