@@ -1454,6 +1454,13 @@
     margin-top: 24px;
 }
 
+@media (max-width: 768px) {
+    .matrix-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+    }
+}
+
 .matrix-quadrant {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
