@@ -604,6 +604,11 @@ const syncManager = (() => {
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Pull failed:', err);
+            if (err.message && err.message.includes('404')) {
+                console.warn('[Sync] 404 detected during pull. Clearing stale sync state.');
+                localStorage.removeItem('gdrive_file_id');
+                localStorage.removeItem('gdrive_chat_folder_id');
+            }
             updateSyncUI('error');
         } finally {
             isSyncing = false;
@@ -747,6 +752,13 @@ const syncManager = (() => {
             body: JSON.stringify(metadata)
         });
         const result = await resp.json();
+        
+        if (resp.status === 404 && parentId) {
+            console.error('[Sync] Parent folder ID 404. Clearing stale IDs.');
+            localStorage.removeItem('gdrive_folder_id'); // Main root
+            localStorage.removeItem('gdrive_chat_folder_id');
+        }
+
         if (!result.id) throw new Error(`[Sync] createFolder failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
         return result.id;
     }
@@ -777,6 +789,13 @@ const syncManager = (() => {
             timeout: 15000
         });
         const result = await resp.json();
+
+        if (resp.status === 404 && parentId) {
+            console.error('[Sync] Parent folder ID 404 during createFile. Clearing stale IDs.');
+            localStorage.removeItem('gdrive_folder_id');
+            localStorage.removeItem('gdrive_chat_folder_id');
+        }
+
         if (!result.id) throw new Error(`[Sync] createFile failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
         return result.id;
     }
@@ -798,7 +817,17 @@ const syncManager = (() => {
         if (response.status === 412) {
             throw new Error('412_PRECONDITION_FAILED');
         }
-        if (!response.ok) throw new Error(`No se pudo actualizar archivo en Drive (${response.status})`);
+
+        if (response.status === 404) {
+            console.error('[Sync] target file ID 404 during update. Clearing file ID.');
+            localStorage.removeItem('gdrive_file_id');
+            throw new Error('404_FILE_NOT_FOUND');
+        }
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(`[Sync] updateFile failed (${response.status}): ${err.error?.message}`);
+        }
     }
 
     async function getFileContent(id) {

@@ -249,7 +249,7 @@ export async function decryptRecord(envelope) {
         // SyntaxError           → decrypted bytes are not valid JSON
         // In all cases: return null so decryptAll() filters this record out
         // without preventing the rest of the store from loading.
-        console.warn('[Fortress] Decryption failed — skipping record.', envelope.id ?? '', e.name);
+        console.warn('[Fortress] Decryption failed — skipping record.', envelope.id ?? '(no id)', e.name || e.message);
         return null;
     }
 }
