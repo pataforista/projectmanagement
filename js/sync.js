@@ -712,7 +712,16 @@ const syncManager = (() => {
         // Pillar 1: Atomic Decryption Flow
         // If the incoming data is encrypted, we must decrypt it BEFORE hydration
         // to avoid storing double-encrypted or raw blobs in the store memory.
-        if (data.e2ee && hasKey() && !isLocked()) {
+        if (data.e2ee) {
+            if (!hasKey() || isLocked()) {
+                // The workspace is E2EE-protected but the local key is not available.
+                // Storing the raw encrypted blobs in IDB would corrupt the local store,
+                // so we abort the hydration and inform the user.
+                console.warn('[Sync] Remote snapshot is E2EE-encrypted but no local key is available — skipping hydration.');
+                if (window.showToast) showToast('El workspace remoto está cifrado. Introduce la contraseña maestra para sincronizar.', 'warning', true);
+                return;
+            }
+
             console.log('[Sync] Decrypting remote snapshot for hydration...');
             try {
                 hydrationData = {
