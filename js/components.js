@@ -88,7 +88,7 @@ function taskItem(t) {
         <span class="task-meta">
           ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'}">● ${esc(proj.name)}</span>` : ''}
           ${t.dueDate ? `<i data-feather="calendar"></i><span style="${isOverdue ? 'color:var(--accent-danger)' : (isUrgent ? 'color:var(--accent-warning)' : '')}">${fmtDate(t.dueDate)}</span>` : ''}
-          ${t.tags ? t.tags.split(',').map(tag => renderTag(tag.trim(), 'neutral')).join('') : ''}
+          ${t.tags ? (Array.isArray(t.tags) ? t.tags : String(t.tags).split(',')).filter(Boolean).map(tag => renderTag(tag.trim(), 'neutral')).join('') : ''}
           ${statusBadge(t.status)}
         </span>
       </div>

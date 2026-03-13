@@ -78,22 +78,7 @@
       "purpose": "maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "assets/screenshot-desktop.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Escritorio de Producción"
-    },
-    {
-      "src": "assets/screenshot-mobile.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Vista móvil"
-    }
-  ],
+  "screenshots": [],
   "shortcuts": [
     {
       "name": "Nueva Tarea",

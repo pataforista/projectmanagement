@@ -223,7 +223,7 @@
     content: '';
     position: fixed;
     inset: 0;
-    background-image: url('assets/zen-bg.png');
+    /* background-image: url('assets/zen-bg.png'); (Missing asset, removed to prevent 404) */
     background-size: cover;
     background-position: center bottom;
     opacity: 0.12;
