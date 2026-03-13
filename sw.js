@@ -68,13 +68,19 @@ self.addEventListener('fetch', event => {
 
     const url = new URL(event.request.url);
     const isLocal = url.origin === self.location.origin;
-    const isCDN = url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('unpkg.com') || url.hostname.includes('cdnjs.cloudflare.com');
+    const isGoogleAPI = url.hostname.includes('googleapis.com') || url.hostname.includes('gstatic.com');
+    const isOtherCDN = url.hostname.includes('unpkg.com') || url.hostname.includes('cdnjs.cloudflare.com');
 
-    if (!isLocal && !isCDN) return;
+    // ── SECURITY/CORS BYPASS ──────────────────────────────────────────────────
+    // Google APIs should be handled directly by the browser to avoid 
+    // Service Worker CORS interception issues (Error: Failed to fetch).
+    if (isGoogleAPI) return; 
+
+    if (!isLocal && !isOtherCDN) return;
 
     event.respondWith((async () => {
         try {
-            const isDynamic = url.pathname.startsWith('/api/') || url.hostname.includes('googleapis.com');
+            const isDynamic = url.pathname.startsWith('/api/');
 
             // 1. API: Network-first, NEVER cached in static shell
             if (isDynamic) {

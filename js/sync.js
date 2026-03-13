@@ -1239,62 +1239,52 @@ const syncManager = (() => {
             const fId = await getChatFolder();
             if (!fId) return;
 
-            let token = localStorage.getItem('gdrive_chat_token');
-            if (!token) {
-                const tkRes = await fetchWithTimeout('https://www.googleapis.com/drive/v3/changes/getStartPageToken', {
-                    headers: { Authorization: `Bearer ${accessToken}` }
-                });
-                if (!tkRes.ok) return; // Prevent parsing 503/Offline response
-                const tkData = await tkRes.json();
-                token = tkData.startPageToken;
-                localStorage.setItem('gdrive_chat_token', token);
-                return; // Empezamos a escuchar desde ahora
-            }
-
-            const res = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/changes?pageToken=${token}&spaces=drive&fields=changes(fileId,removed,file(name,parents)),newStartPageToken,nextPageToken`, {
-                headers: { Authorization: `Bearer ${accessToken}` }
+            // ── SCOPE-SAFE POLLING ────────────────────────────────────────────
+            // The Drive Changes API (getStartPageToken) requires `drive.readonly`
+            // scope, but we only have `drive.file`. Instead, we query the chat
+            // folder contents directly — fully supported by `drive.file` scope.
+            const lastPoll = Number(localStorage.getItem('gdrive_chat_last_poll') || 0);
+            const query = encodeURIComponent(`'${fId}' in parents and name contains 'msg_' and trashed = false`);
+            const fields = encodeURIComponent('files(id,name,modifiedTime)');
+            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime&supportsAllDrives=true`;
+            const res = await fetchWithTimeout(url, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                timeout: 12000
             });
             if (!res.ok) {
                 if (res.status === 401) localStorage.removeItem('nexus_gdrive_access_token');
                 return;
             }
             const data = await res.json();
+            const newFiles = (data.files || []).filter(f => {
+                const modified = new Date(f.modifiedTime).getTime();
+                return modified > lastPoll;
+            });
 
-            // Si el token expira o es inválido, reset
-            if (data.error && data.error.code === 400) {
-                localStorage.removeItem('gdrive_chat_token');
-                return;
-            }
+            if (newFiles.length > 0) {
+                localStorage.setItem('gdrive_chat_last_poll', Date.now());
+                for (const file of newFiles) {
+                    try {
+                        let msgData = await getFileContent(file.id);
+                        if (!msgData) continue;
 
-            if (data.changes && data.changes.length > 0) {
-                for (const change of data.changes) {
-                    if (!change.removed && change.file && change.file.name && change.file.name.startsWith('msg_')) {
-                        // Verificamos si pertenece a nuestra carpeta de chat (a veces drive no devuelve parents si no se pide bien, pero lo pedimos en fields)
-                        if (change.file.parents && change.file.parents.includes(fId)) {
-                            try {
-                                let msgData = await getFileContent(change.fileId);
-
-                                // Decrypt si aplica
-                                if (msgData.iv && window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
-                                    try { msgData = await decryptRecord(msgData); } catch (e) { }
-                                }
-
-                                // Inyectar a la base de datos local y excluirlo del monolithic sync
-                                msgData.visibility = 'local';
-
-                                // Revisamos si ya existe para evitar duplicados
-                                const exist = (store.get.messages ? store.get.messages() : []).find(m => m.id === msgData.id);
-                                if (!exist) {
-                                    await store.dispatch('ADD_MESSAGE', msgData);
-                                }
-                            } catch (e) { console.warn('[ChatSync] Failed DL msg', e); }
+                        // Decrypt si aplica
+                        if (msgData.iv && window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
+                            try { msgData = await decryptRecord(msgData); } catch (e) { }
                         }
-                    }
-                }
-            }
 
-            if (data.newStartPageToken) {
-                localStorage.setItem('gdrive_chat_token', data.newStartPageToken);
+                        msgData.visibility = 'local';
+
+                        // Evitar duplicados
+                        const exist = (store.get.messages ? store.get.messages() : []).find(m => m.id === msgData.id);
+                        if (!exist) {
+                            await store.dispatch('ADD_MESSAGE', msgData);
+                        }
+                    } catch (e) { console.warn('[ChatSync] Failed DL msg', e); }
+                }
+            } else {
+                // Update poll timestamp even if no new files to prevent re-checking all files next time
+                if (lastPoll === 0) localStorage.setItem('gdrive_chat_last_poll', Date.now());
             }
         } catch (e) {
             console.error('[ChatSync] Polling error:', e);
