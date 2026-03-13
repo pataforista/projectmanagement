@@ -114,7 +114,7 @@ const store = (() => {
         if (!window.syncManager) return;
         if (_syncPushTimer) clearTimeout(_syncPushTimer);
         _syncPushTimer = setTimeout(() => {
-            if (!syncManager.isSyncing) syncManager.push();
+            syncManager.push();
         }, 5000); // espera 5s antes de confirmar el push
     }
 
@@ -151,7 +151,14 @@ const store = (() => {
                 storeName = 'projects';
                 const idx = _state.projects.findIndex(p => p.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.projects[idx], ...payload };
+                    const actor = getCurrentWorkspaceActor();
+                    const updated = {
+                        ..._state.projects[idx],
+                        ...payload,
+                        updatedAt: Date.now(),
+                        updatedBy: actor.label,
+                        updatedById: actor.id
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.projects[idx] = updated;
                     _notify(storeName);
@@ -174,16 +181,27 @@ const store = (() => {
             }
             case 'DELETE_PROJECT': {
                 storeName = 'projects';
-                await dbAPI.delete(storeName, payload.id);
-                _state.projects = _state.projects.filter(p => p.id !== payload.id);
+                const pIdx = _state.projects.findIndex(p => p.id === payload.id);
+                if (pIdx !== -1) {
+                    const tombstone = {
+                        ..._state.projects[pIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.projects[pIdx] = tombstone;
+                }
 
                 // CASCADING DELETES
+
                 const cascadeDeletes = async (collectionName, filterFn) => {
                     const itemsToDelete = _state[collectionName].filter(filterFn);
                     for (const item of itemsToDelete) {
-                        await dbAPI.delete(collectionName, item.id);
+                        const tomb = { ...item, _deleted: true, updatedAt: Date.now() };
+                        await dbAPI.put(collectionName, tomb);
+                        const idx = _state[collectionName].findIndex(x => x.id === item.id);
+                        if (idx !== -1) _state[collectionName][idx] = tomb;
                     }
-                    _state[collectionName] = _state[collectionName].filter(item => !filterFn(item));
                     if (itemsToDelete.length > 0) _notify(collectionName);
                 };
 
@@ -248,10 +266,18 @@ const store = (() => {
             }
             case 'DELETE_TASK': {
                 storeName = 'tasks';
-                await dbAPI.delete(storeName, payload.id);
-                _state.tasks = _state.tasks.filter(t => t.id !== payload.id);
-                _notify(storeName);
-                if (window.showToast) showToast('Tarea eliminada.', 'info');
+                const tIdx = _state.tasks.findIndex(t => t.id === payload.id);
+                if (tIdx !== -1) {
+                    const tombstone = {
+                        ..._state.tasks[tIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.tasks[tIdx] = tombstone;
+                    _notify(storeName);
+                    if (window.showToast) showToast('Tarea eliminada.', 'info');
+                }
                 break;
             }
 
@@ -277,7 +303,14 @@ const store = (() => {
                 storeName = 'cycles';
                 const idx = _state.cycles.findIndex(c => c.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.cycles[idx], ...payload };
+                    const actor = getCurrentWorkspaceActor();
+                    const updated = {
+                        ..._state.cycles[idx],
+                        ...payload,
+                        updatedAt: Date.now(),
+                        updatedBy: actor.label,
+                        updatedById: actor.id
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.cycles[idx] = updated;
                     _notify(storeName);
@@ -286,10 +319,18 @@ const store = (() => {
             }
             case 'DELETE_CYCLE': {
                 storeName = 'cycles';
-                await dbAPI.delete(storeName, payload.id);
-                _state.cycles = _state.cycles.filter(c => c.id !== payload.id);
-                _notify(storeName);
-                if (window.showToast) showToast('Ciclo eliminado.', 'info');
+                const cIdx = _state.cycles.findIndex(c => c.id === payload.id);
+                if (cIdx !== -1) {
+                    const tombstone = {
+                        ..._state.cycles[cIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.cycles[cIdx] = tombstone;
+                    _notify(storeName);
+                    if (window.showToast) showToast('Ciclo eliminado.', 'info');
+                }
                 break;
             }
 
@@ -307,7 +348,11 @@ const store = (() => {
                 storeName = 'decisions';
                 const idx = _state.decisions.findIndex(d => d.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.decisions[idx], ...payload };
+                    const updated = {
+                        ..._state.decisions[idx],
+                        ...payload,
+                        updatedAt: Date.now()
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.decisions[idx] = updated;
                     _notify(storeName);
@@ -316,10 +361,18 @@ const store = (() => {
             }
             case 'DELETE_DECISION': {
                 storeName = 'decisions';
-                await dbAPI.delete(storeName, payload.id);
-                _state.decisions = _state.decisions.filter(d => d.id !== payload.id);
-                _notify(storeName);
-                if (window.showToast) showToast('Decisión eliminada.', 'info');
+                const dIdx = _state.decisions.findIndex(d => d.id === payload.id);
+                if (dIdx !== -1) {
+                    const tombstone = {
+                        ..._state.decisions[dIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.decisions[dIdx] = tombstone;
+                    _notify(storeName);
+                    if (window.showToast) showToast('Decisión eliminada.', 'info');
+                }
                 break;
             }
 
@@ -391,7 +444,7 @@ const store = (() => {
                 storeName = 'library';
                 const idx = _state.library.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.library[idx], ...payload };
+                    const updated = { ..._state.library[idx], ...payload, updatedAt: Date.now() };
                     await dbAPI.put(storeName, updated);
                     _state.library[idx] = updated;
                     _notify(storeName);
@@ -422,7 +475,7 @@ const store = (() => {
                 storeName = 'interconsultations';
                 const idx = _state.interconsultations.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.interconsultations[idx], ...payload };
+                    const updated = { ..._state.interconsultations[idx], ...payload, updatedAt: Date.now() };
                     await dbAPI.put(storeName, updated);
                     _state.interconsultations[idx] = updated;
                     _notify(storeName);
@@ -431,9 +484,17 @@ const store = (() => {
             }
             case 'DELETE_INTERCONSULTATION': {
                 storeName = 'interconsultations';
-                await dbAPI.delete(storeName, payload.id);
-                _state.interconsultations = _state.interconsultations.filter(i => i.id !== payload.id);
-                _notify(storeName);
+                const iIdx = _state.interconsultations.findIndex(i => i.id === payload.id);
+                if (iIdx !== -1) {
+                    const tombstone = {
+                        ..._state.interconsultations[iIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.interconsultations[iIdx] = tombstone;
+                    _notify(storeName);
+                }
                 break;
             }
 
@@ -459,7 +520,7 @@ const store = (() => {
                 storeName = 'sessions';
                 const idx = _state.sessions.findIndex(s => s.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.sessions[idx], ...payload };
+                    const updated = { ..._state.sessions[idx], ...payload, updatedAt: Date.now() };
                     await dbAPI.put(storeName, updated);
                     _state.sessions[idx] = updated;
                     _notify(storeName);
@@ -468,9 +529,17 @@ const store = (() => {
             }
             case 'DELETE_SESSION': {
                 storeName = 'sessions';
-                await dbAPI.delete(storeName, payload.id);
-                _state.sessions = _state.sessions.filter(s => s.id !== payload.id);
-                _notify(storeName);
+                const sIdx = _state.sessions.findIndex(s => s.id === payload.id);
+                if (sIdx !== -1) {
+                    const tombstone = {
+                        ..._state.sessions[sIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.sessions[sIdx] = tombstone;
+                    _notify(storeName);
+                }
                 break;
             }
 
@@ -485,9 +554,17 @@ const store = (() => {
             }
             case 'DELETE_TIME_LOG': {
                 storeName = 'timeLogs';
-                await dbAPI.delete(storeName, payload.id);
-                _state.timeLogs = _state.timeLogs.filter(t => t.id !== payload.id);
-                _notify(storeName);
+                const tlIdx = _state.timeLogs.findIndex(t => t.id === payload.id);
+                if (tlIdx !== -1) {
+                    const tombstone = {
+                        ..._state.timeLogs[tlIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.timeLogs[tlIdx] = tombstone;
+                    _notify(storeName);
+                }
                 break;
             }
 
@@ -528,9 +605,17 @@ const store = (() => {
             }
             case 'DELETE_SNAPSHOT': {
                 storeName = 'snapshots';
-                await dbAPI.delete(storeName, payload.id);
-                _state.snapshots = _state.snapshots.filter(s => s.id !== payload.id);
-                _notify(storeName);
+                const snIdx = _state.snapshots.findIndex(s => s.id === payload.id);
+                if (snIdx !== -1) {
+                    const tombstone = {
+                        ..._state.snapshots[snIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.snapshots[snIdx] = tombstone;
+                    _notify(storeName);
+                }
                 break;
             }
 
@@ -545,9 +630,17 @@ const store = (() => {
             }
             case 'DELETE_ANNOTATION': {
                 storeName = 'annotations';
-                await dbAPI.delete(storeName, payload.id);
-                _state.annotations = _state.annotations.filter(a => a.id !== payload.id);
-                _notify(storeName);
+                const aIdx = _state.annotations.findIndex(a => a.id === payload.id);
+                if (aIdx !== -1) {
+                    const tombstone = {
+                        ..._state.annotations[aIdx],
+                        _deleted: true,
+                        updatedAt: Date.now()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.annotations[aIdx] = tombstone;
+                    _notify(storeName);
+                }
                 break;
             }
 
@@ -669,83 +762,84 @@ const store = (() => {
 
     // ── Selectors ──
     const get = {
-        projects: () => [..._state.projects].sort((a, b) => (a.order || 0) - (b.order || 0)),
-        activeTasks: () => _state.tasks.filter(t => t.status !== 'Archivado' && t.status !== 'Terminado'),
-        tasksByProject: (id) => _state.tasks.filter(t => t.projectId === id),
-        tasksByCycle: (id) => _state.tasks.filter(t => t.cycleId === id),
-        tasksByStatus: (s) => _state.tasks.filter(t => t.status === s),
-        cyclesByProject: (id) => _state.cycles.filter(c => c.projectId === id),
-        activeCycles: () => _state.cycles.filter(c => c.status === 'activo'),
-        decisionsByProject: (id) => _state.decisions.filter(d => d.projectId === id),
-        allDecisions: () => _state.decisions,
-        decisions: () => _state.decisions,
-        documentByProject: (id) => _state.documents.find(d => d.projectId === id) || null,
-        documents: () => _state.documents,
-        documentById: (id) => _state.documents.find(d => d.id === id),
+        projects: () => [..._state.projects].filter(p => !p._deleted).sort((a, b) => (a.order || 0) - (b.order || 0)),
+        activeTasks: () => _state.tasks.filter(t => !t._deleted && t.status !== 'Archivado' && t.status !== 'Terminado'),
+        tasksByProject: (id) => _state.tasks.filter(t => !t._deleted && t.projectId === id),
+        tasksByCycle: (id) => _state.tasks.filter(t => !t._deleted && t.cycleId === id),
+        tasksByStatus: (s) => _state.tasks.filter(t => !t._deleted && t.status === s),
+        cyclesByProject: (id) => _state.cycles.filter(c => !c._deleted && c.projectId === id),
+        activeCycles: () => _state.cycles.filter(c => !c._deleted && c.status === 'activo'),
+        decisionsByProject: (id) => _state.decisions.filter(d => !d._deleted && d.projectId === id),
+        allDecisions: () => _state.decisions.filter(d => !d._deleted),
+        decisions: () => _state.decisions.filter(d => !d._deleted),
+        documentByProject: (id) => _state.documents.find(d => !d._deleted && d.projectId === id) || null,
+        documents: () => _state.documents.filter(d => !d._deleted),
+        documentById: (id) => _state.documents.find(d => !d._deleted && d.id === id),
         getBacklinks: (docId) => {
-            const doc = _state.documents.find(d => d.id === docId);
+            const doc = _state.documents.find(d => !d._deleted && d.id === docId);
             if (!doc) return [];
             // Find other docs that explicitly link to this one (if we had a link syntax)
             // For now, we search for docs that contain the title of this doc
             return _state.documents.filter(d =>
-                d.id !== docId &&
+                !d._deleted && d.id !== docId &&
                 d.content && d.content.includes(`[[${doc.title}]]`)
             );
         },
         getUnlinkedMentions: (docId) => {
-            const doc = _state.documents.find(d => d.id === docId);
+            const doc = _state.documents.find(d => !d._deleted && d.id === docId);
             if (!doc || !doc.title) return [];
             return _state.documents.filter(d =>
-                d.id !== docId &&
+                !d._deleted && d.id !== docId &&
                 d.content &&
                 d.content.includes(doc.title) &&
                 !d.content.includes(`[[${doc.title}]]`)
             );
         },
-        members: () => _state.members,
+        members: () => _state.members.filter(m => !m._deleted),
         query: (collection, filterFn) => {
             if (!_state[collection]) return [];
-            return _state[collection].filter(filterFn);
+            return _state[collection].filter(x => !x._deleted).filter(filterFn);
         },
-        memberById: (id) => _state.members.find(m => m.id === id),
-        projectById: (id) => _state.projects.find(p => p.id === id),
-        allTasks: () => _state.tasks,
-        blockedTasks: () => _state.tasks.filter(t => t.status === 'En espera'),
+        memberById: (id) => _state.members.find(m => !m._deleted && m.id === id),
+        projectById: (id) => _state.projects.find(p => !p._deleted && p.id === id),
+        allTasks: () => _state.tasks.filter(t => !t._deleted),
+        blockedTasks: () => _state.tasks.filter(t => !t._deleted && t.status === 'En espera'),
         upcomingDeliverables: (days = 7) => {
             const cutoff = Date.now() + days * 86400000;
-            return _state.tasks.filter(t => t.dueDate && new Date(t.dueDate).getTime() <= cutoff && t.status !== 'Terminado' && t.status !== 'Archivado');
+            return _state.tasks.filter(t => !t._deleted && t.dueDate && new Date(t.dueDate).getTime() <= cutoff && t.status !== 'Terminado' && t.status !== 'Archivado');
         },
-        allCycles: () => _state.cycles,
-        cycles: () => _state.cycles,
+        allCycles: () => _state.cycles.filter(c => !c._deleted),
+        cycles: () => _state.cycles.filter(c => !c._deleted),
         cycleProgress: (cycleId) => {
-            const tasks = _state.tasks.filter(t => t.cycleId === cycleId);
+            const tasks = _state.tasks.filter(t => !t._deleted && t.cycleId === cycleId);
             if (!tasks.length) return 0;
             const done = tasks.filter(t => t.status === 'Terminado' || t.status === 'Archivado').length;
             return Math.round((done / tasks.length) * 100);
         },
-        logs: () => _state.logs,
-        library: () => _state.library,
-        interconsultations: () => _state.interconsultations,
-        interconsultationsByProject: (id) => _state.interconsultations.filter(i => i.projectId === id),
-        sessions: () => _state.sessions,
-        sessionsByProject: (id) => _state.sessions.filter(s => s.projectId === id),
-        sessionsByDate: (date) => _state.sessions.filter(s => s.date === date),
-        timeLogs: () => _state.timeLogs,
-        timeLogsByTask: (taskId) => _state.timeLogs.filter(t => t.taskId === taskId),
-        messages: () => _state.messages,
-        annotations: () => _state.annotations,
-        snapshots: () => _state.snapshots,
+        logs: () => _state.logs.filter(l => !l._deleted),
+        library: () => _state.library.filter(l => !l._deleted),
+        interconsultations: () => _state.interconsultations.filter(i => !i._deleted),
+        interconsultationsByProject: (id) => _state.interconsultations.filter(i => !i._deleted && i.projectId === id),
+        sessions: () => _state.sessions.filter(s => !s._deleted),
+        sessionsByProject: (id) => _state.sessions.filter(s => !s._deleted && s.projectId === id),
+        sessionsByDate: (date) => _state.sessions.filter(s => !s._deleted && s.date === date),
+        timeLogs: () => _state.timeLogs.filter(t => !t._deleted),
+        timeLogsByTask: (taskId) => _state.timeLogs.filter(t => !t._deleted && t.taskId === taskId),
+        messages: () => _state.messages.filter(m => !m._deleted),
+        annotations: () => _state.annotations.filter(a => !a._deleted),
+        snapshots: () => _state.snapshots.filter(s => !s._deleted),
         totalTimeByTask: (taskId) => _state.timeLogs
-            .filter(t => t.taskId === taskId)
+            .filter(t => !t._deleted && t.taskId === taskId)
             .reduce((sum, log) => sum + (log.minutes || 0), 0),
-        snapshotsByProject: (projectId) => _state.snapshots.filter(s => s.projectId === projectId),
-        annotationsByProject: (projectId) => _state.annotations.filter(a => a.projectId === projectId),
-        messagesByProject: (projectId) => _state.messages.filter(m => m.projectId === projectId),
-        notifications: () => _state.notifications,
-        unreadNotifications: () => _state.notifications.filter(n => !n.read),
+        snapshotsByProject: (projectId) => _state.snapshots.filter(s => !s._deleted && s.projectId === projectId),
+        annotationsByProject: (projectId) => _state.annotations.filter(a => !a._deleted && a.projectId === projectId),
+        messagesByProject: (projectId) => _state.messages.filter(m => !m._deleted && m.projectId === projectId),
+        notifications: () => _state.notifications.filter(n => !n._deleted),
+        unreadNotifications: () => _state.notifications.filter(n => !n._deleted && !n.read),
         // Recursive tree helpers
-        getChildProjects: (parentId) => _state.projects.filter(p => p.parentId === parentId),
-        getChildTasks: (parentId) => _state.tasks.filter(t => t.parentId === parentId),
+        getChildProjects: (parentId) => _state.projects.filter(p => !p._deleted && p.parentId === parentId),
+        getChildTasks: (parentId) => _state.tasks.filter(t => !t._deleted && t.parentId === parentId),
+        exportState: () => _state, // Raw state for network sync (includes tombstones)
     };
 
     return { load, seedIfEmpty, dispatch, subscribe, get };

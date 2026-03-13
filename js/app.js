@@ -279,7 +279,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 };
 
                 function handleRemoteWorkspace(remoteData) {
+                    let isRemotePresent = false;
                     if (remoteData && remoteData.updatedAt) {
+                        isRemotePresent = true;
                         if (window.showToast) showToast('Workspace detectado en Google Drive', 'success');
                         // SECURITY FIX: workspace_lock_hash and workspace_recovery_hash are
                         // personal per-device credentials and must NEVER be imported from the
@@ -291,7 +293,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setupPanel.style.display = 'none';
                     authForm.style.display = 'flex';
                     authSubtitle.textContent = "Conexión exitosa. Crea tu contraseña maestra personal para proteger tus datos.";
-                    setupPasswordCreation();
+                    setupPasswordCreation(isRemotePresent);
                 }
 
                 // Configurar Botones del Warning de Modo Local
@@ -304,7 +306,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         localWarningPanel.style.display = 'none';
                         authForm.style.display = 'flex';
                         authSubtitle.textContent = 'Crea una contraseña maestra para proteger tus datos locales.';
-                        setupPasswordCreation();
+                        setupPasswordCreation(false);
                     };
                 }
 
@@ -318,10 +320,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 // Fallback si por alguna razón no están los elementos nuevos
                 authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-                setupPasswordCreation();
+                setupPasswordCreation(false);
             }
 
-            function setupPasswordCreation() {
+            function setupPasswordCreation(isRemotePresent = false) {
                 authForm.onsubmit = async (e) => {
                     e.preventDefault();
                     const pwd = authPassword.value.trim();
@@ -343,10 +345,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         authOverlay.classList.remove('open');
                         // Forzar una sincronización inicial si estamos conectados
                         if (syncManager.getAccessToken()) {
-                            syncManager.push().then(() => {
-                                if (window.showToast) showToast('Workspace sincronizado con Drive por primera vez', 'success');
-                                resolve();
-                            });
+                            if (isRemotePresent) {
+                                syncManager.pull().then(() => {
+                                    if (window.showToast) showToast('Workspace descargado desde Drive', 'success');
+                                    resolve();
+                                });
+                            } else {
+                                syncManager.push().then(() => {
+                                    if (window.showToast) showToast('Workspace inicializado en Drive', 'success');
+                                    resolve();
+                                });
+                            }
                         } else {
                             resolve();
                         }

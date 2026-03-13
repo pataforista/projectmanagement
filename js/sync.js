@@ -17,6 +17,7 @@ const syncManager = (() => {
     let accessToken = null;
     let currentUser = null; // Profile from ID Token
     let isSyncing = false;
+    let pushPending = false;
     let autoSyncTimer = null;
     let networkOnline = navigator.onLine;
     let tokenTimestamp = 0; // Epoch when accessToken was issued
@@ -101,6 +102,10 @@ const syncManager = (() => {
             networkOnline = true;
             updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
             if (window.showToast) showToast('Conexión restablecida', 'success');
+            // FIX: Fast Reconnect - trigger immediate queue flush
+            if (accessToken && localStorage.getItem(STATUS_KEY) === 'true') {
+                pull().then(() => { if (!isSyncing) push(); });
+            }
         });
 
         window.addEventListener('offline', () => {
@@ -314,7 +319,7 @@ const syncManager = (() => {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: cfg.clientId,
             scope: SCOPES,
-            callback: (resp) => {
+            callback: async (resp) => {
                 if (resp?.error) {
                     showToast('No se pudo autenticar con Google Drive', 'error');
                     updateSyncUI('error');
@@ -323,8 +328,8 @@ const syncManager = (() => {
                 accessToken = resp.access_token;
                 localStorage.setItem(STATUS_KEY, 'true');
                 updateSyncUI('online');
-                push();
-                pull();
+                await pull();
+                if (!isSyncing) await push();
             },
         });
         return true;
@@ -403,7 +408,15 @@ const syncManager = (() => {
     }
 
     async function getSnapshot() {
-        const sharedProjects = store.get.projects().filter(p => p.visibility !== 'local');
+        // BUGFIX 2nd Pass: We MUST use exportState() which returns raw memory arrays
+        // instead of store.get.*() which heavily filters out `_deleted: true` tombstones.
+        // If we use UI getters, tombstones are excluded from the upload payload, 
+        // silently breaking deletion propagation to other clients and causing Zombies.
+        const rawState = store.get.exportState ? store.get.exportState() : {};
+        const getRaw = (key) => rawState[key] || (store.get[key] ? store.get[key]() : []);
+
+        const rawProjects = getRaw('projects');
+        const sharedProjects = rawProjects.filter(p => p.visibility !== 'local');
         const sharedProjectIds = new Set(sharedProjects.map(p => p.id));
         const isShared = item => !item.projectId || sharedProjectIds.has(item.projectId);
 
@@ -421,18 +434,18 @@ const syncManager = (() => {
                 actor: getCurrentWorkspaceActor().label,
             },
             projects: sharedProjects,
-            tasks: store.get.allTasks().filter(isShared).filter(t => t.visibility !== 'local'),
-            cycles: store.get.cycles().filter(isShared),
-            decisions: store.get.decisions().filter(isShared),
-            documents: (store.get.documents ? store.get.documents() : []).filter(isShared),
+            tasks: getRaw('tasks').filter(isShared).filter(t => t.visibility !== 'local'),
+            cycles: getRaw('cycles').filter(isShared),
+            decisions: getRaw('decisions').filter(isShared),
+            documents: getRaw('documents').filter(isShared),
             // PRIVACY FIX: Strip email from member records in the shared snapshot.
             // Member emails are personal data and must not be stored in plaintext
             // in the shared Drive file (even when E2EE is active for other stores).
-            members: store.get.members().map(({ email: _email, ...rest }) => rest),
-            logs: store.get.logs ? store.get.logs() : [],
-            messages: (store.get.messages ? store.get.messages() : []).filter(isShared),
-            annotations: (store.get.annotations ? store.get.annotations() : []).filter(isShared),
-            snapshots: (store.get.snapshots ? store.get.snapshots() : []).filter(isShared),
+            members: getRaw('members').map(({ email: _email, ...rest }) => rest),
+            logs: getRaw('logs'),
+            messages: getRaw('messages').filter(isShared),
+            annotations: getRaw('annotations').filter(isShared),
+            snapshots: getRaw('snapshots').filter(isShared),
             settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
@@ -471,7 +484,7 @@ const syncManager = (() => {
      * accidentales si el archivo remoto es más nuevo.
      */
     async function push() {
-        if (!accessToken || isSyncing || !networkOnline || isSyncPaused()) return;
+        if (!accessToken || !networkOnline || isSyncPaused()) return;
 
         // AUTH FIX: Proactive refresh if token is near expiration (>50 min)
         await ensureValidToken();
@@ -479,7 +492,13 @@ const syncManager = (() => {
         // INFRASTRUCTURE FIX: Check for sufficient storage before starting push
         if (!(await checkStorageCapacity())) return;
 
+        if (isSyncing) {
+            pushPending = true;
+            return;
+        }
+
         isSyncing = true;
+        pushPending = false;
         updateSyncUI('syncing');
 
         try {
@@ -493,13 +512,8 @@ const syncManager = (() => {
                 return v;
             };
 
-            // 1. Localizar o crear el Workspace Folder
-            let folderId = cfg.sharedFolderId || validId(localStorage.getItem('gdrive_folder_id'));
-            if (!folderId) folderId = await findFolder('Nexus_Workspace');
-            if (!folderId) {
-                folderId = await createFolder('Nexus_Workspace');
-                if (folderId) localStorage.setItem('gdrive_folder_id', folderId);
-            }
+            let folderId = await ensureWorkspaceFolder();
+            if (!folderId) throw new Error('Could not resolve Workspace folder');
 
             // 2. Localizar el archivo core dentro del folder
             let fileId = validId(localStorage.getItem('gdrive_file_id'));
@@ -519,7 +533,13 @@ const syncManager = (() => {
                         await push(); // Retry after pull
                         return;
                     }
-                    throw updateErr;
+                    if (updateErr.message === '404_FILE_NOT_FOUND') {
+                        console.warn('[Sync] Target file deleted on Drive. Recreating file from local snapshot...');
+                        const newId = await createFile(cfg.fileName, data, folderId);
+                        localStorage.setItem('gdrive_file_id', newId);
+                    } else {
+                        throw updateErr;
+                    }
                 }
             } else {
                 const newId = await createFile(cfg.fileName, data, folderId);
@@ -535,6 +555,10 @@ const syncManager = (() => {
             updateSyncUI('error');
         } finally {
             isSyncing = false;
+            if (pushPending) {
+                console.log('[Sync] Resuming pending push request...');
+                setTimeout(push, 500);
+            }
         }
     }
 
@@ -561,14 +585,11 @@ const syncManager = (() => {
             // Helper: treat stored "undefined"/"null" strings as missing values
             const validId = v => (v && v !== 'undefined' && v !== 'null') ? v : null;
 
-            // 1. Localizar el Workspace Folder
-            let folderId = cfg.sharedFolderId || validId(localStorage.getItem('gdrive_folder_id'));
-            if (!folderId) folderId = await findFolder('Nexus_Workspace');
+            let folderId = await ensureWorkspaceFolder();
             if (!folderId) {
                 updateSyncUI('online');
-                return; // Nothing to pull if the folder doesn't exist
+                return;
             }
-            localStorage.setItem('gdrive_folder_id', folderId);
 
             // 2. Localizar el archivo core
             let fileId = validId(localStorage.getItem('gdrive_file_id'));
@@ -731,6 +752,44 @@ const syncManager = (() => {
             }
         }
         return true;
+    }
+
+    async function ensureWorkspaceFolder() {
+        const cfg = getConfig();
+        const validId = v => {
+            if (!v || v === 'undefined' || v === 'null') return null;
+            if (typeof v === 'string' && v.includes('http')) return null;
+            return v;
+        };
+
+        let folderId = validId(cfg.sharedFolderId) || validId(localStorage.getItem('gdrive_folder_id'));
+        if (folderId) {
+            try {
+                const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${folderId}?supportsAllDrives=true`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                if (resp.status === 404) {
+                    console.warn(`[Sync] Folder ${folderId} 404 Not Found. Clearing and recreating.`);
+                    folderId = null;
+                    if (!cfg.sharedFolderId) localStorage.removeItem('gdrive_folder_id'); 
+                } else if (!resp.ok) {
+                    folderId = null; // E.g. 403 or deleted
+                }
+            } catch (err) {
+                folderId = null;
+            }
+        }
+
+        if (!folderId) {
+            folderId = await findFolder('Nexus_Workspace');
+            if (!folderId && !cfg.sharedFolderId) {
+                folderId = await createFolder('Nexus_Workspace');
+            }
+            if (folderId && !cfg.sharedFolderId) {
+                localStorage.setItem('gdrive_folder_id', folderId);
+            }
+        }
+        return folderId;
     }
 
     async function findFolder(name) {
