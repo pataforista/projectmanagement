@@ -25,8 +25,38 @@ export const ENCRYPTED_STORES = new Set([
 
 // ── Key Derivation (PBKDF2) ──────────────────────────────────────────────────
 
-/** Internal: reliably gets or creates the salt from localStorage */
+/**
+ * Internal: gets or creates the encryption salt from localStorage.
+ * Salt is scoped to the current Google account (workspace_user_email) when
+ * available, so that different accounts in the same browser derive independent
+ * keys even if they share the same password. Falls back to a global salt for
+ * local-only (no Google account) workspaces.
+ *
+ * Migration: on first sign-in with an existing global salt, the global salt is
+ * re-used under the account-scoped key so existing encrypted data remains
+ * readable without any re-encryption.
+ */
 async function getOrCreateSalt() {
+    const email = localStorage.getItem('workspace_user_email') || '';
+    if (email) {
+        const scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
+        let saltB64 = localStorage.getItem(scopedKey);
+        if (!saltB64) {
+            // Migrate: adopt the existing global salt so in-place encrypted data
+            // remains accessible after we introduce account scoping.
+            saltB64 = localStorage.getItem('nexus_salt');
+            if (saltB64) {
+                localStorage.setItem(scopedKey, saltB64);
+            } else {
+                const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+                saltB64 = btoa(String.fromCharCode(...saltBytes));
+                localStorage.setItem(scopedKey, saltB64);
+            }
+        }
+        return new Uint8Array(atob(saltB64).split('').map(c => c.charCodeAt(0)));
+    }
+
+    // Local-only mode: use (or create) the legacy global salt.
     let saltB64 = localStorage.getItem('nexus_salt');
     if (saltB64) {
         return new Uint8Array(atob(saltB64).split('').map(c => c.charCodeAt(0)));
@@ -136,17 +166,30 @@ export async function decryptRecord(envelope) {
     const iv = new Uint8Array(atob(envelope.iv).split('').map(c => c.charCodeAt(0)));
     const cipherBuf = new Uint8Array(atob(envelope.data).split('').map(c => c.charCodeAt(0)));
 
-    const plainBuf = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        _cryptoKey,
-        cipherBuf
-    );
+    let plainBuf;
+    try {
+        plainBuf = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            _cryptoKey,
+            cipherBuf
+        );
+    } catch (e) {
+        // OperationError: the key doesn't match (wrong password, changed salt,
+        // or data from a different account). Return null so the caller can skip
+        // this record without crashing the whole load — Drive sync will restore
+        // the correct data on the next pull.
+        console.warn('[Fortress] Decryption failed — wrong key or corrupted record. Skipping.', envelope.id ?? '');
+        return null;
+    }
 
     const dec = new TextDecoder();
     return JSON.parse(dec.decode(plainBuf));
 }
 
-/** Decrypt an array of envelopes */
+/** Decrypt an array of envelopes. Records that fail to decrypt are silently
+ *  dropped (they return null from decryptRecord) so a single bad/foreign-key
+ *  record never prevents the rest of the store from loading. */
 export async function decryptAll(envelopes) {
-    return Promise.all(envelopes.map(e => decryptRecord(e)));
+    const results = await Promise.all(envelopes.map(e => decryptRecord(e)));
+    return results.filter(r => r !== null);
 }
