@@ -1241,12 +1241,22 @@ const syncManager = (() => {
         }
     }
 
-    async function listDriveFiles() {
+    async function listDriveFiles(parentId = null) {
         if (!accessToken) return [];
         try {
+            let q = 'trashed=false';
+            if (parentId) {
+                q += ` and '${parentId}' in parents`;
+            } else {
+                // If no parentId, we can either show root or all. 
+                // Let's default to all files to maintain compatibility,
+                // OR we can default to shared folder if configured.
+                // For "Hierarchical" mode, we usually want to start somewhere.
+            }
+
             const params = new URLSearchParams({
                 pageSize: '40',
-                q: 'trashed=false',
+                q: q,
                 supportsAllDrives: 'true',
                 includeItemsFromAllDrives: 'true',
                 fields: 'files(id,name,mimeType,thumbnailLink,webViewLink,iconLink,size,driveId,ownedByMe,owners(displayName,emailAddress),shared)',

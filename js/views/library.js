@@ -179,14 +179,31 @@ function renderZoteroContent(allItems) {
   `;
 }
 
-async function loadDriveContent() {
+let currentLibraryFolderId = null; // null = root or shared folder
+let libraryPathStack = []; // Array of {id, name}
+
+async function loadDriveContent(targetFolderId = null) {
   const container = document.getElementById('library-content-area');
   if (!container) return;
 
+  currentLibraryFolderId = targetFolderId;
+
+  // Render Skeleton/Loader
+  container.innerHTML = `<div class="loader-wrap" style="margin-top:40px;"><i data-feather="loader" class="spin"></i> Cargando contenido de Drive...</div>`;
+  if (window.feather) feather.replace();
+
   let files = [];
   const mobileMode = window.isMobileRuntime?.() || false;
+  
   try {
-    files = await syncManager.listDriveFiles();
+    // If we are at the beginning (null), try to use the shared folder from config as starting point
+    let effectiveFolderId = targetFolderId;
+    if (!effectiveFolderId) {
+       const cfg = syncManager.getConfig();
+       effectiveFolderId = cfg.sharedFolderId || null;
+    }
+
+    files = await syncManager.listDriveFiles(effectiveFolderId);
   } catch (err) {
     console.error('Error loading Drive files:', err);
     container.innerHTML = emptyState('alert-circle', 'No se pudo cargar el contenido de Drive.');
@@ -194,58 +211,97 @@ async function loadDriveContent() {
     return;
   }
 
-  if (files.length === 0) {
+  // Breadcrumbs UI
+  const renderBreadcrumbs = () => {
+    return `
+      <div class="drive-breadcrumbs" style="display:flex; align-items:center; gap:8px; margin-bottom:16px; font-size:0.85rem; background:var(--bg-surface-2); padding:8px 12px; border-radius:var(--radius-md); border:1px solid var(--border-color);">
+        <button class="btn btn-ghost btn-xs" onclick="navigateToDriveFolder(null, 'Inicio')" style="padding:4px 8px;">
+          <i data-feather="home" style="width:14px; height:14px; margin-right:4px;"></i> Drive
+        </button>
+        ${libraryPathStack.map((step, index) => `
+          <i data-feather="chevron-right" style="width:12px; height:12px; opacity:0.4;"></i>
+          <button class="btn btn-ghost btn-xs" onclick="navigateToDriveFolder('${step.id}', '${esc(step.name)}', true, ${index})" style="padding:4px 8px; max-width:120px; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">
+            ${esc(step.name)}
+          </button>
+        `).join('')}
+      </div>
+    `;
+  };
+
+  if (files.length === 0 && !targetFolderId) {
     container.innerHTML = emptyState('cloud-off', 'No se encontraron archivos en Drive o no estás conectado.');
     if (window.feather) feather.replace();
     return;
   }
 
   container.innerHTML = `
-    <div style="background:rgba(59,130,246,0.1); border-left:4px solid var(--accent-primary); padding:10px 15px; border-radius:4px; margin-bottom:20px; font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:10px;">
-      <i data-feather="info" style="width:16px; height:16px; color:var(--accent-primary);"></i>
-      <span>Los archivos de Drive son de <strong>solo lectura</strong> dentro del Workspace. Para borrarlos o moverlos, usa la web de Google Drive.</span>
+    ${renderBreadcrumbs()}
+    <div style="background:var(--accent-info-bg); border-left:4px solid var(--accent-info); padding:10px 15px; border-radius:4px; margin-bottom:20px; font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:10px;">
+      <i data-feather="info" style="width:16px; height:16px; color:var(--accent-info);"></i>
+      <span>Estás en: <strong>${libraryPathStack.length > 0 ? esc(libraryPathStack[libraryPathStack.length-1].name) : 'Raíz / Workspace'}</strong>. Los archivos son de solo lectura.</span>
     </div>
-    ${mobileMode ? `<div class="compat-placeholder" style="margin-bottom:16px;"><i data-feather="smartphone"></i><div class="compat-placeholder-body"><p class="compat-placeholder-title">Vista optimizada para móvil</p><p class="compat-placeholder-text">Mostramos primero metadatos (nombre, tamaño y propietario). Las miniaturas pesadas de Drive se ocultan para ahorrar datos y mejorar la carga.</p></div></div>` : ''}
-    <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
-      ${files.map(file => {
-    const mimeType = file.mimeType || '';
-    const icon = getFileIcon(mimeType);
-    const fileSize = Number(file.size || 0);
-    const thumbnailLink = safeUrl(file.thumbnailLink);
-    const iconLink = safeUrl(file.iconLink);
-    const webViewLink = safeUrl(file.webViewLink);
-    const ownerLabel = file.owners?.[0]?.displayName || file.owners?.[0]?.emailAddress || 'Sin propietario';
-    const isSharedDrive = !!file.driveId;
-    const isSharedWithMe = file.shared && !file.ownedByMe && !isSharedDrive;
-    const sourceLabel = isSharedDrive
-      ? 'Biblioteca compartida'
-      : (isSharedWithMe ? 'Compartido conmigo' : 'Biblioteca personal');
-    const sourceTone = isSharedDrive || isSharedWithMe
-      ? 'background:rgba(59,130,246,0.12); color:#93c5fd;'
-      : 'background:rgba(16,185,129,0.12); color:#86efac;';
-    return `
-          <div class="card glass-panel drive-card" style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: transform 0.2s; cursor:default;">
-            <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
-              ${(thumbnailLink && !mobileMode)
-        ? `<img src="${thumbnailLink}" alt="Vista previa de ${esc(file.name || 'archivo')}" style="width:100%; height:100%; object-fit:cover;">`
-        : `<i data-feather="${icon}" style="width:32px; height:32px; opacity:0.4;"></i>`}
-                ${iconLink ? `<img src="${iconLink}" alt="Icono de archivo" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">` : ''}
+
+    ${files.length === 0 ? emptyState('folder-minus', 'Esta carpeta está vacía.') : `
+      <div class="drive-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:20px;">
+        ${files.map(file => {
+          const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
+          const icon = isFolder ? 'folder' : getFileIcon(file.mimeType);
+          const fileSizeLabel = isFolder ? 'Carpeta' : `${(Number(file.size || 0) / 1024 / 1024).toFixed(2)} MB`;
+          
+          const thumbnailLink = safeUrl(file.thumbnailLink);
+          const iconLink = safeUrl(file.iconLink);
+          const webViewLink = safeUrl(file.webViewLink);
+          const ownerLabel = file.owners?.[0]?.displayName || 'Externo';
+          
+          return `
+            <div class="card glass-panel drive-card ${isFolder ? 'folder-card' : ''}" 
+                 style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: all 0.2s; cursor:${isFolder ? 'pointer' : 'default'};"
+                 ${isFolder ? `onclick="navigateToDriveFolder('${file.id}', '${esc(file.name)}', false)"` : ''}>
+              
+              <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
+                ${(thumbnailLink && !mobileMode && !isFolder)
+                  ? `<img src="${thumbnailLink}" alt="Vista previa" style="width:100%; height:100%; object-fit:cover;">`
+                  : `<i data-feather="${icon}" style="width:32px; height:32px; color:${isFolder ? 'var(--accent-primary)' : 'var(--text-muted)'}; opacity:0.8;"></i>`}
+                  ${(iconLink && !isFolder) ? `<img src="${iconLink}" alt="File icon" style="position:absolute; bottom:4px; right:4px; width:16px; height:16px; background:white; border-radius:2px; padding:2px;">` : ''}
+                  ${isFolder ? `<div style="position:absolute; bottom:6px; left:50%; transform:translateX(-50%); font-size:0.6rem; font-weight:800; color:var(--accent-primary); background:var(--accent-primary-bg); padding:1px 6px; border-radius:4px; border:1px solid var(--accent-primary);">EXPLORAR</div>` : ''}
+              </div>
+
+              <div style="overflow:hidden;">
+                <h4 style="font-size:0.8rem; margin:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${esc(file.name)}">${esc(file.name)}</h4>
+                <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${fileSizeLabel} · ${esc(ownerLabel)}</p>
+              </div>
+
+              ${!isFolder ? `
+                <a href="${webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem;">
+                  <i data-feather="external-link" style="width:12px;"></i> Abrir
+                </a>
+              ` : `
+                 <button class="btn btn-primary btn-sm" style="margin-top:auto; font-size:0.75rem;">
+                  <i data-feather="folder-plus" style="width:12px;"></i> Abrir carpeta
+                </button>
+              `}
             </div>
-            <div style="overflow:hidden;">
-              <h4 style="font-size:0.8rem; margin:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;" title="${esc(file.name)}">${esc(file.name)}</h4>
-              <p style="font-size:0.65rem; color:var(--text-muted); margin:2px 0 0 0;">${(fileSize / 1024 / 1024).toFixed(2)} MB · ${esc(ownerLabel)}</p>
-              <span style="display:inline-block; margin-top:6px; padding:2px 8px; border-radius:999px; font-size:0.64rem; font-weight:600; ${sourceTone}">${sourceLabel}</span>
-            </div>
-            <a href="${webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="margin-top:auto; font-size:0.75rem; ${webViewLink ? '' : 'pointer-events:none; opacity:0.6;'}">
-              <i data-feather="external-link" style="width:12px;"></i> Abrir
-            </a>
-          </div>
-        `;
-  }).join('')}
-    </div>
+          `;
+        }).join('')}
+      </div>
+    `}
   `;
   if (window.feather) feather.replace();
 }
+
+window.navigateToDriveFolder = function(id, name, isBreadcrumb = false, breadcrumbIndex = -1) {
+  if (id === null) {
+    libraryPathStack = [];
+  } else if (isBreadcrumb) {
+    libraryPathStack = libraryPathStack.slice(0, breadcrumbIndex + 1);
+  } else {
+    // Evitar duplicados si ya estamos ahí o si es una navegación circular (raro en Drive)
+    if (!libraryPathStack.find(i => i.id === id)) {
+       libraryPathStack.push({ id, name });
+    }
+  }
+  loadDriveContent(id);
+};
 
 function safeUrl(url) {
   if (!url || typeof url !== 'string') return '';
