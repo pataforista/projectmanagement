@@ -163,27 +163,31 @@ export async function decryptRecord(envelope) {
     if (!_cryptoKey) throw new Error('[Fortress] App is locked — cannot decrypt.');
     if (!envelope?.__encrypted) return envelope; // Already plaintext (legacy or non-encrypted store)
 
-    const iv = new Uint8Array(atob(envelope.iv).split('').map(c => c.charCodeAt(0)));
-    const cipherBuf = new Uint8Array(atob(envelope.data).split('').map(c => c.charCodeAt(0)));
-
-    let plainBuf;
     try {
-        plainBuf = await crypto.subtle.decrypt(
+        // atob() calls are inside the try/catch: a malformed iv or data field
+        // (e.g. a record encrypted by a different account and stored as-is) would
+        // throw InvalidCharacterError here, which must be treated the same as an
+        // OperationError — skip the record rather than crashing the whole store load.
+        const iv = new Uint8Array(atob(envelope.iv).split('').map(c => c.charCodeAt(0)));
+        const cipherBuf = new Uint8Array(atob(envelope.data).split('').map(c => c.charCodeAt(0)));
+
+        const plainBuf = await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv },
             _cryptoKey,
             cipherBuf
         );
+
+        const dec = new TextDecoder();
+        return JSON.parse(dec.decode(plainBuf));
     } catch (e) {
-        // OperationError: the key doesn't match (wrong password, changed salt,
-        // or data from a different account). Return null so the caller can skip
-        // this record without crashing the whole load — Drive sync will restore
-        // the correct data on the next pull.
-        console.warn('[Fortress] Decryption failed — wrong key or corrupted record. Skipping.', envelope.id ?? '');
+        // OperationError        → wrong key, tampered ciphertext, or different account
+        // InvalidCharacterError → malformed base64 in iv or data
+        // SyntaxError           → decrypted bytes are not valid JSON
+        // In all cases: return null so decryptAll() filters this record out
+        // without preventing the rest of the store from loading.
+        console.warn('[Fortress] Decryption failed — skipping record.', envelope.id ?? '', e.name);
         return null;
     }
-
-    const dec = new TextDecoder();
-    return JSON.parse(dec.decode(plainBuf));
 }
 
 /** Decrypt an array of envelopes. Records that fail to decrypt are silently

@@ -2,7 +2,13 @@ import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey } from './ut
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+    // drive.file only allows access to files created by THIS app instance for THIS user,
+    // which blocks cross-account collaboration (Account B cannot find Account A's workspace
+    // file even in a shared folder). The 'drive' scope allows reading/writing any Drive
+    // file the signed-in user has access to, which is required for shared workspaces.
+    // For private/internal team use this works without Google app verification
+    // (users will see the standard "unverified app" consent screen on first auth).
+    const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata';
     const CONFIG_KEY = 'gdrive_sync_config';
     const STATUS_KEY = 'gdrive_connected';
     const ID_TOKEN_KEY = 'google_id_token';
@@ -706,7 +712,16 @@ const syncManager = (() => {
         // Pillar 1: Atomic Decryption Flow
         // If the incoming data is encrypted, we must decrypt it BEFORE hydration
         // to avoid storing double-encrypted or raw blobs in the store memory.
-        if (data.e2ee && hasKey() && !isLocked()) {
+        if (data.e2ee) {
+            if (!hasKey() || isLocked()) {
+                // The workspace is E2EE-protected but the local key is not available.
+                // Storing the raw encrypted blobs in IDB would corrupt the local store,
+                // so we abort the hydration and inform the user.
+                console.warn('[Sync] Remote snapshot is E2EE-encrypted but no local key is available — skipping hydration.');
+                if (window.showToast) showToast('El workspace remoto está cifrado. Introduce la contraseña maestra para sincronizar.', 'warning', true);
+                return;
+            }
+
             console.log('[Sync] Decrypting remote snapshot for hydration...');
             try {
                 hydrationData = {

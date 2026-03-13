@@ -601,21 +601,35 @@ const store = (() => {
                     break;
                 }
 
-                // ── Step 0.5: Preserve Local Items ──
-                // Items with visibility = 'local' are NOT sent to the cloud. 
-                // Therefore, if we bluntly overwrite the local DB, we lose them.
+                // ── Step 0.5: Record-level merge ──
+                // Rules (per collection, per record):
+                //  • local-only (visibility='local'): always kept, remote version ignored.
+                //  • remote record newer or same age (updatedAt): remote wins.
+                //  • local record strictly newer (updatedAt): keep local (user edited offline).
+                //  • record exists only in remote: add it (new from another account).
+                //  • record exists only in local (not in remote): keep it locally.
+                //    (Deletion propagation requires tombstones — out of scope for now.)
+                // This prevents one account from silently overwriting another account's
+                // concurrent changes when both push within the same sync window.
                 const validKeys = Object.keys(_state);
                 for (const key of validKeys) {
-                    if (Array.isArray(_state[key]) && Array.isArray(sanitizedPayload[key])) {
-                        // Find all local items in current state
-                        const localItems = _state[key].filter(item => item && item.visibility === 'local');
-
-                        // Merge them into the incoming payload.
-                        // (We append them so they survive the IDB clear/put cascade)
-                        if (localItems.length > 0) {
-                            sanitizedPayload[key] = [...sanitizedPayload[key], ...localItems];
+                    if (!Array.isArray(_state[key]) || !Array.isArray(sanitizedPayload[key])) continue;
+                    const merged = new Map(
+                        _state[key].map(item => item?.id ? [item.id, item] : null).filter(Boolean)
+                    );
+                    for (const remote of sanitizedPayload[key]) {
+                        if (!remote?.id) continue;
+                        const local = merged.get(remote.id);
+                        if (!local) {
+                            merged.set(remote.id, remote); // new record from remote
+                        } else if (local.visibility === 'local') {
+                            // local-only: never overwrite with remote version
+                        } else if ((remote.updatedAt || 0) >= (local.updatedAt || 0)) {
+                            merged.set(remote.id, remote); // remote is same age or newer
                         }
+                        // else local is strictly newer — keep it (offline edit wins)
                     }
+                    sanitizedPayload[key] = [...merged.values()];
                 }
 
                 // Step 1: update memory immediately (safe & instant)
