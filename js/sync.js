@@ -782,14 +782,27 @@ const syncManager = (() => {
             }
 
             const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
-            if (remoteData?.updatedAt > localUpdate) {
+
+            // BUG 37 FIX: Always run seedFromRemote (field-level merge) regardless
+            // of which side has the higher top-level updatedAt.  The old strict
+            // "remote > local" guard was safe only for blind overwrites; with
+            // per-field LWW timestamps it is too conservative — a device that made
+            // changes while offline will have a higher localUpdate, but the remote
+            // snapshot may contain unrelated fields changed on another device that
+            // we would silently miss.  fieldLevelMerge inside seedFromRemote now
+            // decides the winner per field, so it is always safe to call.
+            if (remoteData) {
                 await seedFromRemote(remoteData);
-                localStorage.setItem('last_sync_local', String(remoteData.updatedAt));
-                showToast('Datos actualizados desde Drive', 'success');
-                // BUG 31 FIX: Notify sibling tabs that IDB was updated so they can
-                // reload their in-memory _state before making any further edits.
-                // BroadcastChannel only delivers to OTHER tabs, not to this one.
-                _syncChannel?.postMessage({ type: 'data-updated' });
+                if (remoteData.updatedAt) {
+                    localStorage.setItem('last_sync_local', String(remoteData.updatedAt));
+                }
+                if (remoteData.updatedAt > localUpdate) {
+                    showToast('Datos actualizados desde Drive', 'success');
+                    // BUG 31 FIX: Notify sibling tabs that IDB was updated so they can
+                    // reload their in-memory _state before making any further edits.
+                    // BroadcastChannel only delivers to OTHER tabs, not to this one.
+                    _syncChannel?.postMessage({ type: 'data-updated' });
+                }
             }
 
             // Remote state verified — push is now safe.
@@ -1196,6 +1209,60 @@ const syncManager = (() => {
         }
     }
 
+    /**
+     * BUG 37 FIX: Field-Level Merge (LWW — Last Write Wins per field).
+     * Compares the _timestamps metadata of each individual property so that
+     * concurrent edits on different devices are both preserved.
+     * Example: gaining a Mentor on mobile while updating "Burnout" on the tablet
+     * results in both changes surviving the next sync cycle.
+     *
+     * @param {Object} local  - Record stored in IndexedDB on this device.
+     * @param {Object} remote - Record received from the Drive snapshot.
+     * @returns {Object}        The merged record.
+     */
+    function fieldLevelMerge(local, remote) {
+        // If one side is absent, the other wins unconditionally.
+        if (!local) return remote;
+        if (!remote) return local;
+
+        // Start with a shallow merge (remote wins by default for unknown keys).
+        const merged = { ...local, ...remote };
+
+        // These fields are record-level identifiers — never mix them per-field.
+        const atomicFields = new Set(['id', 'user_id', 'created_at', 'createdAt', '_deleted', '_timestamps']);
+
+        const allKeys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+
+        allKeys.forEach(key => {
+            if (atomicFields.has(key)) return;
+
+            // Per-field timestamp wins; fall back to the record-level updatedAt.
+            const localTime  = local._timestamps?.[key]  || local.updatedAt  || local.updated_at  || 0;
+            const remoteTime = remote._timestamps?.[key] || remote.updatedAt || remote.updated_at || 0;
+
+            merged[key] = localTime > remoteTime ? local[key] : remote[key];
+        });
+
+        // Merge the _timestamps maps so future merges keep the highest-known value
+        // for every field, even after several rounds of push/pull.
+        if (local._timestamps || remote._timestamps) {
+            merged._timestamps = { ...(local._timestamps || {}), ...(remote._timestamps || {}) };
+            // Keep the maximum per-field timestamp.
+            const allTsKeys = new Set([
+                ...Object.keys(local._timestamps  || {}),
+                ...Object.keys(remote._timestamps || {}),
+            ]);
+            allTsKeys.forEach(tsKey => {
+                merged._timestamps[tsKey] = Math.max(
+                    local._timestamps?.[tsKey]  || 0,
+                    remote._timestamps?.[tsKey] || 0,
+                );
+            });
+        }
+
+        return merged;
+    }
+
     async function seedFromRemote(data) {
         // SECURITY FIX: Reject snapshots with a lower sequence number than the local
         // counter. This prevents replay / rollback attacks where a stale snapshot
@@ -1294,6 +1361,49 @@ const syncManager = (() => {
             if (!KNOWN_SNAPSHOT_KEYS.has(key)) newPassthrough[key] = data[key];
         }
         _remotePassthrough = newPassthrough;
+
+        // BUG 37 FIX: Field-Level Merge before hydration.
+        // Instead of blindly overwriting local state with the remote snapshot,
+        // merge each record field by field using LWW timestamps. This preserves
+        // concurrent edits made on other devices (e.g. a Mentor gained on mobile
+        // while Burnout was updated on the tablet) instead of silently discarding
+        // whichever device synced last.
+        const MERGEABLE_STORES = [
+            'projects', 'tasks', 'cycles', 'decisions', 'documents',
+            'members', 'sessions', 'interconsultations', 'timeLogs',
+            'library', 'notifications',
+        ];
+        try {
+            const rawState = store.get?.exportState ? store.get.exportState() : {};
+            const mergedStores = {};
+
+            for (const storeName of MERGEABLE_STORES) {
+                const remoteRecords = hydrationData[storeName];
+                if (!Array.isArray(remoteRecords)) continue;
+
+                const localRecords = Array.isArray(rawState[storeName]) ? rawState[storeName] : [];
+                const localMap = new Map(localRecords.map(r => [r.id, r]));
+
+                mergedStores[storeName] = remoteRecords.map(remoteRec => {
+                    const localRec = localMap.get(remoteRec.id);
+                    return fieldLevelMerge(localRec, remoteRec);
+                });
+
+                // Append local-only records (created offline, not yet in Drive snapshot).
+                const remoteIds = new Set(remoteRecords.map(r => r.id));
+                for (const localRec of localRecords) {
+                    if (!remoteIds.has(localRec.id)) {
+                        mergedStores[storeName].push(localRec);
+                    }
+                }
+            }
+
+            hydrationData = { ...hydrationData, ...mergedStores };
+        } catch (mergeErr) {
+            console.warn('[Sync] Field-level merge failed — falling back to full remote hydration:', mergeErr);
+            // Intentional fallthrough: hydrationData is unchanged, HYDRATE_STORE
+            // will use the unmerged remote snapshot (same behaviour as before the fix).
+        }
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
 
