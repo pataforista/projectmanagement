@@ -186,6 +186,10 @@ export async function unlock(password) {
 export function lock() {
     _cryptoKey = null;
     _isLocked = true;
+    // BUG FIX: clear the cached salt so that a subsequent getOrCreateSalt()
+    // re-reads from localStorage. Without this, unlocking as a different account
+    // (different scoped key) would derive the key with the previous user's salt.
+    _activeSalt = null;
 }
 
 export function isLocked() { return _isLocked; }
