@@ -454,15 +454,14 @@ const syncManager = (() => {
             workspaceSalt: getWorkspaceSaltBase64()
         };
 
-        // INTEGRITY FIX: Compute SHA-256 Checksum of the snapshot payload (excluding metadata.checksum itself)
-        data.metadata.checksum = await computeChecksum(data);
-        return data;
-
-        // E2EE Layer: Encrypt sensitive stores if key is available
+        // E2EE Layer: Encrypt sensitive stores if key is available.
+        // BUGFIX: This block was previously unreachable because a `return data`
+        // statement above it caused the function to exit early, silently sending
+        // plaintext to Google Drive even when E2EE was active.
         if (hasKey() && !isLocked()) {
             console.log('[Sync] Applying E2EE to snapshot...');
             try {
-                return {
+                const encryptedData = {
                     ...data,
                     e2ee: true,
                     projects: await Promise.all(data.projects.map(encryptRecord)),
@@ -471,10 +470,17 @@ const syncManager = (() => {
                     decisions: await Promise.all(data.decisions.map(encryptRecord)),
                     documents: await Promise.all(data.documents.map(encryptRecord)),
                 };
+                // INTEGRITY FIX: Compute checksum AFTER encryption so the remote
+                // receiver can verify integrity on the encrypted payload.
+                encryptedData.metadata.checksum = await computeChecksum(encryptedData);
+                return encryptedData;
             } catch (e) {
                 console.error('[Sync] E2EE failed, sending plaintext:', e);
             }
         }
+
+        // Plaintext path: compute checksum on unencrypted snapshot.
+        data.metadata.checksum = await computeChecksum(data);
         return data;
     }
 
@@ -1462,8 +1468,10 @@ const syncManager = (() => {
             }
 
             // Si la capa crypto está activa, podemos encriptarlo aquí.
+            // BUGFIX: Previously checked `window.cryptoLayer` which is never defined,
+            // so messages were never encrypted. Now uses the imported crypto functions directly.
             let payload = msg;
-            if (window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
+            if (hasKey() && !isLocked()) {
                 try {
                     payload = await encryptRecord(msg);
                 } catch (e) {
@@ -1534,9 +1542,11 @@ const syncManager = (() => {
                         if (!msgData) continue;
 
                         // Decrypt si aplica
+                        // BUGFIX: Previously checked `window.cryptoLayer` (never defined).
+                        // Now uses the imported crypto functions directly.
                         const isEncryptedEnvelope = Boolean(msgData?.__encrypted || (msgData?.iv && msgData?.data));
                         if (isEncryptedEnvelope) {
-                            if (!(window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked())) {
+                            if (!hasKey() || isLocked()) {
                                 console.warn('[ChatSync] Encrypted chat message skipped: workspace is locked or key unavailable.');
                                 continue;
                             }

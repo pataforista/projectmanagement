@@ -54,7 +54,7 @@ export async function computeChecksum(data) {
 
 // Stores that contain sensitive data and should be encrypted
 export const ENCRYPTED_STORES = new Set([
-    'documents', 'tasks', 'projects', 'interconsultations',
+    'documents', 'tasks', 'projects', 'cycles', 'interconsultations',
     'messages', 'annotations', 'snapshots', 'decisions'
 ]);
 
