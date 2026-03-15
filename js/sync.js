@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -412,13 +412,25 @@ const syncManager = (() => {
         updateSyncUI('offline');
     }
 
+    // TOMBSTONE GC: Tombstones (_deleted: true) must be retained long enough for
+    // all devices to sync the deletion. After TOMBSTONE_MAX_AGE_MS (30 days) the
+    // tombstone is stripped from the Drive snapshot so the JSON file stays bounded.
+    // A device offline for >30 days may re-add a deleted record on next sync — that
+    // is the accepted trade-off for a small-team app with reasonable offline windows.
+    const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    function pruneTombstones(records) {
+        if (!Array.isArray(records)) return records;
+        const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+        return records.filter(r => !r._deleted || (r.updatedAt || 0) > cutoff);
+    }
+
     async function getSnapshot() {
         // BUGFIX 2nd Pass: We MUST use exportState() which returns raw memory arrays
         // instead of store.get.*() which heavily filters out `_deleted: true` tombstones.
-        // If we use UI getters, tombstones are excluded from the upload payload, 
+        // If we use UI getters, tombstones are excluded from the upload payload,
         // silently breaking deletion propagation to other clients and causing Zombies.
         const rawState = store.get.exportState ? store.get.exportState() : {};
-        const getRaw = (key) => rawState[key] || (store.get[key] ? store.get[key]() : []);
+        const getRaw = (key) => pruneTombstones(rawState[key] || (store.get[key] ? store.get[key]() : []));
 
         const rawProjects = getRaw('projects');
         const sharedProjects = rawProjects.filter(p => p.visibility !== 'local');
@@ -1019,12 +1031,12 @@ const syncManager = (() => {
         // Solution: propagate the higher iteration count and force a re-derive.
         if (data.pbkdf2Iterations && data.pbkdf2Iterations > getStoredIterations()) {
             localStorage.setItem('nexus_pbkdf2_iterations', String(data.pbkdf2Iterations));
-            // The in-memory key was derived with the old iteration count — it can
-            // still decrypt data encrypted by THIS device. But for data encrypted by
-            // the remote (which used the new count), the user must re-unlock so the
-            // key is re-derived with the updated count. Lock and prompt.
-            if (window.cryptoLayer?.lock) window.cryptoLayer.lock();
-            else if (window.lock) window.lock();
+            // KEY ERA MISMATCH FIX: The in-memory key was derived with the old iteration
+            // count. The remote data was encrypted with the new count → different AES key.
+            // Lock the vault so the next unlock re-derives the key with the updated count.
+            // Uses the directly-imported lock() to avoid the fragile window.cryptoLayer
+            // reference that may not be set in all execution contexts.
+            lock();
             if (window.showToast) showToast('Actualización de seguridad del workspace. Ingresa tu contraseña nuevamente.', 'warning', true);
             if (window.openPanel) window.openPanel();
             return; // Abort hydration — user must re-authenticate with correct key

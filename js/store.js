@@ -108,6 +108,19 @@ const store = (() => {
      * @returns {Promise<any>}
      */
 
+    // CLOCK SKEW FIX: Monotonic timestamp — each call returns a value strictly
+    // greater than the previous one on this device. Prevents a device with a
+    // lagging system clock from producing timestamps that compare as "older"
+    // than records it created earlier, which would cause LWW to silently discard
+    // the newer edit during merge. The guarantee only applies within this session,
+    // but that covers the most common self-overwrite scenario (device editing
+    // offline with a slow clock then syncing).
+    let _lastKnownTs = Date.now();
+    function monotonicNow() {
+        _lastKnownTs = Math.max(Date.now(), _lastKnownTs + 1);
+        return _lastKnownTs;
+    }
+
     // Debounced push: agrupa ráfagas de acciones en 1 solo push a Drive (evita saturar la red)
     let _syncPushTimer = null;
     function _schedulePush() {
@@ -134,7 +147,7 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
-                    createdAt: Date.now(),
+                    createdAt: monotonicNow(),
                     createdBy: actor.label,
                     createdById: actor.id,
                     ownerId: actor.memberId,
@@ -155,7 +168,7 @@ const store = (() => {
                     const updated = {
                         ..._state.projects[idx],
                         ...payload,
-                        updatedAt: Date.now(),
+                        updatedAt: monotonicNow(),
                         updatedBy: actor.label,
                         updatedById: actor.id
                     };
@@ -186,7 +199,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.projects[pIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.projects[pIdx] = tombstone;
@@ -197,7 +210,7 @@ const store = (() => {
                 const cascadeDeletes = async (collectionName, filterFn) => {
                     const itemsToDelete = _state[collectionName].filter(filterFn);
                     for (const item of itemsToDelete) {
-                        const tomb = { ...item, _deleted: true, updatedAt: Date.now() };
+                        const tomb = { ...item, _deleted: true, updatedAt: monotonicNow() };
                         await dbAPI.put(collectionName, tomb);
                         const idx = _state[collectionName].findIndex(x => x.id === item.id);
                         if (idx !== -1) _state[collectionName][idx] = tomb;
@@ -226,10 +239,10 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
-                    createdAt: Date.now(),
+                    createdAt: monotonicNow(),
                     createdBy: actor.label,
                     createdById: actor.id,
-                    updatedAt: Date.now(),
+                    updatedAt: monotonicNow(),
                     updatedBy: actor.label,
                     updatedById: actor.id,
                     cycleId: null,
@@ -254,7 +267,7 @@ const store = (() => {
                         ...payload,
                         updatedBy: actor.label,
                         updatedById: actor.id,
-                        updatedAt: Date.now(),
+                        updatedAt: monotonicNow(),
                         dependencies: payload.dependencies || _state.tasks[idx].dependencies || []
                     };
                     await dbAPI.put(storeName, updated);
@@ -271,7 +284,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.tasks[tIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.tasks[tIdx] = tombstone;
@@ -287,7 +300,7 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
-                    createdAt: Date.now(),
+                    createdAt: monotonicNow(),
                     createdBy: actor.label,
                     createdById: actor.id,
                     status: 'activo',
@@ -307,7 +320,7 @@ const store = (() => {
                     const updated = {
                         ..._state.cycles[idx],
                         ...payload,
-                        updatedAt: Date.now(),
+                        updatedAt: monotonicNow(),
                         updatedBy: actor.label,
                         updatedById: actor.id
                     };
@@ -324,7 +337,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.cycles[cIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.cycles[cIdx] = tombstone;
@@ -337,7 +350,7 @@ const store = (() => {
             // ── Decisions ──
             case 'ADD_DECISION': {
                 storeName = 'decisions';
-                const record = { id: _uid, createdAt: Date.now(), relatedTaskIds: [], ...payload };
+                const record = { id: _uid, createdAt: monotonicNow(), relatedTaskIds: [], ...payload };
                 await dbAPI.put(storeName, record);
                 _state.decisions.push(record);
                 _notify(storeName);
@@ -351,7 +364,7 @@ const store = (() => {
                     const updated = {
                         ..._state.decisions[idx],
                         ...payload,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, updated);
                     _state.decisions[idx] = updated;
@@ -366,7 +379,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.decisions[dIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.decisions[dIdx] = tombstone;
@@ -380,7 +393,7 @@ const store = (() => {
             case 'SAVE_DOCUMENT': {
                 storeName = 'documents';
                 const existing = _state.documents.find(d => d.projectId === payload.projectId);
-                const record = { id: `doc-${payload.projectId}`, updatedAt: Date.now(), ...existing, ...payload };
+                const record = { id: `doc-${payload.projectId}`, updatedAt: monotonicNow(), ...existing, ...payload };
                 await dbAPI.put(storeName, record);
                 const idx = _state.documents.findIndex(d => d.projectId === payload.projectId);
                 if (idx !== -1) _state.documents[idx] = record;
@@ -393,7 +406,7 @@ const store = (() => {
             case 'ADD_LOG': {
                 storeName = 'logs';
                 if (!_state.logs) _state.logs = [];
-                const record = { id: _uid, timestamp: Date.now(), ...payload };
+                const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.logs.push(record);
                 _notify(storeName);
@@ -404,7 +417,7 @@ const store = (() => {
             // ── Members ──
             case 'ADD_MEMBER': {
                 storeName = 'members';
-                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.members.push(record);
                 _notify(storeName);
@@ -444,7 +457,7 @@ const store = (() => {
                 storeName = 'library';
                 const idx = _state.library.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.library[idx], ...payload, updatedAt: Date.now() };
+                    const updated = { ..._state.library[idx], ...payload, updatedAt: monotonicNow() };
                     await dbAPI.put(storeName, updated);
                     _state.library[idx] = updated;
                     _notify(storeName);
@@ -458,7 +471,7 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
-                    createdAt: Date.now(),
+                    createdAt: monotonicNow(),
                     createdBy: actor.label,
                     createdById: actor.id,
                     ownerId: actor.memberId,
@@ -475,7 +488,7 @@ const store = (() => {
                 storeName = 'interconsultations';
                 const idx = _state.interconsultations.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.interconsultations[idx], ...payload, updatedAt: Date.now() };
+                    const updated = { ..._state.interconsultations[idx], ...payload, updatedAt: monotonicNow() };
                     await dbAPI.put(storeName, updated);
                     _state.interconsultations[idx] = updated;
                     _notify(storeName);
@@ -489,7 +502,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.interconsultations[iIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.interconsultations[iIdx] = tombstone;
@@ -504,7 +517,7 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const record = {
                     id: _uid,
-                    createdAt: Date.now(),
+                    createdAt: monotonicNow(),
                     createdBy: actor.label,
                     createdById: actor.id,
                     ownerId: actor.memberId,
@@ -520,7 +533,7 @@ const store = (() => {
                 storeName = 'sessions';
                 const idx = _state.sessions.findIndex(s => s.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.sessions[idx], ...payload, updatedAt: Date.now() };
+                    const updated = { ..._state.sessions[idx], ...payload, updatedAt: monotonicNow() };
                     await dbAPI.put(storeName, updated);
                     _state.sessions[idx] = updated;
                     _notify(storeName);
@@ -534,7 +547,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.sessions[sIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.sessions[sIdx] = tombstone;
@@ -546,7 +559,7 @@ const store = (() => {
             // ── Time Logs ──
             case 'ADD_TIME_LOG': {
                 storeName = 'timeLogs';
-                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.timeLogs.push(record);
                 _notify(storeName);
@@ -559,7 +572,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.timeLogs[tlIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.timeLogs[tlIdx] = tombstone;
@@ -578,7 +591,7 @@ const store = (() => {
                 const lastSnap = projectSnapshots[0];
                 let snapshotRecord = {
                     id: _uid,
-                    timestamp: Date.now(),
+                    timestamp: monotonicNow(),
                     projectId: payload.projectId,
                     title: payload.title || 'Versión'
                 };
@@ -610,7 +623,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.snapshots[snIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.snapshots[snIdx] = tombstone;
@@ -622,7 +635,7 @@ const store = (() => {
             // ── Annotations ──
             case 'ADD_ANNOTATION': {
                 storeName = 'annotations';
-                const record = { id: _uid, createdAt: Date.now(), ...payload };
+                const record = { id: _uid, createdAt: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.annotations.push(record);
                 _notify(storeName);
@@ -635,7 +648,7 @@ const store = (() => {
                     const tombstone = {
                         ..._state.annotations[aIdx],
                         _deleted: true,
-                        updatedAt: Date.now()
+                        updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
                     _state.annotations[aIdx] = tombstone;
@@ -647,7 +660,7 @@ const store = (() => {
             // ── Messages ──
             case 'ADD_MESSAGE': {
                 storeName = 'messages';
-                const record = { id: _uid, timestamp: Date.now(), ...payload };
+                const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.messages.push(record);
                 _notify(storeName);
@@ -673,7 +686,7 @@ const store = (() => {
             }
             case 'ADD_NOTIFICATION': {
                 storeName = 'notifications';
-                const record = { id: _uid, timestamp: Date.now(), ...payload };
+                const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
                 _state.notifications.push(record);
                 _notify(storeName);
@@ -727,24 +740,43 @@ const store = (() => {
                     sanitizedPayload[key] = [...merged.values()];
                 }
 
+                // TOMBSTONE GC: prune tombstones older than 30 days from the merged
+                // result before writing to memory and IDB. Keeps local storage bounded
+                // and prevents the Drive JSON from growing indefinitely.
+                // (Must run after merge so a fresh tombstone from a remote device is
+                // still applied before potentially being eligible for pruning — in
+                // practice a just-deleted record is < 30 days old and will pass.)
+                const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+                const _tombstoneCutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+                for (const key of validKeys) {
+                    if (Array.isArray(sanitizedPayload[key])) {
+                        sanitizedPayload[key] = sanitizedPayload[key].filter(
+                            r => !r._deleted || (r.updatedAt || 0) > _tombstoneCutoff
+                        );
+                    }
+                }
+
                 // Step 1: update memory immediately (safe & instant)
                 for (const key of validKeys) {
                     if (Array.isArray(sanitizedPayload[key])) {
                         _state[key] = sanitizedPayload[key];
                     }
                 }
-                // Step 2: sync IDB in parallel using Promise.allSettled
-                // This way, a single store failure does NOT corrupt others
-                const ops = validKeys
-                    .filter(k => Array.isArray(sanitizedPayload[k]))
-                    .map(async (key) => {
-                        await dbAPI.clear(key);
-                        for (const r of sanitizedPayload[key]) await dbAPI.put(key, r);
-                    });
-                const results = await Promise.allSettled(ops);
-                const failed = results.filter(r => r.status === 'rejected');
-                if (failed.length) {
-                    console.error('[HYDRATE] Partial IDB sync failure:', failed);
+
+                // Step 2: ATOMICITY FIX — write ALL stores in a single IDB transaction.
+                // Previous approach used individual dbAPI.put() calls per store, meaning
+                // a power-loss or OOM kill mid-loop left the DB in a corrupted hybrid
+                // state (some stores new, others old). dbAPI.bulkHydrate() pre-encrypts
+                // all records then opens ONE multi-store readwrite transaction, guaranteeing
+                // IDB rolls back everything automatically if the write is interrupted.
+                const storeMap = {};
+                for (const key of validKeys) {
+                    if (Array.isArray(sanitizedPayload[key])) storeMap[key] = sanitizedPayload[key];
+                }
+                try {
+                    await dbAPI.bulkHydrate(storeMap);
+                } catch (e) {
+                    console.error('[HYDRATE] Atomic IDB write failed — memory state is up to date but IDB may be stale:', e);
                     if (window.showToast) showToast('Sincronización parcial: algunos datos no se persistieron localmente.', 'warning');
                 }
                 _notify('*');

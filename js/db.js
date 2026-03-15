@@ -369,6 +369,67 @@ export const dbAPI = {
     return tx(storeName, 'readwrite', s => s.clear());
   },
 
+  /**
+   * ATOMICITY FIX: Writes an entire hydration payload across multiple stores in a
+   * single IDB transaction. This guarantees all-or-nothing semantics: if the page
+   * is killed or the browser runs out of memory mid-write, IDB rolls back the whole
+   * transaction automatically — the database is never left in a half-updated state.
+   *
+   * Two-phase approach (required because IDB transactions expire on async awaits):
+   *   Phase 1 (async, outside transaction): encrypt records for sensitive stores.
+   *   Phase 2 (sync IDB requests only): open one multi-store readwrite transaction,
+   *            clear each store, put all pre-encrypted records, let it auto-commit.
+   *
+   * @param {Record<string, Array>} plainStoreMap  Plain (decrypted) records per store name.
+   */
+  async bulkHydrate(plainStoreMap) {
+    const storeNames = Object.keys(plainStoreMap);
+    if (!storeNames.length) return;
+
+    // Phase 1: pre-encrypt all records that belong to sensitive stores.
+    // Must be done BEFORE opening the transaction so no async work happens
+    // inside the transaction scope (which would cause it to auto-commit early).
+    const cryptoModule = await getCrypto();
+    const encStoreMap = {};
+    for (const storeName of storeNames) {
+      const records = plainStoreMap[storeName];
+      const shouldEncrypt = cryptoModule.ENCRYPTED_STORES.has(storeName) && cryptoModule.hasKey();
+      if (shouldEncrypt) {
+        encStoreMap[storeName] = await Promise.all(records.map(async r => {
+          const enc = await cryptoModule.encryptRecord(r);
+          enc.id = r.id; // keep keyPath outside envelope so IDB can index it
+          return enc;
+        }));
+      } else {
+        encStoreMap[storeName] = records;
+      }
+    }
+
+    // Phase 2: single atomic multi-store transaction — all IDB requests are
+    // synchronous from IDB's perspective (no awaits between requests).
+    return new Promise((resolve, reject) => {
+      if (!db) return reject(new Error('[DB] bulkHydrate: DB not initialized'));
+      try {
+        const transaction = db.transaction(storeNames, 'readwrite');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror   = () => reject(transaction.error);
+        transaction.onabort   = () => reject(transaction.error ?? new Error('[DB] bulkHydrate aborted'));
+
+        for (const storeName of storeNames) {
+          const store = transaction.objectStore(storeName);
+          store.clear(); // wipe previous contents
+          for (const record of encStoreMap[storeName]) {
+            store.put(record);
+          }
+        }
+        // Transaction auto-commits once all put requests have been queued
+        // and control returns to the event loop with no pending requests.
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+
   /** Queue an operation for background sync. */
   queueSync(operation, storeName, payload) {
     return tx('syncQueue', 'readwrite', s => s.add({
