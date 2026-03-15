@@ -469,6 +469,12 @@ const syncManager = (() => {
                     cycles: await Promise.all(data.cycles.map(encryptRecord)),
                     decisions: await Promise.all(data.decisions.map(encryptRecord)),
                     documents: await Promise.all(data.documents.map(encryptRecord)),
+                    // BUG FIX: messages, annotations, snapshots and interconsultations are
+                    // listed in ENCRYPTED_STORES but were missing here, so they were uploaded
+                    // to Drive in plaintext even when E2EE was active.
+                    messages: await Promise.all(data.messages.map(encryptRecord)),
+                    annotations: await Promise.all(data.annotations.map(encryptRecord)),
+                    snapshots: await Promise.all(data.snapshots.map(encryptRecord)),
                 };
                 // INTEGRITY FIX: Compute checksum AFTER encryption so the remote
                 // receiver can verify integrity on the encrypted payload.
@@ -489,6 +495,10 @@ const syncManager = (() => {
      * Cifra los datos sensibles si Nexus Fortress está activado y advierte sobre sobrescrituras
      * accidentales si el archivo remoto es más nuevo.
      */
+    // BUG FIX: Track 412 retries to break the infinite pull→push→412 loop.
+    let _pushRetryCount = 0;
+    const MAX_PUSH_RETRIES = 3;
+
     async function push() {
         if (!accessToken || !networkOnline || isSyncPaused()) return;
 
@@ -531,6 +541,17 @@ const syncManager = (() => {
                     await updateFile(fileId, data, etag);
                 } catch (updateErr) {
                     if (updateErr.message === '412_PRECONDITION_FAILED') {
+                        _pushRetryCount++;
+                        if (_pushRetryCount > MAX_PUSH_RETRIES) {
+                            // BUG FIX: Without this guard, a persistent 412 (e.g. two
+                            // clients racing) causes infinite pull→push→412→pull recursion.
+                            _pushRetryCount = 0;
+                            console.error('[Sync] Max 412 retries reached. Aborting push to prevent infinite loop.');
+                            if (window.showToast) showToast('Conflicto de sincronización persistente. Intenta de nuevo más tarde.', 'error', true);
+                            isSyncing = false;
+                            updateSyncUI('error');
+                            return;
+                        }
                         console.warn('[Sync] Push blocked by ETag (412 Precondition Failed). Auto-pulling changes...');
                         if (window.showToast) showToast('Fusionando cambios recientes antes de subir...', 'info');
                         isSyncing = false;
@@ -555,6 +576,7 @@ const syncManager = (() => {
             localStorage.setItem('last_sync_local', String(data.updatedAt));
             // Persist the snapshot counter so future pulls can detect rollbacks.
             localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
+            _pushRetryCount = 0; // Reset 412 retry counter after a successful push.
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Push failed:', err);
@@ -893,6 +915,13 @@ const syncManager = (() => {
             const err = await response.json();
             throw new Error(`[Sync] updateFile failed (${response.status}): ${err.error?.message}`);
         }
+
+        // BUG FIX: Save the ETag returned by the PATCH response.
+        // Without this, the locally stored ETag becomes stale after every push,
+        // causing a spurious 412 on the very next push even when no other client
+        // has written to Drive in between.
+        const newEtag = response.headers.get('ETag');
+        if (newEtag) localStorage.setItem(`gdrive_etag_${id}`, newEtag);
     }
 
     async function getFileContent(id) {
@@ -968,6 +997,10 @@ const syncManager = (() => {
                     cycles: await decryptAll(data.cycles || []),
                     decisions: await decryptAll(data.decisions || []),
                     documents: await decryptAll(data.documents || []),
+                    // BUG FIX: decrypt stores that are now encrypted in getSnapshot().
+                    messages: await decryptAll(data.messages || []),
+                    annotations: await decryptAll(data.annotations || []),
+                    snapshots: await decryptAll(data.snapshots || []),
                 };
             } catch (e) {
                 console.error('[Sync] Pull decryption failed. Data might be corrupted or key is wrong.', e);
@@ -1021,7 +1054,10 @@ const syncManager = (() => {
             return '---';
         }).join('\n\n');
 
-        downloadFile(`${p.name.slugify()}.md`, text);
+        // BUG FIX: String.prototype.slugify() is not a native JS method.
+        // Replace with an inline normalization to avoid TypeError at runtime.
+        const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        downloadFile(`${slug}.md`, text);
     }
 
     function parseTrelloJson(json) {
@@ -1535,11 +1571,14 @@ const syncManager = (() => {
             });
 
             if (newFiles.length > 0) {
-                localStorage.setItem('gdrive_chat_last_poll', Date.now());
+                // BUG FIX: moved the timestamp update to AFTER all files have been
+                // processed. Previously the timestamp was set before the loop, so any
+                // file that failed to download was permanently skipped on the next poll.
+                let allProcessed = true;
                 for (const file of newFiles) {
                     try {
                         let msgData = await getFileContent(file.id);
-                        if (!msgData) continue;
+                        if (!msgData) { allProcessed = false; continue; }
 
                         // Decrypt si aplica
                         // BUGFIX: Previously checked `window.cryptoLayer` (never defined).
@@ -1569,8 +1608,14 @@ const syncManager = (() => {
                         if (!exist) {
                             await store.dispatch('ADD_MESSAGE', msgData);
                         }
-                    } catch (e) { console.warn('[ChatSync] Failed DL msg', e); }
+                    } catch (e) {
+                        allProcessed = false;
+                        console.warn('[ChatSync] Failed DL msg', e);
+                    }
                 }
+                // Only advance the poll cursor when every file was processed successfully.
+                // If any file failed, keep the old timestamp so it gets retried next poll.
+                if (allProcessed) localStorage.setItem('gdrive_chat_last_poll', Date.now());
             } else {
                 // Update poll timestamp even if no new files to prevent re-checking all files next time
                 if (lastPoll === 0) localStorage.setItem('gdrive_chat_last_poll', Date.now());

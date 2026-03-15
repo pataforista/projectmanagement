@@ -659,7 +659,9 @@ const store = (() => {
                         for (const match of matches) {
                             await dispatch('ADD_NOTIFICATION', {
                                 type: 'mention',
-                                title: `Mención de ${record.author}`,
+                                // BUG FIX: the message field is `sender`, not `author`.
+                                // Using `record.author` always yielded "Mención de undefined".
+                                title: `Mención de ${record.sender || record.author || 'Usuario'}`,
                                 text: record.text,
                                 read: false,
                                 projectId: record.projectId

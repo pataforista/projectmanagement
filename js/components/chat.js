@@ -335,7 +335,9 @@ export const ChatManager = (() => {
         scrollToBottom();
 
         // Badge logic if closed
-        if (!_isOpen && messages.length > lastCount && lastCount > 0) {
+        // BUG FIX: removed `&& lastCount > 0` — that condition prevented the badge
+        // from ever showing when the first message arrived (lastCount was 0).
+        if (!_isOpen && messages.length > lastCount) {
             const badge = document.getElementById('chat-badge');
             const diff = messages.length - lastCount;
             const currentBadgeVal = parseInt(badge.textContent) || 0;
