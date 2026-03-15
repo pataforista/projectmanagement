@@ -547,6 +547,11 @@ const syncManager = (() => {
         const rawLogs         = getRaw('logs');
         const rawAnnotations  = getRaw('annotations').filter(isShared);
         const rawSnapshotsArr = getRaw('snapshots').filter(isShared);
+        const rawInterconsultations = getRaw('interconsultations').filter(isShared);
+        const rawSessions = getRaw('sessions').filter(isShared);
+        const rawTimeLogs = getRaw('timeLogs').filter(isShared);
+        const rawLibrary = getRaw('library').filter(isShared);
+        const rawNotifications = getRaw('notifications').filter(isShared);
 
         const data = {
             // SCHEMA SKEW FIX: re-inject stores this client version doesn't know about.
@@ -573,6 +578,11 @@ const syncManager = (() => {
             messages: capRecent(rawMessages, CAP_MESSAGES, 'timestamp'),
             annotations: capRecent(rawAnnotations, CAP_ANNOTATIONS, 'createdAt'),
             snapshots: capRecent(rawSnapshotsArr, CAP_SNAPSHOTS, 'timestamp'),
+            interconsultations: rawInterconsultations,
+            sessions: rawSessions,
+            timeLogs: rawTimeLogs,
+            library: rawLibrary,
+            notifications: rawNotifications,
             settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
@@ -613,6 +623,11 @@ const syncManager = (() => {
                     messages: await Promise.all(data.messages.map(encryptRecord)),
                     annotations: await Promise.all(data.annotations.map(encryptRecord)),
                     snapshots: await Promise.all(data.snapshots.map(encryptRecord)),
+                    interconsultations: await Promise.all(data.interconsultations.map(encryptRecord)),
+                    sessions: await Promise.all(data.sessions.map(encryptRecord)),
+                    timeLogs: await Promise.all(data.timeLogs.map(encryptRecord)),
+                    library: await Promise.all(data.library.map(encryptRecord)),
+                    notifications: await Promise.all(data.notifications.map(encryptRecord)),
                     members: await Promise.all(data.members.map(encryptRecord)),
                     logs: await Promise.all(data.logs.map(encryptRecord)),
                 };
@@ -1390,6 +1405,11 @@ const syncManager = (() => {
                     messages: await decryptAll(data.messages || []),
                     annotations: await decryptAll(data.annotations || []),
                     snapshots: await decryptAll(data.snapshots || []),
+                    interconsultations: await decryptAll(data.interconsultations || []),
+                    sessions: await decryptAll(data.sessions || []),
+                    timeLogs: await decryptAll(data.timeLogs || []),
+                    library: await decryptAll(data.library || []),
+                    notifications: await decryptAll(data.notifications || []),
                     members: await decryptAll(data.members || []),
                     logs: await decryptAll(data.logs || []),
                 };
