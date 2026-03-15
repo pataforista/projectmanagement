@@ -444,8 +444,25 @@ export const dbAPI = {
       try {
         const transaction = db.transaction(storeNames, 'readwrite');
         transaction.oncomplete = () => resolve();
-        transaction.onerror   = () => reject(transaction.error);
-        transaction.onabort   = () => reject(transaction.error ?? new Error('[DB] bulkHydrate aborted'));
+        // BUG 35 FIX: Specifically detect QuotaExceededError so the caller (and the
+        // user) knows the failure is due to insufficient device storage rather than
+        // a generic IDB error. Showing a clear toast prevents the app from appearing
+        // to fail silently when the device runs out of disk space (common on mobile).
+        const _handleIDBError = (fallbackMsg) => {
+            const err = transaction.error ?? new Error(fallbackMsg);
+            if (err && err.name === 'QuotaExceededError') {
+                if (window.showToast) {
+                    window.showToast(
+                        'Espacio insuficiente en el dispositivo. La sincronización se ha pausado para proteger tus datos.',
+                        'error',
+                        true
+                    );
+                }
+            }
+            reject(err);
+        };
+        transaction.onerror = () => _handleIDBError('[DB] bulkHydrate error');
+        transaction.onabort = () => _handleIDBError('[DB] bulkHydrate aborted');
 
         for (const storeName of storeNames) {
           const store = transaction.objectStore(storeName);

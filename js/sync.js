@@ -33,6 +33,13 @@ const syncManager = (() => {
         : null;
     // BUG 32: guard so the visibilitychange listener is registered at most once.
     let _visibilityListenerRegistered = false;
+    // BUG 34: guard so the beforeunload listener is registered at most once.
+    let _beforeunloadListenerRegistered = false;
+    // BUG 36: Token Refresh Lock — prevents a storm of parallel 401 responses from
+    // triggering simultaneous token refreshes. Only the first request refreshes; the
+    // rest queue up and reuse the resulting token once it resolves.
+    let _isRefreshingToken = false;
+    let _tokenRefreshWaiters = [];
 
     // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
     // Any key present in the remote JSON that is NOT in this set is "unknown" —
@@ -378,6 +385,22 @@ const syncManager = (() => {
                 currentUser = decodedUser;
                 syncIdentityToWorkspaceProfile(currentUser);
             }
+        }
+
+        // BUG 34 FIX: Warn the user before closing the tab/window if there is a
+        // push pending or a sync currently in progress. The debounce timer may not
+        // have fired yet, so local IndexedDB changes would not have reached Drive.
+        // Using returnValue (legacy) ensures maximum browser compatibility.
+        if (!_beforeunloadListenerRegistered) {
+            window.addEventListener('beforeunload', (e) => {
+                if (pushPending || isSyncing) {
+                    const msg = 'Hay cambios pendientes de sincronizar con Google Drive. ¿Seguro que quieres salir?';
+                    e.preventDefault();
+                    e.returnValue = msg; // Required for Chrome/Edge
+                    return msg;          // Required for Firefox/Safari
+                }
+            });
+            _beforeunloadListenerRegistered = true;
         }
 
         const cfg = getConfig();
@@ -834,11 +857,32 @@ const syncManager = (() => {
         const GDrive_TOKEN_LIFE = 50 * 60 * 1000; // 50 minutes (Google tokens usually last 60)
         if (Date.now() - tokenTimestamp > GDrive_TOKEN_LIFE) {
             console.log('[Sync] Token near expiration. Performing proactive refresh...');
-            try {
-                await authorize(getConfig().clientId, false);
-            } catch (e) {
-                console.warn('[Sync] Proactive refresh failed, relying on reactive interceptor.', e);
-            }
+            // BUG 36 FIX: Use the shared refresh lock so that push() and pull() running
+            // concurrently don't both trigger a proactive refresh at the same moment.
+            await _refreshTokenWithLock();
+        }
+    }
+
+    // BUG 36 FIX: Shared helper that serialises all token refresh calls behind a single
+    // in-flight promise. If a refresh is already running, callers wait for it instead of
+    // starting a second one — avoiding race conditions and wasted round-trips.
+    async function _refreshTokenWithLock() {
+        if (_isRefreshingToken) {
+            return new Promise((resolve, reject) => {
+                _tokenRefreshWaiters.push({ resolve, reject });
+            });
+        }
+        _isRefreshingToken = true;
+        try {
+            const newToken = await authorize(getConfig().clientId, false);
+            _tokenRefreshWaiters.forEach(w => w.resolve(newToken));
+            return newToken;
+        } catch (e) {
+            _tokenRefreshWaiters.forEach(w => w.reject(e));
+            throw e;
+        } finally {
+            _tokenRefreshWaiters = [];
+            _isRefreshingToken = false;
         }
     }
 
@@ -860,10 +904,15 @@ const syncManager = (() => {
             clearTimeout(id);
 
             // 401 Interceptor: Silent Token Refresh
+            // BUG 36 FIX: Route through _refreshTokenWithLock() so that when several
+            // requests fire in parallel and all receive a 401 simultaneously, only the
+            // first one triggers a real refresh call — the rest wait for it and reuse
+            // the resulting token. This prevents invalidating the refresh token by
+            // issuing duplicate refresh requests in quick succession.
             if (response.status === 401 && accessToken) {
                 console.warn('[Sync] 401 Unauthorized detected. Attempting silent token refresh...');
                 try {
-                    const newAccessToken = await authorize(getConfig().clientId, false);
+                    const newAccessToken = await _refreshTokenWithLock();
                     // BUG FIX: { ...options } is a shallow copy — options.headers is still
                     // the same object reference, so mutating newOptions.headers.Authorization
                     // also mutated the original options headers. Use a deep copy of headers.
