@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -22,6 +22,11 @@ const syncManager = (() => {
     let networkOnline = navigator.onLine;
     let tokenTimestamp = 0; // Epoch when accessToken was issued
     let syncPausedUntil = 0; // Circuit Breaker timestamp
+    // GHOST WIPE GUARD: push() is blocked until pull() has confirmed the remote
+    // state (file exists and was applied, or confirmed absent). Without this, a
+    // new device with empty local state could push an empty snapshot to Drive
+    // before the initial pull completes, wiping all remote data.
+    let _remoteChecked = false;
 
     const defaultConfig = {
         clientId: '',
@@ -451,7 +456,12 @@ const syncManager = (() => {
                 if (val !== null) acc[key] = val;
                 return acc;
             }, {}),
-            workspaceSalt: getWorkspaceSaltBase64()
+            workspaceSalt: getWorkspaceSaltBase64(),
+            // BUG 15 FIX: Propagate the PBKDF2 iteration count so other devices
+            // derive the same key after a security upgrade (310k → 600k).
+            // Stored at the top level (plaintext, like workspaceSalt) so the
+            // receiver can read it before attempting decryption.
+            pbkdf2Iterations: getStoredIterations()
         };
 
         // E2EE Layer: Encrypt sensitive stores if key is available.
@@ -507,6 +517,14 @@ const syncManager = (() => {
 
     async function push() {
         if (!accessToken || !networkOnline || isSyncPaused()) return;
+
+        // GHOST WIPE GUARD: Block push until at least one pull has verified remote state.
+        // A new device starts with empty local state; if push ran before pull confirmed
+        // whether a remote file exists, it would overwrite Drive data with an empty JSON.
+        if (!_remoteChecked) {
+            console.warn('[Sync] Push blocked: waiting for initial pull to verify remote state first.');
+            return;
+        }
 
         // AUTH FIX: Proactive refresh if token is near expiration (>50 min)
         await ensureValidToken();
@@ -629,6 +647,8 @@ const syncManager = (() => {
             let fileId = validId(localStorage.getItem('gdrive_file_id'));
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
             if (!fileId) {
+                // No remote file exists yet — safe for this device to push (create).
+                _remoteChecked = true;
                 updateSyncUI('online');
                 return;
             }
@@ -656,6 +676,8 @@ const syncManager = (() => {
                 showToast('Datos actualizados desde Drive', 'success');
             }
 
+            // Remote state verified — push is now safe.
+            _remoteChecked = true;
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Pull failed:', err);
@@ -988,6 +1010,24 @@ const syncManager = (() => {
                 if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
                 return; // Abort hydration
             }
+        }
+
+        // BUG 15 FIX: Sync PBKDF2 iteration count from remote workspace.
+        // If Device A upgraded to 600k iterations (via password reset), Device B
+        // still has 310k in its localStorage and will derive a DIFFERENT AES key
+        // from the same password, making decryption fail on next unlock.
+        // Solution: propagate the higher iteration count and force a re-derive.
+        if (data.pbkdf2Iterations && data.pbkdf2Iterations > getStoredIterations()) {
+            localStorage.setItem('nexus_pbkdf2_iterations', String(data.pbkdf2Iterations));
+            // The in-memory key was derived with the old iteration count — it can
+            // still decrypt data encrypted by THIS device. But for data encrypted by
+            // the remote (which used the new count), the user must re-unlock so the
+            // key is re-derived with the updated count. Lock and prompt.
+            if (window.cryptoLayer?.lock) window.cryptoLayer.lock();
+            else if (window.lock) window.lock();
+            if (window.showToast) showToast('Actualización de seguridad del workspace. Ingresa tu contraseña nuevamente.', 'warning', true);
+            if (window.openPanel) window.openPanel();
+            return; // Abort hydration — user must re-authenticate with correct key
         }
 
         let hydrationData = data;

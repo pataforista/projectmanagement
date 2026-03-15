@@ -119,12 +119,12 @@ const store = (() => {
     }
 
     async function dispatch(action, payload) {
-        // SECURITY FIX: Use crypto.getRandomValues() instead of Math.random() for record IDs.
-        // Math.random() is a deterministic PRNG that can produce collisions under load
-        // and must never be used for security-relevant identifiers.
-        const _randBytes = crypto.getRandomValues(new Uint8Array(4));
-        const _randHex = Array.from(_randBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-        const _uid = `${Date.now()}-${_randHex}`;
+        // ID COLLISION FIX: Use crypto.randomUUID() (122 bits, RFC 4122 v4) instead of
+        // Date.now() + 4-byte random (32 bits per millisecond). Two offline devices
+        // creating records simultaneously with the old scheme had a 1-in-4B chance of
+        // collision per shared millisecond — astronomically low but non-zero. With
+        // randomUUID() the probability is effectively zero for any realistic team size.
+        const _uid = crypto.randomUUID();
         let storeName;
 
         switch (action) {

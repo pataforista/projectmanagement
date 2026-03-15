@@ -612,8 +612,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // BUG 16 FIX: Zombie Key — propagate lock() to all sibling tabs via BroadcastChannel.
+    // Without this, tabs B and C keep the master key in memory after tab A logs out,
+    // leaving the vault accessible in those tabs until they are manually refreshed.
+    const _lockChannel = new BroadcastChannel('nexus-lock');
+    _lockChannel.addEventListener('message', (event) => {
+        if (event.data?.type === 'lock') {
+            // Another tab initiated a lock — clear key from this tab's memory and reload
+            // the auth overlay so the user must re-authenticate here too.
+            if (cryptoLayer?.lock) cryptoLayer.lock();
+            location.reload();
+        }
+    });
+
     window.lockWorkspace = () => {
         if (localStorage.getItem('workspace_lock_hash')) {
+            // Broadcast to all sibling tabs before reloading this one.
+            _lockChannel.postMessage({ type: 'lock' });
             location.reload();
         } else {
             if (window.showToast) showToast('Primero configura una contraseña en Perfil.', 'info');

@@ -29,7 +29,7 @@ const LEGACY_PBKDF2_ITERATIONS = 310_000; // OWASP 2023 — kept for backward co
 const PBKDF2_ITERATIONS_KEY    = 'nexus_pbkdf2_iterations';
 
 /** Returns the iterations used for this install (reads from localStorage). */
-function getStoredIterations() {
+export function getStoredIterations() {
     const stored = Number(localStorage.getItem(PBKDF2_ITERATIONS_KEY) || 0);
     return stored > 0 ? stored : LEGACY_PBKDF2_ITERATIONS;
 }
