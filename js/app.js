@@ -598,6 +598,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                         resolve();
                     });
                     if (cryptoLayer) await cryptoLayer.unlock(newPwd);
+
+                    // RE-ENCRYPTION SAFETY FIX: Drive still holds data encrypted with
+                    // the old key. If pull() runs before we push the new-key snapshot,
+                    // it will try to decrypt old-key records with the new key, fail
+                    // silently (AES-GCM authentication mismatch), hydrate with empty
+                    // arrays, then push() will wipe Drive. The nexus_key_rotating flag:
+                    //  1. Blocks seedFromRemote() from hydrating until rotation is done.
+                    //  2. Allows push() to bypass the _remoteChecked ghost-wipe guard.
+                    //  3. Is cleared by push() after first successful commit.
+                    //  4. Survives crashes — on next startup the guard is still active.
+                    localStorage.setItem('nexus_key_rotating', 'true');
+                    if (window.syncManager?.push) {
+                        syncManager.push().catch(e =>
+                            console.warn('[Security] Key rotation push failed — will retry on next sync cycle.', e)
+                        );
+                    }
                 };
             }
         }

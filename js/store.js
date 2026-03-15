@@ -716,15 +716,29 @@ const store = (() => {
                 //  • local record strictly newer (updatedAt): keep local (user edited offline).
                 //  • record exists only in remote: add it (new from another account).
                 //  • record exists only in local (not in remote): keep it locally.
-                //    (Deletion propagation requires tombstones — out of scope for now.)
+                //    EXCEPTION (BUG 24 / Zombie-30-day): see post-merge cleanup below.
                 // This prevents one account from silently overwriting another account's
                 // concurrent changes when both push within the same sync window.
+
+                // BUG 24 FIX: Detect stale devices (offline > tombstone TTL).
+                // When a device was offline for longer than TOMBSTONE_MAX_AGE_MS (30 days),
+                // tombstones for items deleted during that window have already been pruned
+                // from Drive. The device can't distinguish "was deleted remotely, tombstone
+                // pruned" from "was never pushed remotely". We handle this after the merge:
+                // - local tombstones not in remote → pruned (deletion was already processed)
+                // - non-deleted local-only records → kept (might be new; safest default)
+                // - a stale-device warning is shown so users can manually check.
+                const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+                const _lastSyncLocal = Number(localStorage.getItem('last_sync_local') || 0);
+                const _isStaleBeyondTTL = _lastSyncLocal > 0 && (Date.now() - _lastSyncLocal) > TOMBSTONE_MAX_AGE_MS;
+
                 const validKeys = Object.keys(_state);
                 for (const key of validKeys) {
                     if (!Array.isArray(_state[key]) || !Array.isArray(sanitizedPayload[key])) continue;
                     const merged = new Map(
                         _state[key].map(item => item?.id ? [item.id, item] : null).filter(Boolean)
                     );
+                    const remoteIds = new Set(sanitizedPayload[key].map(r => r?.id).filter(Boolean));
                     for (const remote of sanitizedPayload[key]) {
                         if (!remote?.id) continue;
                         const local = merged.get(remote.id);
@@ -737,7 +751,26 @@ const store = (() => {
                         }
                         // else local is strictly newer — keep it (offline edit wins)
                     }
+
+                    // BUG 24: If device is stale beyond TTL, drop local tombstones that
+                    // are not present in the remote — those deletions were already
+                    // propagated; the tombstone was simply pruned after 30 days.
+                    // We cannot safely drop non-deleted local-only records (they might
+                    // be new offline records), so those are kept with a warning.
+                    if (_isStaleBeyondTTL) {
+                        for (const [id, record] of merged) {
+                            if (record._deleted && !remoteIds.has(id)) {
+                                merged.delete(id); // Deletion was already processed remotely
+                            }
+                        }
+                    }
+
                     sanitizedPayload[key] = [...merged.values()];
+                }
+
+                if (_isStaleBeyondTTL) {
+                    console.warn('[Store] Device was offline for more than 30 days. Some remotely-deleted records may have been resurrected.');
+                    if (window.showToast) showToast('Dispositivo sin sincronizar por más de 30 días. Verifica si hay registros que deberían estar eliminados.', 'warning', true);
                 }
 
                 // TOMBSTONE GC: prune tombstones older than 30 days from the merged

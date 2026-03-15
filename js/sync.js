@@ -28,6 +28,21 @@ const syncManager = (() => {
     // before the initial pull completes, wiping all remote data.
     let _remoteChecked = false;
 
+    // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
+    // Any key present in the remote JSON that is NOT in this set is "unknown" —
+    // it belongs to a store added by a newer version of the app. Old clients must
+    // carry these unknown stores forward ("shuttle" them) so a push from v1.9
+    // doesn't silently erase a store that v2.0 added.
+    const KNOWN_SNAPSHOT_KEYS = new Set([
+        'version', 'snapshotSeq', 'updatedAt', 'metadata', 'e2ee',
+        'projects', 'tasks', 'cycles', 'decisions', 'documents',
+        'members', 'logs', 'messages', 'annotations', 'snapshots',
+        'interconsultations', 'sessions', 'timeLogs', 'library',
+        'notifications', 'settings', 'workspaceSalt', 'pbkdf2Iterations',
+    ]);
+    // Unknown stores from the last pull — re-injected verbatim into every push.
+    let _remotePassthrough = {};
+
     const defaultConfig = {
         clientId: '',
         fileName: 'workspace-team-data.json',
@@ -443,6 +458,10 @@ const syncManager = (() => {
         const snapshotSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0) + 1;
 
         const data = {
+            // SCHEMA SKEW FIX: re-inject stores this client version doesn't know about.
+            // If a newer version of the app added 'clinical_cases', this spread ensures
+            // it is preserved verbatim in every push made by an older client.
+            ..._remotePassthrough,
             version: '1.2',
             snapshotSeq,
             updatedAt: Date.now(),
@@ -533,7 +552,11 @@ const syncManager = (() => {
         // GHOST WIPE GUARD: Block push until at least one pull has verified remote state.
         // A new device starts with empty local state; if push ran before pull confirmed
         // whether a remote file exists, it would overwrite Drive data with an empty JSON.
-        if (!_remoteChecked) {
+        // Exception: bypass during key rotation — the in-memory state is valid (loaded
+        // from IDB before the password change) and we MUST push before pulling to avoid
+        // the old-key Drive data being decrypted (wrongly) and wiping local state.
+        const isKeyRotating = localStorage.getItem('nexus_key_rotating') === 'true';
+        if (!_remoteChecked && !isKeyRotating) {
             console.warn('[Sync] Push blocked: waiting for initial pull to verify remote state first.');
             return;
         }
@@ -613,6 +636,9 @@ const syncManager = (() => {
             // Persist the snapshot counter so future pulls can detect rollbacks.
             localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
             _pushRetryCount = 0; // Reset 412 retry counter after a successful push.
+            // KEY ROTATION FIX: clear the rotation flag after the first successful push
+            // with the new key — Drive is now consistent with the new password.
+            localStorage.removeItem('nexus_key_rotating');
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Push failed:', err);
@@ -1004,6 +1030,16 @@ const syncManager = (() => {
         // counter. This prevents replay / rollback attacks where a stale snapshot
         // previously captured (e.g. from Drive by a malicious actor) is re-uploaded
         // to silently revert security-critical changes (role changes, member removals).
+        // KEY ROTATION GUARD: If the user just changed their password, the in-memory
+        // state is correct but Drive still has data encrypted with the OLD key. Hydrating
+        // now would decrypt old-key records with the new key (wrong key → all records
+        // return null from AES-GCM → HYDRATE_STORE replaces local state with empty arrays
+        // → the next push wipes Drive). Block hydration until the rotation push succeeds.
+        if (localStorage.getItem('nexus_key_rotating') === 'true') {
+            console.warn('[Sync] Key rotation in progress — skipping hydration to preserve in-memory state. Waiting for rotation push to commit new key to Drive.');
+            return;
+        }
+
         const localSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0);
         if (data.snapshotSeq !== undefined && data.snapshotSeq < localSeq) {
             console.warn(`[Sync] Rollback rejected: remote snapshotSeq (${data.snapshotSeq}) < local (${localSeq}).`);
@@ -1077,6 +1113,16 @@ const syncManager = (() => {
                 return;
             }
         }
+
+        // SCHEMA SKEW FIX: capture top-level keys we don't recognise so they can
+        // be shuttled back to Drive on the next push, unchanged. Must be extracted
+        // from the RAW (pre-decryption) data so we capture the encrypted blobs as-is
+        // — we can't decrypt stores we don't understand, but we can carry them forward.
+        const newPassthrough = {};
+        for (const key of Object.keys(data)) {
+            if (!KNOWN_SNAPSHOT_KEYS.has(key)) newPassthrough[key] = data[key];
+        }
+        _remotePassthrough = newPassthrough;
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
 
