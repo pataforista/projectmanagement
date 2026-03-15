@@ -40,6 +40,12 @@ const syncManager = (() => {
     // rest queue up and reuse the resulting token once it resolves.
     let _isRefreshingToken = false;
     let _tokenRefreshWaiters = [];
+    // DIRTY FLAG: true when local IDB has changes that have NOT yet been confirmed
+    // by a successful push to Drive (200 OK). Distinct from `pushPending` (which only
+    // means "a push was queued while another was in progress") and `isSyncing` (which
+    // is false between the push failure and the next retry). This flag survives failed
+    // pushes so beforeunload/pagehide can warn the user until Drive acknowledges.
+    let _dirtyLocalChanges = false;
 
     // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
     // Any key present in the remote JSON that is NOT in this set is "unknown" —
@@ -55,6 +61,14 @@ const syncManager = (() => {
     ]);
     // Unknown stores from the last pull — re-injected verbatim into every push.
     let _remotePassthrough = {};
+
+    // Called by store.js dispatch() whenever a mutation is written to IDB.
+    // Sets _dirtyLocalChanges so that beforeunload/pagehide can warn the user
+    // even if the 5-second debounce timer has not fired yet or if a previous
+    // push failed (in which case pushPending and isSyncing are both false).
+    function markDirty() {
+        _dirtyLocalChanges = true;
+    }
 
     const defaultConfig = {
         clientId: '',
@@ -391,16 +405,41 @@ const syncManager = (() => {
         // push pending or a sync currently in progress. The debounce timer may not
         // have fired yet, so local IndexedDB changes would not have reached Drive.
         // Using returnValue (legacy) ensures maximum browser compatibility.
+        // _dirtyLocalChanges covers the case where a push failed entirely and neither
+        // pushPending nor isSyncing is set — changes are in IDB but not yet in Drive.
+        //
+        // iOS SAFARI NOTE: beforeunload is unreliable on iOS Safari (often never fires).
+        // pagehide is the canonical unload event for mobile Safari. It cannot cancel
+        // navigation, but we use it to persist a 'nexus_dirty_flag' to localStorage
+        // so that on the next startup the app knows to push before doing anything else.
         if (!_beforeunloadListenerRegistered) {
             window.addEventListener('beforeunload', (e) => {
-                if (pushPending || isSyncing) {
+                if (_dirtyLocalChanges || pushPending || isSyncing) {
                     const msg = 'Hay cambios pendientes de sincronizar con Google Drive. ¿Seguro que quieres salir?';
                     e.preventDefault();
                     e.returnValue = msg; // Required for Chrome/Edge
                     return msg;          // Required for Firefox/Safari
                 }
             });
+            // pagehide fires more reliably than beforeunload on iOS Safari / mobile WebKit.
+            // We cannot prevent navigation here, so instead we write a persistent dirty
+            // marker to localStorage that init() checks on the next app launch.
+            window.addEventListener('pagehide', () => {
+                if (_dirtyLocalChanges || pushPending || isSyncing) {
+                    localStorage.setItem('nexus_dirty_flag', 'true');
+                    console.warn('[Sync] pagehide with pending changes — dirty flag persisted for next launch.');
+                }
+            });
             _beforeunloadListenerRegistered = true;
+        }
+
+        // DIRTY FLAG RECOVERY: If the previous session was closed while IDB had
+        // changes not yet confirmed by Drive (e.g. iOS Safari pagehide fired but
+        // beforeunload could not prevent navigation), restore the dirty flag so
+        // the first push of this session prioritises uploading those changes.
+        if (localStorage.getItem('nexus_dirty_flag') === 'true') {
+            _dirtyLocalChanges = true;
+            console.warn('[Sync] nexus_dirty_flag detected — previous session closed with unsynced changes. Will push on next opportunity.');
         }
 
         const cfg = getConfig();
@@ -705,6 +744,10 @@ const syncManager = (() => {
             localStorage.setItem('last_sync_local', String(data.updatedAt));
             // Persist the snapshot counter so future pulls can detect rollbacks.
             localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
+            // DIRTY FLAG: Drive confirmed the write (200 OK) — clear both the in-memory
+            // flag and the persistent localStorage marker written by the pagehide handler.
+            _dirtyLocalChanges = false;
+            localStorage.removeItem('nexus_dirty_flag');
             _pushRetryCount = 0; // Reset 412 retry counter after a successful push.
             // KEY ROTATION FIX: clear the rotation flag after the first successful push
             // with the new key — Drive is now consistent with the new password.
@@ -2077,7 +2120,10 @@ const syncManager = (() => {
         //  never fired, potentially triggering duplicate pushes.)
         get isSyncing() { return isSyncing; },
         getAccessToken: () => accessToken,
-        getUser: () => currentUser
+        getUser: () => currentUser,
+        // Called by store.js dispatch() to flag IDB changes as unsynced.
+        // Cleared only after a confirmed 200 OK from Drive.
+        markDirty,
     };
 })();
 
