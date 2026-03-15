@@ -583,7 +583,7 @@ const syncManager = (() => {
             // derive the same key after a security upgrade (310k → 600k).
             // Stored at the top level (plaintext, like workspaceSalt) so the
             // receiver can read it before attempting decryption.
-            pbkdf2Iterations: getStoredIterations()
+            pbkdf2Iterations: Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, getStoredIterations()))
         };
 
         // E2EE Layer: Encrypt sensitive stores if key is available.
@@ -613,6 +613,8 @@ const syncManager = (() => {
                     messages: await Promise.all(data.messages.map(encryptRecord)),
                     annotations: await Promise.all(data.annotations.map(encryptRecord)),
                     snapshots: await Promise.all(data.snapshots.map(encryptRecord)),
+                    members: await Promise.all(data.members.map(encryptRecord)),
+                    logs: await Promise.all(data.logs.map(encryptRecord)),
                 };
                 // INTEGRITY FIX: Compute checksum AFTER encryption so the remote
                 // receiver can verify integrity on the encrypted payload.
@@ -1346,8 +1348,9 @@ const syncManager = (() => {
         // still has 310k in its localStorage and will derive a DIFFERENT AES key
         // from the same password, making decryption fail on next unlock.
         // Solution: propagate the higher iteration count and force a re-derive.
-        if (data.pbkdf2Iterations && data.pbkdf2Iterations > getStoredIterations()) {
-            localStorage.setItem('nexus_pbkdf2_iterations', String(data.pbkdf2Iterations));
+        const normalizedRemoteIterations = normalizeRemoteIterations(data.pbkdf2Iterations);
+        if (normalizedRemoteIterations && normalizedRemoteIterations > getStoredIterations()) {
+            localStorage.setItem('nexus_pbkdf2_iterations', String(normalizedRemoteIterations));
             // KEY ERA MISMATCH FIX: The in-memory key was derived with the old iteration
             // count. The remote data was encrypted with the new count → different AES key.
             // Lock the vault so the next unlock re-derives the key with the updated count.
@@ -1387,6 +1390,8 @@ const syncManager = (() => {
                     messages: await decryptAll(data.messages || []),
                     annotations: await decryptAll(data.annotations || []),
                     snapshots: await decryptAll(data.snapshots || []),
+                    members: await decryptAll(data.members || []),
+                    logs: await decryptAll(data.logs || []),
                 };
             } catch (e) {
                 console.error('[Sync] Pull decryption failed. Data might be corrupted or key is wrong.', e);
@@ -1867,6 +1872,17 @@ const syncManager = (() => {
     let chatFolderId = localStorage.getItem('gdrive_chat_folder_id');
     let chatSyncTimer = null;
     const CHAT_OUTBOX_KEY = 'chat_outbox_v1';
+    const CHAT_OUTBOX_MAX = 1000;
+    const CHAT_OUTBOX_WARN_AT = 800;
+    const PBKDF2_MIN_ITERATIONS = 310000;
+    const PBKDF2_MAX_ITERATIONS = 1200000;
+
+    function normalizeRemoteIterations(rawValue) {
+        const parsed = Number(rawValue || 0);
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        const bounded = Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, Math.floor(parsed)));
+        return bounded;
+    }
 
     function readChatOutbox() {
         try {
@@ -1880,14 +1896,27 @@ const syncManager = (() => {
     }
 
     function writeChatOutbox(messages) {
-        localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(messages.slice(-250)));
+        const trimmed = messages.slice(-CHAT_OUTBOX_MAX);
+        const dropped = Math.max(0, messages.length - trimmed.length);
+        localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(trimmed));
+        if (dropped > 0) {
+            console.warn(`[ChatSync] Outbox reached limit (${CHAT_OUTBOX_MAX}). Dropped ${dropped} old message(s).`);
+            if (window.showToast) {
+                showToast(`Se alcanzó el límite del outbox (${CHAT_OUTBOX_MAX}). Se descartaron ${dropped} mensajes antiguos.`, 'warning', true);
+            }
+        }
+        if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
+            showToast(`Outbox con ${trimmed.length} mensajes pendientes. Revisa tu conexión para evitar pérdidas.`, 'warning');
+        }
+        return trimmed.length;
     }
 
     function enqueueChatMessage(msg) {
         const outbox = readChatOutbox();
         if (!outbox.find(item => item.id === msg.id)) {
             outbox.push(msg);
-            writeChatOutbox(outbox);
+            const persistedSize = writeChatOutbox(outbox);
+            outbox.length = persistedSize;
         }
         if (window.dispatchEvent) {
             window.dispatchEvent(new CustomEvent('chat:outbox-updated', { detail: { count: outbox.length } }));
@@ -1901,7 +1930,7 @@ const syncManager = (() => {
         if (filtered.length !== outbox.length) {
             writeChatOutbox(filtered);
             if (window.dispatchEvent) {
-                window.dispatchEvent(new CustomEvent('chat:outbox-updated', { detail: { count: filtered.length } }));
+                window.dispatchEvent(new CustomEvent('chat:outbox-updated', { detail: { count: readChatOutbox().length } }));
             }
         }
         return filtered.length;
@@ -1993,18 +2022,27 @@ const syncManager = (() => {
             // folder contents directly — fully supported by `drive.file` scope.
             const lastPoll = Number(localStorage.getItem('gdrive_chat_last_poll') || 0);
             const query = encodeURIComponent(`'${fId}' in parents and name contains 'msg_' and trashed = false`);
-            const fields = encodeURIComponent('files(id,name,modifiedTime)');
-            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime&supportsAllDrives=true`;
-            const res = await fetchWithTimeout(url, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-                timeout: 12000
-            });
-            if (!res.ok) {
-                if (res.status === 401) localStorage.removeItem('nexus_gdrive_access_token');
-                return;
-            }
-            const data = await res.json();
-            const newFiles = (data.files || []).filter(f => {
+            const fields = encodeURIComponent('nextPageToken,files(id,name,modifiedTime)');
+            const files = [];
+            let nextPageToken = null;
+
+            do {
+                const pageParam = nextPageToken ? `&pageToken=${encodeURIComponent(nextPageToken)}` : '';
+                const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=${fields}&orderBy=modifiedTime&pageSize=200${pageParam}&supportsAllDrives=true`;
+                const res = await fetchWithTimeout(url, {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                    timeout: 12000
+                });
+                if (!res.ok) {
+                    if (res.status === 401) localStorage.removeItem('nexus_gdrive_access_token');
+                    return;
+                }
+                const data = await res.json();
+                files.push(...(data.files || []));
+                nextPageToken = data.nextPageToken || null;
+            } while (nextPageToken);
+
+            const newFiles = files.filter(f => {
                 const modified = new Date(f.modifiedTime).getTime();
                 return modified > lastPoll;
             });
@@ -2014,6 +2052,7 @@ const syncManager = (() => {
                 // processed. Previously the timestamp was set before the loop, so any
                 // file that failed to download was permanently skipped on the next poll.
                 let allProcessed = true;
+                let latestProcessedModifiedTime = lastPoll;
                 for (const file of newFiles) {
                     try {
                         let msgData = await getFileContent(file.id);
@@ -2025,17 +2064,20 @@ const syncManager = (() => {
                         const isEncryptedEnvelope = Boolean(msgData?.__encrypted || (msgData?.iv && msgData?.data));
                         if (isEncryptedEnvelope) {
                             if (!hasKey() || isLocked()) {
+                                allProcessed = false;
                                 console.warn('[ChatSync] Encrypted chat message skipped: workspace is locked or key unavailable.');
                                 continue;
                             }
                             msgData = await decryptRecord(msgData);
                             if (!msgData) {
+                                allProcessed = false;
                                 console.warn('[ChatSync] Encrypted chat message could not be decrypted.');
                                 continue;
                             }
                         }
 
                         if (!msgData?.id) {
+                            allProcessed = false;
                             console.warn('[ChatSync] Invalid chat payload received. Missing message id.');
                             continue;
                         }
@@ -2047,6 +2089,7 @@ const syncManager = (() => {
                         if (!exist) {
                             await store.dispatch('ADD_MESSAGE', msgData);
                         }
+                        latestProcessedModifiedTime = Math.max(latestProcessedModifiedTime, new Date(file.modifiedTime).getTime() || 0);
                     } catch (e) {
                         allProcessed = false;
                         console.warn('[ChatSync] Failed DL msg', e);
@@ -2054,7 +2097,7 @@ const syncManager = (() => {
                 }
                 // Only advance the poll cursor when every file was processed successfully.
                 // If any file failed, keep the old timestamp so it gets retried next poll.
-                if (allProcessed) localStorage.setItem('gdrive_chat_last_poll', Date.now());
+                if (allProcessed) localStorage.setItem('gdrive_chat_last_poll', String(latestProcessedModifiedTime || Date.now()));
             } else {
                 // Update poll timestamp even if no new files to prevent re-checking all files next time
                 if (lastPoll === 0) localStorage.setItem('gdrive_chat_last_poll', Date.now());
