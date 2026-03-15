@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -457,6 +457,29 @@ const syncManager = (() => {
         // during pull (a snapshot with a lower seq than the local one is discarded).
         const snapshotSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0) + 1;
 
+        // BUG 27 FIX: Cap unbounded collections before serialization to prevent
+        // JSON.stringify from freezing the main thread on large workspaces.
+        // JSON.stringify is synchronous; at 20MB+ on mid-range phones it can
+        // block the main thread for several seconds, causing the browser to kill
+        // the process or triggering the fetchWithTimeout before stringify even
+        // finishes. Caps preserve the most-recent records (highest business value).
+        // These are soft limits — no data is deleted from IDB, only from the
+        // Drive snapshot. Older records are naturally re-hydrated if ever needed.
+        const CAP_MESSAGES     = 500;  // most-recent chat messages uploaded to Drive
+        const CAP_LOGS         = 500;  // most-recent activity log entries
+        const CAP_ANNOTATIONS  = 200;  // most-recent annotations
+        const CAP_SNAPSHOTS    = 50;   // most-recent document version snapshots
+        const capRecent = (arr, n, sortKey = 'timestamp') =>
+            arr.length > n
+                ? [...arr].sort((a, b) => (b[sortKey] || b.updatedAt || b.createdAt || 0)
+                                        - (a[sortKey] || a.updatedAt || a.createdAt || 0)).slice(0, n)
+                : arr;
+
+        const rawMessages     = getRaw('messages').filter(isShared);
+        const rawLogs         = getRaw('logs');
+        const rawAnnotations  = getRaw('annotations').filter(isShared);
+        const rawSnapshotsArr = getRaw('snapshots').filter(isShared);
+
         const data = {
             // SCHEMA SKEW FIX: re-inject stores this client version doesn't know about.
             // If a newer version of the app added 'clinical_cases', this spread ensures
@@ -478,10 +501,10 @@ const syncManager = (() => {
             // Member emails are personal data and must not be stored in plaintext
             // in the shared Drive file (even when E2EE is active for other stores).
             members: getRaw('members').map(({ email: _email, ...rest }) => rest),
-            logs: getRaw('logs'),
-            messages: getRaw('messages').filter(isShared),
-            annotations: getRaw('annotations').filter(isShared),
-            snapshots: getRaw('snapshots').filter(isShared),
+            logs: capRecent(rawLogs, CAP_LOGS, 'timestamp'),
+            messages: capRecent(rawMessages, CAP_MESSAGES, 'timestamp'),
+            annotations: capRecent(rawAnnotations, CAP_ANNOTATIONS, 'createdAt'),
+            snapshots: capRecent(rawSnapshotsArr, CAP_SNAPSHOTS, 'timestamp'),
             settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
@@ -579,6 +602,11 @@ const syncManager = (() => {
         try {
             const cfg = getConfig();
             const data = await getSnapshot();
+            // BUG 27 FIX: Serialize once here so createFile/updateFile receive a
+            // pre-built string. Without this, a 412 retry would call JSON.stringify
+            // twice on the same potentially large object — doubling the freeze time.
+            // The string is passed through unchanged; recipients detect it via typeof.
+            const serializedData = JSON.stringify(data);
 
             // Helper: treat stored "undefined"/"null" strings or full URLs as missing values
             const validId = v => {
@@ -597,7 +625,7 @@ const syncManager = (() => {
             if (fileId) {
                 const etag = localStorage.getItem(`gdrive_etag_${fileId}`);
                 try {
-                    await updateFile(fileId, data, etag);
+                    await updateFile(fileId, serializedData, etag);
                 } catch (updateErr) {
                     if (updateErr.message === '412_PRECONDITION_FAILED') {
                         _pushRetryCount++;
@@ -611,6 +639,19 @@ const syncManager = (() => {
                             updateSyncUI('error');
                             return;
                         }
+                        // ROTATION DEADLOCK FIX (BUG 25): During key rotation, pull() is
+                        // intentionally blocked (seedFromRemote skips hydration). The normal
+                        // 412 path (pull→merge→push) would loop forever because pull never
+                        // updates the ETag. Instead, fetch only the ETag from the lightweight
+                        // metadata endpoint (a few bytes vs the full file) so the retry push
+                        // has a fresh If-Match header — no local state is modified.
+                        if (isKeyRotating) {
+                            console.warn('[Sync] 412 during key rotation — refreshing ETag only (no content download or hydration).');
+                            await fetchRemoteETagOnly(fileId);
+                            isSyncing = false;
+                            await push(); // Retry with updated ETag
+                            return;
+                        }
                         console.warn('[Sync] Push blocked by ETag (412 Precondition Failed). Auto-pulling changes...');
                         if (window.showToast) showToast('Fusionando cambios recientes antes de subir...', 'info');
                         isSyncing = false;
@@ -621,14 +662,14 @@ const syncManager = (() => {
                     }
                     if (updateErr.message === '404_FILE_NOT_FOUND') {
                         console.warn('[Sync] Target file deleted on Drive. Recreating file from local snapshot...');
-                        const newId = await createFile(cfg.fileName, data, folderId);
+                        const newId = await createFile(cfg.fileName, serializedData, folderId);
                         localStorage.setItem('gdrive_file_id', newId);
                     } else {
                         throw updateErr;
                     }
                 }
             } else {
-                const newId = await createFile(cfg.fileName, data, folderId);
+                const newId = await createFile(cfg.fileName, serializedData, folderId);
                 localStorage.setItem('gdrive_file_id', newId);
             }
 
@@ -639,6 +680,10 @@ const syncManager = (() => {
             // KEY ROTATION FIX: clear the rotation flag after the first successful push
             // with the new key — Drive is now consistent with the new password.
             localStorage.removeItem('nexus_key_rotating');
+            // BUG 26 FIX: promote the pending iteration count to the live key now that
+            // Drive holds data encrypted with the new-count-derived key. Only after this
+            // call does getStoredIterations() return the new count for non-rotation unlocks.
+            commitIterationUpgrade();
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Push failed:', err);
@@ -942,9 +987,11 @@ const syncManager = (() => {
         const metadata = { name, mimeType: 'application/json' };
         if (parentId) metadata.parents = [parentId];
 
+        // BUG 27 FIX: accept a pre-serialized string to avoid double JSON.stringify.
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
+        form.append('file', new Blob([contentStr], { type: 'application/json' }));
 
         const resp = await fetchWithTimeout('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
             method: 'POST',
@@ -972,10 +1019,12 @@ const syncManager = (() => {
         if (etag) {
             headers['If-Match'] = etag;
         }
+        // BUG 27 FIX: accept a pre-serialized string to avoid double JSON.stringify.
+        const body = typeof content === 'string' ? content : JSON.stringify(content);
         const response = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
             headers,
-            body: JSON.stringify(content),
+            body,
             timeout: 15000,
         });
         if (response.status === 412) {
@@ -1023,6 +1072,34 @@ const syncManager = (() => {
         try {
             return await getFileContent(id);
         } catch { return null; }
+    }
+
+    /**
+     * BUG 25 FIX: Fetch only the Drive file's ETag from the lightweight metadata
+     * endpoint (files.get?fields=etag) — returns a few bytes instead of the full
+     * file content — and persist it to localStorage.
+     *
+     * Used during key rotation to break the 412 deadlock:
+     *  • Normal 412 handler: pull() → seedFromRemote() → hydrate → push()
+     *  • Rotation 412 handler: fetchRemoteETagOnly() → update ETag → push() (no hydration)
+     */
+    async function fetchRemoteETagOnly(fileId) {
+        try {
+            const resp = await fetchWithTimeout(
+                `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id%2Cetag`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (!resp.ok) return null;
+            // ETag may appear in response headers OR in the JSON body's 'etag' field.
+            const headerEtag = resp.headers.get('ETag') || resp.headers.get('etag');
+            const meta = await resp.json();
+            const etag = headerEtag || meta?.etag || null;
+            if (etag) localStorage.setItem(`gdrive_etag_${fileId}`, etag);
+            return etag;
+        } catch (e) {
+            console.warn('[Sync] fetchRemoteETagOnly failed:', e);
+            return null;
+        }
     }
 
     async function seedFromRemote(data) {

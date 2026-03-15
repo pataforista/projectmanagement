@@ -24,14 +24,47 @@
  */
 
 // ── PBKDF2 iteration counts ──────────────────────────────────────────────────
-const TARGET_PBKDF2_ITERATIONS = 600_000; // OWASP 2024 / NIST 2025 recommendation
-const LEGACY_PBKDF2_ITERATIONS = 310_000; // OWASP 2023 — kept for backward compat
-const PBKDF2_ITERATIONS_KEY    = 'nexus_pbkdf2_iterations';
+const TARGET_PBKDF2_ITERATIONS  = 600_000; // OWASP 2024 / NIST 2025 recommendation
+const LEGACY_PBKDF2_ITERATIONS  = 310_000; // OWASP 2023 — kept for backward compat
+const PBKDF2_ITERATIONS_KEY     = 'nexus_pbkdf2_iterations';
+// BUG 26 FIX: Two-phase commit key for iteration upgrades.
+// upgradeIterations() writes to the PENDING key (not the live key). The live key
+// is only updated after the first successful rotation push (commitIterationUpgrade).
+// This prevents a state where localStorage says "600k" but Drive still holds data
+// encrypted with the 310k-derived key — a mismatch that locks the user out with
+// an opaque "wrong password" error that cannot be resolved without wiping the cache.
+const PBKDF2_ITERATIONS_PENDING_KEY = 'nexus_pbkdf2_iterations_pending';
 
-/** Returns the iterations used for this install (reads from localStorage). */
+/**
+ * Returns the iterations to use for key derivation.
+ * During an active key rotation (nexus_key_rotating === 'true') the pending
+ * value is returned so deriveKey() uses the target count for the rotation push.
+ * Once the rotation is committed the live key is used by all subsequent unlocks.
+ */
 export function getStoredIterations() {
+    // During rotation, use the pending (target) count so the rotation push
+    // encrypts data with the new key. Falls through to the live count otherwise.
+    if (localStorage.getItem('nexus_key_rotating') === 'true') {
+        const pending = Number(localStorage.getItem(PBKDF2_ITERATIONS_PENDING_KEY) || 0);
+        if (pending > 0) return pending;
+    }
     const stored = Number(localStorage.getItem(PBKDF2_ITERATIONS_KEY) || 0);
     return stored > 0 ? stored : LEGACY_PBKDF2_ITERATIONS;
+}
+
+/**
+ * Called after a successful rotation push to promote the pending iteration count
+ * to the live key. Until this runs, the live key in localStorage still reflects
+ * the pre-rotation count, so a crash before commit leaves the system in a
+ * consistent, recoverable state: nexus_key_rotating is still set, and on restart
+ * getStoredIterations() will return the pending count and the push will retry.
+ */
+export function commitIterationUpgrade() {
+    const pending = Number(localStorage.getItem(PBKDF2_ITERATIONS_PENDING_KEY) || 0);
+    if (pending > 0) {
+        localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(pending));
+        localStorage.removeItem(PBKDF2_ITERATIONS_PENDING_KEY);
+    }
 }
 
 /**
@@ -256,8 +289,14 @@ export async function unlock(password) {
  * so the key is re-derived with 600k iterations.
  */
 export function upgradeIterations() {
-    localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
-    // Lock so the next unlock re-derives the key with the new iteration count.
+    // BUG 26 FIX: Write to the PENDING key, not the live key.
+    // The live key is only updated after the first successful rotation push
+    // (via commitIterationUpgrade). This way, if the app crashes between
+    // upgradeIterations() and the push, localStorage still reflects the old
+    // iteration count for any non-rotation unlock attempt, preventing a
+    // permanent "wrong password" lockout.
+    localStorage.setItem(PBKDF2_ITERATIONS_PENDING_KEY, String(TARGET_PBKDF2_ITERATIONS));
+    // Lock so the next unlock re-derives the key with the pending (new) count.
     lock();
 }
 
