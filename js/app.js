@@ -323,6 +323,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 setupPasswordCreation(false);
             }
 
+            /**
+             * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile,
+             * freezing the main thread. We cannot move PBKDF2 off-thread without a
+             * Web Worker refactor, but we can at least give the user feedback so
+             * the app doesn't appear to be hanging. Show a loading message and
+             * disable the form before awaiting unlock(), then restore state.
+             * Note: the UI update fires before the next microtask, so the browser
+             * gets one repaint in before the synchronous PBKDF2 work begins.
+             */
+            async function unlockWithFeedback(pwd, submitEl) {
+                const prevText = authSubtitle.textContent;
+                authSubtitle.textContent = 'Verificando contraseña (~1s)…';
+                authPassword.disabled = true;
+                if (submitEl) submitEl.disabled = true;
+                // yield to allow the browser one repaint before the CPU-intensive work
+                await new Promise(r => setTimeout(r, 0));
+                try {
+                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                } finally {
+                    authPassword.disabled = false;
+                    if (submitEl) submitEl.disabled = false;
+                    authSubtitle.textContent = prevText;
+                }
+            }
+
             function setupPasswordCreation(isRemotePresent = false) {
                 authForm.onsubmit = async (e) => {
                     e.preventDefault();
@@ -338,7 +363,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const recoveryHash = await hashStr(normalizeCode(recoveryCode));
                     localStorage.setItem('workspace_lock_hash', hash);
                     localStorage.setItem('workspace_recovery_hash', recoveryHash);
-                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                     authForm.style.display = 'none';
                     authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
                     showCodeDisplay(recoveryCode, () => {
@@ -402,14 +427,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                             authOverlay.classList.remove('open');
                             resolve();
                         });
-                        if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                        await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                         return; // Exit here as showCodeDisplay will resolve
                     }
                 }
 
                 if (isMatch) {
                     clearAttempts();
-                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                     authOverlay.classList.remove('open');
                     resolve();
                 } else {
@@ -597,7 +622,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         authOverlay.classList.remove('open');
                         resolve();
                     });
-                    if (cryptoLayer) await cryptoLayer.unlock(newPwd);
+                    await unlockWithFeedback(newPwd, authNewpwdSubmit);
 
                     // RE-ENCRYPTION SAFETY FIX: Drive still holds data encrypted with
                     // the old key. If pull() runs before we push the new-key snapshot,

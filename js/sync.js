@@ -850,16 +850,32 @@ const syncManager = (() => {
                 }
             }
 
-            // BUG FIX: 403-quota errors were excluded from the retry condition
-            // (only 429 and >=500 were retried), so `retryCount` never reached
-            // MAX_RETRIES and the circuit breaker never tripped for quota 403s.
-            // Fix: treat 403-quota the same as 429 — retry with backoff, then trip
-            // the circuit breaker if retries are exhausted.
-            const isQuotaError = response.status === 429 ||
-                                (response.status === 403 && (
-                                    response.statusText?.toLowerCase().includes('quota') ||
-                                    response.statusText?.toLowerCase().includes('rate limit')
-                                ));
+            // BUG 29 FIX: statusText-based quota detection is unreliable.
+            // Google Drive API always sets statusText to "Forbidden" for all 403s,
+            // regardless of whether the cause is a quota limit or a permissions error.
+            // A false negative (quota detected as permissions) causes retries to halt
+            // and the circuit breaker to never trip. A false positive (permissions
+            // detected as quota) causes infinite retry loops for fatal auth failures.
+            // Fix: clone the response and parse the JSON body to read the actual
+            // error.errors[0].reason field. This distinguishes retryable reasons
+            // (quotaExceeded, rateLimitExceeded, userRateLimitExceeded) from fatal
+            // ones (insufficientPermissions, forbidden) which require re-auth.
+            let isQuotaError = response.status === 429;
+            if (response.status === 403) {
+                try {
+                    const errorBody = await response.clone().json();
+                    const reason = errorBody?.error?.errors?.[0]?.reason ?? '';
+                    isQuotaError = reason === 'quotaExceeded' ||
+                                   reason === 'rateLimitExceeded' ||
+                                   reason === 'userRateLimitExceeded';
+                    if (!isQuotaError) {
+                        console.warn('[Sync] 403 with non-retryable reason:', reason || '(unknown)');
+                    }
+                } catch (_) {
+                    // Unparseable 403 body — treat as non-retryable (fatal)
+                    isQuotaError = false;
+                }
+            }
 
             if (isQuotaError && retryCount >= MAX_RETRIES) {
                 console.error('[Sync] Persistent Quota/Rate Limit error. Tripping Circuit Breaker.');

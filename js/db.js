@@ -63,9 +63,35 @@ export const initDB = () => new Promise(async (resolve, reject) => {
       }
     };
 
+    // BUG 30 FIX: Without onblocked, a version upgrade request hangs indefinitely
+    // when another tab still holds an open connection to the old schema version.
+    // onblocked fires on the *opening* request when the upgrade is blocked by
+    // an existing connection that hasn't closed yet. Notify the user so they
+    // can close the other tab and the upgrade can proceed.
+    request.onblocked = () => {
+      console.warn('[DB] Version upgrade blocked by another open tab. Prompting user.');
+      if (window.showToast) {
+        window.showToast('Actualización de base de datos bloqueada. Cierra las demás pestañas y recarga.', 'warning', true);
+      }
+    };
+
     request.onsuccess = (e) => {
       db = e.target.result;
       console.log('IndexedDB ready (v' + db.version + ').');
+
+      // BUG 30 FIX: Without onversionchange, when a newer tab triggers a schema
+      // upgrade, the current tab's open connection blocks the upgrade indefinitely.
+      // onversionchange fires on the *existing* db connection when another context
+      // opens a higher version. Close gracefully and reload so the upgrade can proceed.
+      db.onversionchange = () => {
+        console.warn('[DB] Schema version change detected from another tab. Closing connection and reloading.');
+        db.close();
+        if (window.showToast) {
+          window.showToast('Actualización de base de datos en progreso. Recargando...', 'info');
+        }
+        setTimeout(() => location.reload(), 1500);
+      };
+
       res(db);
     };
 
@@ -370,15 +396,21 @@ export const dbAPI = {
   },
 
   /**
-   * ATOMICITY FIX: Writes an entire hydration payload across multiple stores in a
-   * single IDB transaction. This guarantees all-or-nothing semantics: if the page
-   * is killed or the browser runs out of memory mid-write, IDB rolls back the whole
-   * transaction automatically — the database is never left in a half-updated state.
+   * ATOMICITY FIX (BUG 18): Writes an entire hydration payload across multiple stores
+   * in a single IDB transaction. If the page is killed mid-write, IDB rolls back the
+   * whole transaction automatically — the database is never left in a half-updated state.
+   *
+   * BUG 28 FIX (Borrado por Desbordamiento): Uses UPSERT (put-only), NOT clear+put.
+   * The BUG 27 cap limits the Drive snapshot to the N most-recent records. A
+   * clear+put would destroy any local records beyond that cap that were not included
+   * in the remote snapshot — a silent, permanent data loss. Upsert-only preserves all
+   * existing local records; only records explicitly present in the snapshot are updated.
+   * Records that are capped out of the snapshot simply stay in IDB untouched.
    *
    * Two-phase approach (required because IDB transactions expire on async awaits):
    *   Phase 1 (async, outside transaction): encrypt records for sensitive stores.
    *   Phase 2 (sync IDB requests only): open one multi-store readwrite transaction,
-   *            clear each store, put all pre-encrypted records, let it auto-commit.
+   *            put all pre-encrypted records (no clear), let it auto-commit.
    *
    * @param {Record<string, Array>} plainStoreMap  Plain (decrypted) records per store name.
    */
@@ -417,7 +449,6 @@ export const dbAPI = {
 
         for (const storeName of storeNames) {
           const store = transaction.objectStore(storeName);
-          store.clear(); // wipe previous contents
           for (const record of encStoreMap[storeName]) {
             store.put(record);
           }
