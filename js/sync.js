@@ -1464,7 +1464,16 @@ const syncManager = (() => {
             // Si la capa crypto está activa, podemos encriptarlo aquí.
             let payload = msg;
             if (window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
-                try { payload = await encryptRecord(msg); } catch (e) { }
+                try {
+                    payload = await encryptRecord(msg);
+                } catch (e) {
+                    console.error('[ChatSync] Message encryption failed. Keeping message in outbox.', e);
+                    if (window.showToast) {
+                        showToast('No se pudo cifrar el mensaje. Verifica la clave maestra antes de sincronizar.', 'warning', true);
+                    }
+                    enqueueChatMessage(msg);
+                    return false;
+                }
             }
 
             const name = `msg_${msg.createdAt}_${msg.id}.json`;
@@ -1525,8 +1534,22 @@ const syncManager = (() => {
                         if (!msgData) continue;
 
                         // Decrypt si aplica
-                        if (msgData.iv && window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked()) {
-                            try { msgData = await decryptRecord(msgData); } catch (e) { }
+                        const isEncryptedEnvelope = Boolean(msgData?.__encrypted || (msgData?.iv && msgData?.data));
+                        if (isEncryptedEnvelope) {
+                            if (!(window.cryptoLayer && window.hasKey && window.hasKey() && !window.isLocked())) {
+                                console.warn('[ChatSync] Encrypted chat message skipped: workspace is locked or key unavailable.');
+                                continue;
+                            }
+                            msgData = await decryptRecord(msgData);
+                            if (!msgData) {
+                                console.warn('[ChatSync] Encrypted chat message could not be decrypted.');
+                                continue;
+                            }
+                        }
+
+                        if (!msgData?.id) {
+                            console.warn('[ChatSync] Invalid chat payload received. Missing message id.');
+                            continue;
                         }
 
                         msgData.visibility = 'local';
