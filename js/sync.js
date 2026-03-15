@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -22,6 +22,32 @@ const syncManager = (() => {
     let networkOnline = navigator.onLine;
     let tokenTimestamp = 0; // Epoch when accessToken was issued
     let syncPausedUntil = 0; // Circuit Breaker timestamp
+    // GHOST WIPE GUARD: push() is blocked until pull() has confirmed the remote
+    // state (file exists and was applied, or confirmed absent). Without this, a
+    // new device with empty local state could push an empty snapshot to Drive
+    // before the initial pull completes, wiping all remote data.
+    let _remoteChecked = false;
+    // BUG 31: channel for broadcasting IDB updates to sibling tabs (see pull()).
+    const _syncChannel = typeof BroadcastChannel !== 'undefined'
+        ? new BroadcastChannel('nexus-sync')
+        : null;
+    // BUG 32: guard so the visibilitychange listener is registered at most once.
+    let _visibilityListenerRegistered = false;
+
+    // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
+    // Any key present in the remote JSON that is NOT in this set is "unknown" —
+    // it belongs to a store added by a newer version of the app. Old clients must
+    // carry these unknown stores forward ("shuttle" them) so a push from v1.9
+    // doesn't silently erase a store that v2.0 added.
+    const KNOWN_SNAPSHOT_KEYS = new Set([
+        'version', 'snapshotSeq', 'updatedAt', 'metadata', 'e2ee',
+        'projects', 'tasks', 'cycles', 'decisions', 'documents',
+        'members', 'logs', 'messages', 'annotations', 'snapshots',
+        'interconsultations', 'sessions', 'timeLogs', 'library',
+        'notifications', 'settings', 'workspaceSalt', 'pbkdf2Iterations',
+    ]);
+    // Unknown stores from the last pull — re-injected verbatim into every push.
+    let _remotePassthrough = {};
 
     const defaultConfig = {
         clientId: '',
@@ -407,13 +433,25 @@ const syncManager = (() => {
         updateSyncUI('offline');
     }
 
+    // TOMBSTONE GC: Tombstones (_deleted: true) must be retained long enough for
+    // all devices to sync the deletion. After TOMBSTONE_MAX_AGE_MS (30 days) the
+    // tombstone is stripped from the Drive snapshot so the JSON file stays bounded.
+    // A device offline for >30 days may re-add a deleted record on next sync — that
+    // is the accepted trade-off for a small-team app with reasonable offline windows.
+    const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+    function pruneTombstones(records) {
+        if (!Array.isArray(records)) return records;
+        const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+        return records.filter(r => !r._deleted || (r.updatedAt || 0) > cutoff);
+    }
+
     async function getSnapshot() {
         // BUGFIX 2nd Pass: We MUST use exportState() which returns raw memory arrays
         // instead of store.get.*() which heavily filters out `_deleted: true` tombstones.
-        // If we use UI getters, tombstones are excluded from the upload payload, 
+        // If we use UI getters, tombstones are excluded from the upload payload,
         // silently breaking deletion propagation to other clients and causing Zombies.
         const rawState = store.get.exportState ? store.get.exportState() : {};
-        const getRaw = (key) => rawState[key] || (store.get[key] ? store.get[key]() : []);
+        const getRaw = (key) => pruneTombstones(rawState[key] || (store.get[key] ? store.get[key]() : []));
 
         const rawProjects = getRaw('projects');
         const sharedProjects = rawProjects.filter(p => p.visibility !== 'local');
@@ -425,7 +463,34 @@ const syncManager = (() => {
         // during pull (a snapshot with a lower seq than the local one is discarded).
         const snapshotSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0) + 1;
 
+        // BUG 27 FIX: Cap unbounded collections before serialization to prevent
+        // JSON.stringify from freezing the main thread on large workspaces.
+        // JSON.stringify is synchronous; at 20MB+ on mid-range phones it can
+        // block the main thread for several seconds, causing the browser to kill
+        // the process or triggering the fetchWithTimeout before stringify even
+        // finishes. Caps preserve the most-recent records (highest business value).
+        // These are soft limits — no data is deleted from IDB, only from the
+        // Drive snapshot. Older records are naturally re-hydrated if ever needed.
+        const CAP_MESSAGES     = 500;  // most-recent chat messages uploaded to Drive
+        const CAP_LOGS         = 500;  // most-recent activity log entries
+        const CAP_ANNOTATIONS  = 200;  // most-recent annotations
+        const CAP_SNAPSHOTS    = 50;   // most-recent document version snapshots
+        const capRecent = (arr, n, sortKey = 'timestamp') =>
+            arr.length > n
+                ? [...arr].sort((a, b) => (b[sortKey] || b.updatedAt || b.createdAt || 0)
+                                        - (a[sortKey] || a.updatedAt || a.createdAt || 0)).slice(0, n)
+                : arr;
+
+        const rawMessages     = getRaw('messages').filter(isShared);
+        const rawLogs         = getRaw('logs');
+        const rawAnnotations  = getRaw('annotations').filter(isShared);
+        const rawSnapshotsArr = getRaw('snapshots').filter(isShared);
+
         const data = {
+            // SCHEMA SKEW FIX: re-inject stores this client version doesn't know about.
+            // If a newer version of the app added 'clinical_cases', this spread ensures
+            // it is preserved verbatim in every push made by an older client.
+            ..._remotePassthrough,
             version: '1.2',
             snapshotSeq,
             updatedAt: Date.now(),
@@ -442,16 +507,21 @@ const syncManager = (() => {
             // Member emails are personal data and must not be stored in plaintext
             // in the shared Drive file (even when E2EE is active for other stores).
             members: getRaw('members').map(({ email: _email, ...rest }) => rest),
-            logs: getRaw('logs'),
-            messages: getRaw('messages').filter(isShared),
-            annotations: getRaw('annotations').filter(isShared),
-            snapshots: getRaw('snapshots').filter(isShared),
+            logs: capRecent(rawLogs, CAP_LOGS, 'timestamp'),
+            messages: capRecent(rawMessages, CAP_MESSAGES, 'timestamp'),
+            annotations: capRecent(rawAnnotations, CAP_ANNOTATIONS, 'createdAt'),
+            snapshots: capRecent(rawSnapshotsArr, CAP_SNAPSHOTS, 'timestamp'),
             settings: SYNCABLE_SETTINGS_KEYS.reduce((acc, key) => {
                 const val = localStorage.getItem(key);
                 if (val !== null) acc[key] = val;
                 return acc;
             }, {}),
-            workspaceSalt: getWorkspaceSaltBase64()
+            workspaceSalt: getWorkspaceSaltBase64(),
+            // BUG 15 FIX: Propagate the PBKDF2 iteration count so other devices
+            // derive the same key after a security upgrade (310k → 600k).
+            // Stored at the top level (plaintext, like workspaceSalt) so the
+            // receiver can read it before attempting decryption.
+            pbkdf2Iterations: getStoredIterations()
         };
 
         // E2EE Layer: Encrypt sensitive stores if key is available.
@@ -461,9 +531,15 @@ const syncManager = (() => {
         if (hasKey() && !isLocked()) {
             console.log('[Sync] Applying E2EE to snapshot...');
             try {
+                // PRIVACY FIX: strip `actor` from the plaintext metadata when E2EE is
+                // active. `actor` holds the user's display name. Leaving it in the outer
+                // (unencrypted) layer of the Drive JSON exposes who last edited the
+                // workspace to anyone with Drive access — even though the content is E2EE.
+                const { actor: _actor, ...e2eeMetadata } = data.metadata;
                 const encryptedData = {
                     ...data,
                     e2ee: true,
+                    metadata: e2eeMetadata,
                     projects: await Promise.all(data.projects.map(encryptRecord)),
                     tasks: await Promise.all(data.tasks.map(encryptRecord)),
                     cycles: await Promise.all(data.cycles.map(encryptRecord)),
@@ -502,6 +578,18 @@ const syncManager = (() => {
     async function push() {
         if (!accessToken || !networkOnline || isSyncPaused()) return;
 
+        // GHOST WIPE GUARD: Block push until at least one pull has verified remote state.
+        // A new device starts with empty local state; if push ran before pull confirmed
+        // whether a remote file exists, it would overwrite Drive data with an empty JSON.
+        // Exception: bypass during key rotation — the in-memory state is valid (loaded
+        // from IDB before the password change) and we MUST push before pulling to avoid
+        // the old-key Drive data being decrypted (wrongly) and wiping local state.
+        const isKeyRotating = localStorage.getItem('nexus_key_rotating') === 'true';
+        if (!_remoteChecked && !isKeyRotating) {
+            console.warn('[Sync] Push blocked: waiting for initial pull to verify remote state first.');
+            return;
+        }
+
         // AUTH FIX: Proactive refresh if token is near expiration (>50 min)
         await ensureValidToken();
 
@@ -520,6 +608,11 @@ const syncManager = (() => {
         try {
             const cfg = getConfig();
             const data = await getSnapshot();
+            // BUG 27 FIX: Serialize once here so createFile/updateFile receive a
+            // pre-built string. Without this, a 412 retry would call JSON.stringify
+            // twice on the same potentially large object — doubling the freeze time.
+            // The string is passed through unchanged; recipients detect it via typeof.
+            const serializedData = JSON.stringify(data);
 
             // Helper: treat stored "undefined"/"null" strings or full URLs as missing values
             const validId = v => {
@@ -538,7 +631,7 @@ const syncManager = (() => {
             if (fileId) {
                 const etag = localStorage.getItem(`gdrive_etag_${fileId}`);
                 try {
-                    await updateFile(fileId, data, etag);
+                    await updateFile(fileId, serializedData, etag);
                 } catch (updateErr) {
                     if (updateErr.message === '412_PRECONDITION_FAILED') {
                         _pushRetryCount++;
@@ -552,6 +645,19 @@ const syncManager = (() => {
                             updateSyncUI('error');
                             return;
                         }
+                        // ROTATION DEADLOCK FIX (BUG 25): During key rotation, pull() is
+                        // intentionally blocked (seedFromRemote skips hydration). The normal
+                        // 412 path (pull→merge→push) would loop forever because pull never
+                        // updates the ETag. Instead, fetch only the ETag from the lightweight
+                        // metadata endpoint (a few bytes vs the full file) so the retry push
+                        // has a fresh If-Match header — no local state is modified.
+                        if (isKeyRotating) {
+                            console.warn('[Sync] 412 during key rotation — refreshing ETag only (no content download or hydration).');
+                            await fetchRemoteETagOnly(fileId);
+                            isSyncing = false;
+                            await push(); // Retry with updated ETag
+                            return;
+                        }
                         console.warn('[Sync] Push blocked by ETag (412 Precondition Failed). Auto-pulling changes...');
                         if (window.showToast) showToast('Fusionando cambios recientes antes de subir...', 'info');
                         isSyncing = false;
@@ -562,14 +668,14 @@ const syncManager = (() => {
                     }
                     if (updateErr.message === '404_FILE_NOT_FOUND') {
                         console.warn('[Sync] Target file deleted on Drive. Recreating file from local snapshot...');
-                        const newId = await createFile(cfg.fileName, data, folderId);
+                        const newId = await createFile(cfg.fileName, serializedData, folderId);
                         localStorage.setItem('gdrive_file_id', newId);
                     } else {
                         throw updateErr;
                     }
                 }
             } else {
-                const newId = await createFile(cfg.fileName, data, folderId);
+                const newId = await createFile(cfg.fileName, serializedData, folderId);
                 localStorage.setItem('gdrive_file_id', newId);
             }
 
@@ -577,6 +683,13 @@ const syncManager = (() => {
             // Persist the snapshot counter so future pulls can detect rollbacks.
             localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
             _pushRetryCount = 0; // Reset 412 retry counter after a successful push.
+            // KEY ROTATION FIX: clear the rotation flag after the first successful push
+            // with the new key — Drive is now consistent with the new password.
+            localStorage.removeItem('nexus_key_rotating');
+            // BUG 26 FIX: promote the pending iteration count to the live key now that
+            // Drive holds data encrypted with the new-count-derived key. Only after this
+            // call does getStoredIterations() return the new count for non-rotation unlocks.
+            commitIterationUpgrade();
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Push failed:', err);
@@ -623,6 +736,8 @@ const syncManager = (() => {
             let fileId = validId(localStorage.getItem('gdrive_file_id'));
             if (!fileId) fileId = await findFile(cfg.fileName, folderId);
             if (!fileId) {
+                // No remote file exists yet — safe for this device to push (create).
+                _remoteChecked = true;
                 updateSyncUI('online');
                 return;
             }
@@ -648,8 +763,14 @@ const syncManager = (() => {
                 await seedFromRemote(remoteData);
                 localStorage.setItem('last_sync_local', String(remoteData.updatedAt));
                 showToast('Datos actualizados desde Drive', 'success');
+                // BUG 31 FIX: Notify sibling tabs that IDB was updated so they can
+                // reload their in-memory _state before making any further edits.
+                // BroadcastChannel only delivers to OTHER tabs, not to this one.
+                _syncChannel?.postMessage({ type: 'data-updated' });
             }
 
+            // Remote state verified — push is now safe.
+            _remoteChecked = true;
             updateSyncUI('online');
         } catch (err) {
             console.error('[Sync] Pull failed:', err);
@@ -669,12 +790,31 @@ const syncManager = (() => {
         // Default to a somewhat faster sync for chat/collaboration (e.g. 1 min default if not set otherwise)
         const ms = Math.max(1, Number(minutes) || 1) * 60 * 1000;
         autoSyncTimer = setInterval(async () => {
+            // BUG 32 FIX: Skip sync when the tab is in the background.
+            // On mobile/laptop the token may expire while the page is hidden; firing
+            // requests silently trips the circuit breaker with no user-visible reason.
+            // When hidden, skip the tick entirely — the visibilitychange handler below
+            // fires an immediate pull() the moment the user returns to the tab.
+            if (document.visibilityState === 'hidden') return;
             if (accessToken && !isSyncing && networkOnline) {
                 // Auto-sync sequence: Try to pull new changes first, then push our own changes
                 await pull();
                 if (!isSyncing) await push();
             }
         }, ms);
+
+        // BUG 32 FIX: On tab focus restore, immediately pull fresh data rather than
+        // waiting up to `minutes` for the next interval tick. Register the listener
+        // only once (guard prevents duplicates if configureAutoSync is called again).
+        if (!_visibilityListenerRegistered) {
+            _visibilityListenerRegistered = true;
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && accessToken && !isSyncing && networkOnline) {
+                    console.log('[Sync] Tab became visible — triggering immediate pull.');
+                    pull().then(() => { if (!isSyncing) push(); }).catch(() => {});
+                }
+            });
+        }
 
         // Start the micro-polling Chat Engine
         startChatSync();
@@ -724,20 +864,47 @@ const syncManager = (() => {
                 console.warn('[Sync] 401 Unauthorized detected. Attempting silent token refresh...');
                 try {
                     const newAccessToken = await authorize(getConfig().clientId, false);
-                    const newOptions = { ...options };
-                    if (newOptions.headers && newOptions.headers.Authorization) {
-                        newOptions.headers.Authorization = `Bearer ${newAccessToken}`;
-                    }
-                    return await fetch(resource, newOptions);
+                    // BUG FIX: { ...options } is a shallow copy — options.headers is still
+                    // the same object reference, so mutating newOptions.headers.Authorization
+                    // also mutated the original options headers. Use a deep copy of headers.
+                    // Also switch from bare fetch() to fetchWithTimeout() so the retry
+                    // respects the same timeout and circuit-breaker logic.
+                    const retriedOptions = {
+                        ...options,
+                        headers: { ...options.headers, Authorization: `Bearer ${newAccessToken}` },
+                    };
+                    return await fetchWithTimeout(resource, retriedOptions, retryCount + 1);
                 } catch (e) {
                     console.error('[Sync] Silent refresh failed:', e);
                 }
             }
 
-            // Circuit Breaker & Quota Detection
-            const isQuotaError = response.status === 429 || 
-                                (response.status === 403 && response.statusText?.toLowerCase().includes('quota')) ||
-                                (response.status === 403 && response.statusText?.toLowerCase().includes('rate limit'));
+            // BUG 29 FIX: statusText-based quota detection is unreliable.
+            // Google Drive API always sets statusText to "Forbidden" for all 403s,
+            // regardless of whether the cause is a quota limit or a permissions error.
+            // A false negative (quota detected as permissions) causes retries to halt
+            // and the circuit breaker to never trip. A false positive (permissions
+            // detected as quota) causes infinite retry loops for fatal auth failures.
+            // Fix: clone the response and parse the JSON body to read the actual
+            // error.errors[0].reason field. This distinguishes retryable reasons
+            // (quotaExceeded, rateLimitExceeded, userRateLimitExceeded) from fatal
+            // ones (insufficientPermissions, forbidden) which require re-auth.
+            let isQuotaError = response.status === 429;
+            if (response.status === 403) {
+                try {
+                    const errorBody = await response.clone().json();
+                    const reason = errorBody?.error?.errors?.[0]?.reason ?? '';
+                    isQuotaError = reason === 'quotaExceeded' ||
+                                   reason === 'rateLimitExceeded' ||
+                                   reason === 'userRateLimitExceeded';
+                    if (!isQuotaError) {
+                        console.warn('[Sync] 403 with non-retryable reason:', reason || '(unknown)');
+                    }
+                } catch (_) {
+                    // Unparseable 403 body — treat as non-retryable (fatal)
+                    isQuotaError = false;
+                }
+            }
 
             if (isQuotaError && retryCount >= MAX_RETRIES) {
                 console.error('[Sync] Persistent Quota/Rate Limit error. Tripping Circuit Breaker.');
@@ -746,8 +913,8 @@ const syncManager = (() => {
                 updateSyncUI('error');
             }
 
-            // Exponential Backoff: Handle 429 (Rate Limit) or 5xx (Server Error)
-            if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+            // Exponential Backoff: Handle 429, 403-quota, or 5xx (Server Error)
+            if ((isQuotaError || response.status >= 500) && retryCount < MAX_RETRIES) {
                 const delay = Math.pow(2, retryCount) * 1000 + (Math.random() * 100); // Backoff + jitter
                 console.warn(`[Sync] Request failed (${response.status}). Retrying in ${Math.round(delay)}ms...`);
                 await new Promise(r => setTimeout(r, delay));
@@ -865,9 +1032,11 @@ const syncManager = (() => {
         const metadata = { name, mimeType: 'application/json' };
         if (parentId) metadata.parents = [parentId];
 
+        // BUG 27 FIX: accept a pre-serialized string to avoid double JSON.stringify.
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([JSON.stringify(content)], { type: 'application/json' }));
+        form.append('file', new Blob([contentStr], { type: 'application/json' }));
 
         const resp = await fetchWithTimeout('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
             method: 'POST',
@@ -895,10 +1064,12 @@ const syncManager = (() => {
         if (etag) {
             headers['If-Match'] = etag;
         }
+        // BUG 27 FIX: accept a pre-serialized string to avoid double JSON.stringify.
+        const body = typeof content === 'string' ? content : JSON.stringify(content);
         const response = await fetchWithTimeout(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, {
             method: 'PATCH',
             headers,
-            body: JSON.stringify(content),
+            body,
             timeout: 15000,
         });
         if (response.status === 412) {
@@ -948,11 +1119,49 @@ const syncManager = (() => {
         } catch { return null; }
     }
 
+    /**
+     * BUG 25 FIX: Fetch only the Drive file's ETag from the lightweight metadata
+     * endpoint (files.get?fields=etag) — returns a few bytes instead of the full
+     * file content — and persist it to localStorage.
+     *
+     * Used during key rotation to break the 412 deadlock:
+     *  • Normal 412 handler: pull() → seedFromRemote() → hydrate → push()
+     *  • Rotation 412 handler: fetchRemoteETagOnly() → update ETag → push() (no hydration)
+     */
+    async function fetchRemoteETagOnly(fileId) {
+        try {
+            const resp = await fetchWithTimeout(
+                `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id%2Cetag`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (!resp.ok) return null;
+            // ETag may appear in response headers OR in the JSON body's 'etag' field.
+            const headerEtag = resp.headers.get('ETag') || resp.headers.get('etag');
+            const meta = await resp.json();
+            const etag = headerEtag || meta?.etag || null;
+            if (etag) localStorage.setItem(`gdrive_etag_${fileId}`, etag);
+            return etag;
+        } catch (e) {
+            console.warn('[Sync] fetchRemoteETagOnly failed:', e);
+            return null;
+        }
+    }
+
     async function seedFromRemote(data) {
         // SECURITY FIX: Reject snapshots with a lower sequence number than the local
         // counter. This prevents replay / rollback attacks where a stale snapshot
         // previously captured (e.g. from Drive by a malicious actor) is re-uploaded
         // to silently revert security-critical changes (role changes, member removals).
+        // KEY ROTATION GUARD: If the user just changed their password, the in-memory
+        // state is correct but Drive still has data encrypted with the OLD key. Hydrating
+        // now would decrypt old-key records with the new key (wrong key → all records
+        // return null from AES-GCM → HYDRATE_STORE replaces local state with empty arrays
+        // → the next push wipes Drive). Block hydration until the rotation push succeeds.
+        if (localStorage.getItem('nexus_key_rotating') === 'true') {
+            console.warn('[Sync] Key rotation in progress — skipping hydration to preserve in-memory state. Waiting for rotation push to commit new key to Drive.');
+            return;
+        }
+
         const localSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0);
         if (data.snapshotSeq !== undefined && data.snapshotSeq < localSeq) {
             console.warn(`[Sync] Rollback rejected: remote snapshotSeq (${data.snapshotSeq}) < local (${localSeq}).`);
@@ -971,6 +1180,24 @@ const syncManager = (() => {
                 if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
                 return; // Abort hydration
             }
+        }
+
+        // BUG 15 FIX: Sync PBKDF2 iteration count from remote workspace.
+        // If Device A upgraded to 600k iterations (via password reset), Device B
+        // still has 310k in its localStorage and will derive a DIFFERENT AES key
+        // from the same password, making decryption fail on next unlock.
+        // Solution: propagate the higher iteration count and force a re-derive.
+        if (data.pbkdf2Iterations && data.pbkdf2Iterations > getStoredIterations()) {
+            localStorage.setItem('nexus_pbkdf2_iterations', String(data.pbkdf2Iterations));
+            // KEY ERA MISMATCH FIX: The in-memory key was derived with the old iteration
+            // count. The remote data was encrypted with the new count → different AES key.
+            // Lock the vault so the next unlock re-derives the key with the updated count.
+            // Uses the directly-imported lock() to avoid the fragile window.cryptoLayer
+            // reference that may not be set in all execution contexts.
+            lock();
+            if (window.showToast) showToast('Actualización de seguridad del workspace. Ingresa tu contraseña nuevamente.', 'warning', true);
+            if (window.openPanel) window.openPanel();
+            return; // Abort hydration — user must re-authenticate with correct key
         }
 
         let hydrationData = data;
@@ -1008,6 +1235,16 @@ const syncManager = (() => {
                 return;
             }
         }
+
+        // SCHEMA SKEW FIX: capture top-level keys we don't recognise so they can
+        // be shuttled back to Drive on the next push, unchanged. Must be extracted
+        // from the RAW (pre-decryption) data so we capture the encrypted blobs as-is
+        // — we can't decrypt stores we don't understand, but we can carry them forward.
+        const newPassthrough = {};
+        for (const key of Object.keys(data)) {
+            if (!KNOWN_SNAPSHOT_KEYS.has(key)) newPassthrough[key] = data[key];
+        }
+        _remotePassthrough = newPassthrough;
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
 

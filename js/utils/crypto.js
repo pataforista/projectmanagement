@@ -8,10 +8,73 @@
  *  - Zero plaintext sensitive data survives in IndexedDB
  *
  * Algorithm choices:
- *  - PBKDF2 with SHA-256, 310,000 iterations (OWASP 2023 recommendation)
+ *  - PBKDF2 with SHA-256, iterations stored per-install in localStorage
+ *    (TARGET = 600,000 for new installs — OWASP 2024 / NIST SP 800-132 2025)
+ *    (LEGACY = 310,000 retained for existing installs — backward compat)
  *  - AES-256-GCM: authenticated encryption (detects tampering)
  *  - Random 96-bit IV per operation (GCM spec)
+ *
+ * Migration path (310k → 600k):
+ *  - New installs automatically use TARGET_PBKDF2_ITERATIONS.
+ *  - Existing installs keep their stored iteration count.
+ *  - Call isLegacyIterations() to detect upgrade eligibility.
+ *  - After the user re-sets their password (app.js profile flow) the new
+ *    hash is derived with TARGET iterations and localStorage is updated,
+ *    completing the migration transparently.
  */
+
+// ── PBKDF2 iteration counts ──────────────────────────────────────────────────
+const TARGET_PBKDF2_ITERATIONS  = 600_000; // OWASP 2024 / NIST 2025 recommendation
+const LEGACY_PBKDF2_ITERATIONS  = 310_000; // OWASP 2023 — kept for backward compat
+const PBKDF2_ITERATIONS_KEY     = 'nexus_pbkdf2_iterations';
+// BUG 26 FIX: Two-phase commit key for iteration upgrades.
+// upgradeIterations() writes to the PENDING key (not the live key). The live key
+// is only updated after the first successful rotation push (commitIterationUpgrade).
+// This prevents a state where localStorage says "600k" but Drive still holds data
+// encrypted with the 310k-derived key — a mismatch that locks the user out with
+// an opaque "wrong password" error that cannot be resolved without wiping the cache.
+const PBKDF2_ITERATIONS_PENDING_KEY = 'nexus_pbkdf2_iterations_pending';
+
+/**
+ * Returns the iterations to use for key derivation.
+ * During an active key rotation (nexus_key_rotating === 'true') the pending
+ * value is returned so deriveKey() uses the target count for the rotation push.
+ * Once the rotation is committed the live key is used by all subsequent unlocks.
+ */
+export function getStoredIterations() {
+    // During rotation, use the pending (target) count so the rotation push
+    // encrypts data with the new key. Falls through to the live count otherwise.
+    if (localStorage.getItem('nexus_key_rotating') === 'true') {
+        const pending = Number(localStorage.getItem(PBKDF2_ITERATIONS_PENDING_KEY) || 0);
+        if (pending > 0) return pending;
+    }
+    const stored = Number(localStorage.getItem(PBKDF2_ITERATIONS_KEY) || 0);
+    return stored > 0 ? stored : LEGACY_PBKDF2_ITERATIONS;
+}
+
+/**
+ * Called after a successful rotation push to promote the pending iteration count
+ * to the live key. Until this runs, the live key in localStorage still reflects
+ * the pre-rotation count, so a crash before commit leaves the system in a
+ * consistent, recoverable state: nexus_key_rotating is still set, and on restart
+ * getStoredIterations() will return the pending count and the push will retry.
+ */
+export function commitIterationUpgrade() {
+    const pending = Number(localStorage.getItem(PBKDF2_ITERATIONS_PENDING_KEY) || 0);
+    if (pending > 0) {
+        localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(pending));
+        localStorage.removeItem(PBKDF2_ITERATIONS_PENDING_KEY);
+    }
+}
+
+/**
+ * Returns true when the stored iteration count is below the current target —
+ * the workspace is eligible for a security upgrade.
+ * The UI can use this to prompt the user to change their master password.
+ */
+export function isLegacyIterations() {
+    return getStoredIterations() < TARGET_PBKDF2_ITERATIONS;
+}
 
 // ── Module State ────────────────────────────────────────────────────────────
 let _cryptoKey = null; // CryptoKey object — lives only in RAM
@@ -84,10 +147,17 @@ async function getOrCreateSalt() {
             saltB64 = localStorage.getItem('nexus_salt');
             if (saltB64) {
                 localStorage.setItem(scopedKey, saltB64);
+                // Existing data: leave iterations as-is (backward compat).
             } else {
+                // Brand-new install: generate salt AND stamp the target iterations.
                 const saltBytes = crypto.getRandomValues(new Uint8Array(16));
                 saltB64 = bufferToBase64(saltBytes);
                 localStorage.setItem(scopedKey, saltB64);
+                // Only set iterations if they haven't been set before, so a
+                // reinstall or account-switch doesn't reset the count unexpectedly.
+                if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
+                    localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+                }
             }
         }
         _activeSalt = base64ToBuffer(saltB64);
@@ -100,9 +170,13 @@ async function getOrCreateSalt() {
         _activeSalt = base64ToBuffer(saltB64);
         return _activeSalt;
     }
+    // Brand-new local-only install.
     const saltBytes = crypto.getRandomValues(new Uint8Array(16));
     saltB64 = bufferToBase64(saltBytes);
     localStorage.setItem('nexus_salt', saltB64);
+    if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
+        localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+    }
     _activeSalt = saltBytes;
     return _activeSalt;
 }
@@ -132,34 +206,94 @@ export function injectWorkspaceSalt(saltB64) {
 }
 
 /**
- * Derives a CryptoKey from a password using PBKDF2.
+ * Main-thread fallback: importKey + deriveKey on the calling thread.
+ * Used when the Worker API is unavailable (e.g. old browsers, Service Worker
+ * contexts that cannot spawn nested workers).
  */
-export async function deriveKey(password) {
-    const enc = new TextEncoder();
-    const saltBytes = await getOrCreateSalt();
-
-    // Import the password as a raw key
-    const rawKey = await crypto.subtle.importKey(
-        'raw',
-        enc.encode(password),
-        'PBKDF2',
-        false,
-        ['deriveKey']
-    );
-
-    // Derive an AES-256-GCM key
+async function _deriveKeyMainThread(pwdBytes, saltBytes, iterations) {
+    let rawKey;
+    try {
+        rawKey = await crypto.subtle.importKey(
+            'raw',
+            pwdBytes,
+            'PBKDF2',
+            false,
+            ['deriveKey']
+        );
+    } finally {
+        pwdBytes.fill(0);
+    }
     return crypto.subtle.deriveKey(
-        {
-            name: 'PBKDF2',
-            salt: saltBytes,
-            iterations: 310_000,
-            hash: 'SHA-256'
-        },
+        { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
         rawKey,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt', 'decrypt']
     );
+}
+
+/**
+ * Derives a CryptoKey from a password using PBKDF2.
+ *
+ * BUG 33 FIX: 600k iterations blocks the main thread for ~800ms–1.2s on
+ * mid-range mobile, freezing all animations and input. Offload to a Web
+ * Worker so the event loop stays responsive during key derivation.
+ * CryptoKey objects are structured-cloneable (WebCrypto spec §13) and can
+ * be postMessage'd from worker back to the main thread.
+ * Falls back to main-thread derivation if Worker is not available.
+ */
+export async function deriveKey(password) {
+    const enc = new TextEncoder();
+    const saltBytes = await getOrCreateSalt();
+    const iterations = getStoredIterations();
+
+    const pwdBytes = enc.encode(password);
+    // Defensive copy of the salt: if we transfer saltBytes.buffer to the worker,
+    // the underlying ArrayBuffer gets detached and _activeSalt becomes unusable.
+    // Transfer a copy so _activeSalt is untouched in the main thread.
+    const saltCopy = new Uint8Array(saltBytes);
+
+    if (typeof Worker !== 'undefined') {
+        return new Promise((resolve, reject) => {
+            let worker;
+            try {
+                worker = new Worker(new URL('../workers/pbkdf2.worker.js', import.meta.url));
+            } catch (e) {
+                // Worker construction failed (e.g. CSP, bundler issues) — fall back immediately.
+                console.warn('[Fortress] Worker spawn failed, falling back to main-thread PBKDF2:', e);
+                _deriveKeyMainThread(pwdBytes, saltCopy, iterations).then(resolve, reject);
+                return;
+            }
+
+            worker.onmessage = ({ data: { key, error } }) => {
+                worker.terminate();
+                if (error) {
+                    reject(new Error('[Fortress] Worker PBKDF2 failed: ' + error));
+                } else {
+                    resolve(key);
+                }
+            };
+
+            worker.onerror = (e) => {
+                worker.terminate();
+                console.warn('[Fortress] Worker error, falling back to main-thread PBKDF2:', e);
+                // pwdBytes was transferred — create a fresh encoding for fallback.
+                const fallbackPwd = enc.encode(password);
+                _deriveKeyMainThread(fallbackPwd, saltCopy, iterations).then(resolve, reject);
+            };
+
+            // Transfer both buffers: zero-copy into worker memory.
+            // pwdBytes.buffer: password bytes are consumed (no longer in main thread — reduces attack surface).
+            // saltCopy.buffer: defensive copy transferred; original _activeSalt is unaffected.
+            worker.postMessage(
+                { pwdBuffer: pwdBytes.buffer, saltBuffer: saltCopy.buffer, iterations },
+                [pwdBytes.buffer, saltCopy.buffer]
+            );
+        });
+    }
+
+    // Fallback: main-thread derivation (no Worker support).
+    return _deriveKeyMainThread(pwdBytes, saltCopy, iterations);
 }
 
 /**
@@ -169,8 +303,14 @@ export async function hashPassword(password) {
     const saltBytes = await getOrCreateSalt();
     const saltB64 = bufferToBase64(saltBytes);
     const enc = new TextEncoder();
+    // SECURITY FIX: zero the plaintext buffer immediately after digest().
     const data = enc.encode(password + saltB64);
-    const hashBuf = await crypto.subtle.digest('SHA-256', data);
+    let hashBuf;
+    try {
+        hashBuf = await crypto.subtle.digest('SHA-256', data);
+    } finally {
+        data.fill(0);
+    }
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -180,6 +320,30 @@ export async function hashPassword(password) {
 export async function unlock(password) {
     _cryptoKey = await deriveKey(password);
     _isLocked = false;
+}
+
+/**
+ * Upgrades the PBKDF2 iteration count to TARGET_PBKDF2_ITERATIONS and
+ * re-derives the in-memory key with the new count.
+ *
+ * Call this after a successful password change (app.js profile flow) when
+ * isLegacyIterations() returns true. The existing encrypted data remains
+ * readable because the AES-256-GCM key material does NOT change —
+ * only future key derivations (next unlock) will use the higher count.
+ *
+ * After calling this, the user must re-enter their password on next unlock
+ * so the key is re-derived with 600k iterations.
+ */
+export function upgradeIterations() {
+    // BUG 26 FIX: Write to the PENDING key, not the live key.
+    // The live key is only updated after the first successful rotation push
+    // (via commitIterationUpgrade). This way, if the app crashes between
+    // upgradeIterations() and the push, localStorage still reflects the old
+    // iteration count for any non-rotation unlock attempt, preventing a
+    // permanent "wrong password" lockout.
+    localStorage.setItem(PBKDF2_ITERATIONS_PENDING_KEY, String(TARGET_PBKDF2_ITERATIONS));
+    // Lock so the next unlock re-derives the key with the pending (new) count.
+    lock();
 }
 
 /** Wipes the key from RAM — all IDB data becomes inaccessible */

@@ -323,6 +323,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 setupPasswordCreation(false);
             }
 
+            /**
+             * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile.
+             * With the BUG 33 Web Worker fix, PBKDF2 runs off the main thread, so
+             * any spinner/animation shown here will remain fluid. Show a loading
+             * message and disable the form before awaiting unlock(), then restore.
+             * The setTimeout(0) yield gives the browser one repaint to render the
+             * loading state before the worker is spawned.
+             */
+            async function unlockWithFeedback(pwd, submitEl) {
+                const prevText = authSubtitle.textContent;
+                authSubtitle.textContent = 'Verificando contraseña…';
+                authPassword.disabled = true;
+                if (submitEl) submitEl.disabled = true;
+                // Yield one repaint so the loading message renders before worker spawn.
+                await new Promise(r => setTimeout(r, 0));
+                try {
+                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                } finally {
+                    authPassword.disabled = false;
+                    if (submitEl) submitEl.disabled = false;
+                    authSubtitle.textContent = prevText;
+                }
+            }
+
             function setupPasswordCreation(isRemotePresent = false) {
                 authForm.onsubmit = async (e) => {
                     e.preventDefault();
@@ -338,7 +362,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const recoveryHash = await hashStr(normalizeCode(recoveryCode));
                     localStorage.setItem('workspace_lock_hash', hash);
                     localStorage.setItem('workspace_recovery_hash', recoveryHash);
-                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                     authForm.style.display = 'none';
                     authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
                     showCodeDisplay(recoveryCode, () => {
@@ -402,14 +426,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                             authOverlay.classList.remove('open');
                             resolve();
                         });
-                        if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                        await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                         return; // Exit here as showCodeDisplay will resolve
                     }
                 }
 
                 if (isMatch) {
                     clearAttempts();
-                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
+                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
                     authOverlay.classList.remove('open');
                     resolve();
                 } else {
@@ -579,6 +603,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                     const newRecoveryCode = generateRecoveryCode();
+                    // SECURITY FIX: if the install was using legacy PBKDF2 iterations
+                    // (310k), upgrade to the current target (600k) now that the user
+                    // is actively setting a new password. upgradeIterations() persists
+                    // the new count and locks the vault so the next unlock re-derives
+                    // the key with the higher iteration count.
+                    if (cryptoLayer?.isLegacyIterations?.()) {
+                        cryptoLayer.upgradeIterations();
+                    }
                     const newLockHash = await hashStr(newPwd);
                     const newRecHash = await hashStr(normalizeCode(newRecoveryCode));
                     localStorage.setItem('workspace_lock_hash', newLockHash);
@@ -589,7 +621,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                         authOverlay.classList.remove('open');
                         resolve();
                     });
-                    if (cryptoLayer) await cryptoLayer.unlock(newPwd);
+                    await unlockWithFeedback(newPwd, authNewpwdSubmit);
+
+                    // RE-ENCRYPTION SAFETY FIX: Drive still holds data encrypted with
+                    // the old key. If pull() runs before we push the new-key snapshot,
+                    // it will try to decrypt old-key records with the new key, fail
+                    // silently (AES-GCM authentication mismatch), hydrate with empty
+                    // arrays, then push() will wipe Drive. The nexus_key_rotating flag:
+                    //  1. Blocks seedFromRemote() from hydrating until rotation is done.
+                    //  2. Allows push() to bypass the _remoteChecked ghost-wipe guard.
+                    //  3. Is cleared by push() after first successful commit.
+                    //  4. Survives crashes — on next startup the guard is still active.
+                    localStorage.setItem('nexus_key_rotating', 'true');
+                    if (window.syncManager?.push) {
+                        syncManager.push().catch(e =>
+                            console.warn('[Security] Key rotation push failed — will retry on next sync cycle.', e)
+                        );
+                    }
                 };
             }
         }
@@ -604,8 +652,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // BUG 16 FIX: Zombie Key — propagate lock() to all sibling tabs via BroadcastChannel.
+    // Without this, tabs B and C keep the master key in memory after tab A logs out,
+    // leaving the vault accessible in those tabs until they are manually refreshed.
+    const _lockChannel = new BroadcastChannel('nexus-lock');
+    _lockChannel.addEventListener('message', (event) => {
+        if (event.data?.type === 'lock') {
+            // Another tab initiated a lock — clear key from this tab's memory and reload
+            // the auth overlay so the user must re-authenticate here too.
+            if (cryptoLayer?.lock) cryptoLayer.lock();
+            location.reload();
+        }
+    });
+
     window.lockWorkspace = () => {
         if (localStorage.getItem('workspace_lock_hash')) {
+            // Broadcast to all sibling tabs before reloading this one.
+            _lockChannel.postMessage({ type: 'lock' });
             location.reload();
         } else {
             if (window.showToast) showToast('Primero configura una contraseña en Perfil.', 'info');

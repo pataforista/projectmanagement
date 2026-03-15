@@ -63,9 +63,35 @@ export const initDB = () => new Promise(async (resolve, reject) => {
       }
     };
 
+    // BUG 30 FIX: Without onblocked, a version upgrade request hangs indefinitely
+    // when another tab still holds an open connection to the old schema version.
+    // onblocked fires on the *opening* request when the upgrade is blocked by
+    // an existing connection that hasn't closed yet. Notify the user so they
+    // can close the other tab and the upgrade can proceed.
+    request.onblocked = () => {
+      console.warn('[DB] Version upgrade blocked by another open tab. Prompting user.');
+      if (window.showToast) {
+        window.showToast('Actualización de base de datos bloqueada. Cierra las demás pestañas y recarga.', 'warning', true);
+      }
+    };
+
     request.onsuccess = (e) => {
       db = e.target.result;
       console.log('IndexedDB ready (v' + db.version + ').');
+
+      // BUG 30 FIX: Without onversionchange, when a newer tab triggers a schema
+      // upgrade, the current tab's open connection blocks the upgrade indefinitely.
+      // onversionchange fires on the *existing* db connection when another context
+      // opens a higher version. Close gracefully and reload so the upgrade can proceed.
+      db.onversionchange = () => {
+        console.warn('[DB] Schema version change detected from another tab. Closing connection and reloading.');
+        db.close();
+        if (window.showToast) {
+          window.showToast('Actualización de base de datos en progreso. Recargando...', 'info');
+        }
+        setTimeout(() => location.reload(), 1500);
+      };
+
       res(db);
     };
 
@@ -367,6 +393,72 @@ export const dbAPI = {
   /** Clear a store. */
   clear(storeName) {
     return tx(storeName, 'readwrite', s => s.clear());
+  },
+
+  /**
+   * ATOMICITY FIX (BUG 18): Writes an entire hydration payload across multiple stores
+   * in a single IDB transaction. If the page is killed mid-write, IDB rolls back the
+   * whole transaction automatically — the database is never left in a half-updated state.
+   *
+   * BUG 28 FIX (Borrado por Desbordamiento): Uses UPSERT (put-only), NOT clear+put.
+   * The BUG 27 cap limits the Drive snapshot to the N most-recent records. A
+   * clear+put would destroy any local records beyond that cap that were not included
+   * in the remote snapshot — a silent, permanent data loss. Upsert-only preserves all
+   * existing local records; only records explicitly present in the snapshot are updated.
+   * Records that are capped out of the snapshot simply stay in IDB untouched.
+   *
+   * Two-phase approach (required because IDB transactions expire on async awaits):
+   *   Phase 1 (async, outside transaction): encrypt records for sensitive stores.
+   *   Phase 2 (sync IDB requests only): open one multi-store readwrite transaction,
+   *            put all pre-encrypted records (no clear), let it auto-commit.
+   *
+   * @param {Record<string, Array>} plainStoreMap  Plain (decrypted) records per store name.
+   */
+  async bulkHydrate(plainStoreMap) {
+    const storeNames = Object.keys(plainStoreMap);
+    if (!storeNames.length) return;
+
+    // Phase 1: pre-encrypt all records that belong to sensitive stores.
+    // Must be done BEFORE opening the transaction so no async work happens
+    // inside the transaction scope (which would cause it to auto-commit early).
+    const cryptoModule = await getCrypto();
+    const encStoreMap = {};
+    for (const storeName of storeNames) {
+      const records = plainStoreMap[storeName];
+      const shouldEncrypt = cryptoModule.ENCRYPTED_STORES.has(storeName) && cryptoModule.hasKey();
+      if (shouldEncrypt) {
+        encStoreMap[storeName] = await Promise.all(records.map(async r => {
+          const enc = await cryptoModule.encryptRecord(r);
+          enc.id = r.id; // keep keyPath outside envelope so IDB can index it
+          return enc;
+        }));
+      } else {
+        encStoreMap[storeName] = records;
+      }
+    }
+
+    // Phase 2: single atomic multi-store transaction — all IDB requests are
+    // synchronous from IDB's perspective (no awaits between requests).
+    return new Promise((resolve, reject) => {
+      if (!db) return reject(new Error('[DB] bulkHydrate: DB not initialized'));
+      try {
+        const transaction = db.transaction(storeNames, 'readwrite');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror   = () => reject(transaction.error);
+        transaction.onabort   = () => reject(transaction.error ?? new Error('[DB] bulkHydrate aborted'));
+
+        for (const storeName of storeNames) {
+          const store = transaction.objectStore(storeName);
+          for (const record of encStoreMap[storeName]) {
+            store.put(record);
+          }
+        }
+        // Transaction auto-commits once all put requests have been queued
+        // and control returns to the event loop with no pending requests.
+      } catch (e) {
+        reject(e);
+      }
+    });
   },
 
   /** Queue an operation for background sync. */

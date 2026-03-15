@@ -363,13 +363,12 @@ function syncSettingsToLocalStorage(settings) {
 }
 
 // ── UUID ─────────────────────────────────────────────────────────────────────
-// SECURITY FIX: Use crypto.getRandomValues instead of Math.random().
-// Math.random() is a predictable PRNG — in a multi-device collaborative context
-// two simultaneous creates with the same timestamp could collide.
+// ID COLLISION FIX: Use crypto.randomUUID() (122 bits, RFC 4122 v4).
+// The previous implementation (timestamp + two Uint32 values = 64 bits) was
+// practically collision-free, but crypto.randomUUID() is the standard and
+// eliminates any residual risk for distributed multi-device record creation.
 export function generateUID() {
-    const arr = new Uint32Array(2);
-    crypto.getRandomValues(arr);
-    return Date.now().toString(36) + arr[0].toString(36) + arr[1].toString(36);
+    return crypto.randomUUID();
 }
 
 // Attach to window
