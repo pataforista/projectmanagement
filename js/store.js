@@ -121,10 +121,39 @@ const store = (() => {
         return _lastKnownTs;
     }
 
+    // Fields that must never appear in the per-field _timestamps map because they
+    // are record-level identifiers or control metadata, not user-editable content.
+    const _ATOMIC_FIELDS = new Set([
+        'id', 'user_id', 'created_at', 'createdAt', 'createdBy', 'createdById',
+        '_deleted', '_timestamps', 'updatedAt', 'updatedBy', 'updatedById',
+    ]);
+
+    /**
+     * Builds (or updates) the _timestamps map for a record mutation.
+     * Uses a single monotonicNow() call so every field changed in the same
+     * dispatch action shares the same timestamp — avoiding needless counter
+     * increments and keeping the map consistent with `updatedAt`.
+     *
+     * @param {Object} existing - The current record (may have an existing _timestamps map).
+     * @param {Object} payload  - The incoming mutation payload.
+     * @param {number} now      - The monotonic timestamp already captured for updatedAt.
+     * @returns {Object}          Updated _timestamps map.
+     */
+    function stampFields(existing, payload, now) {
+        const ts = { ...(existing._timestamps || {}) };
+        Object.keys(payload).forEach(key => {
+            if (!_ATOMIC_FIELDS.has(key)) ts[key] = now;
+        });
+        return ts;
+    }
+
     // Debounced push: agrupa ráfagas de acciones en 1 solo push a Drive (evita saturar la red)
     let _syncPushTimer = null;
     function _schedulePush() {
         if (!window.syncManager) return;
+        // Mark IDB as dirty immediately so beforeunload/pagehide can warn the user
+        // even if the 5-second debounce timer has not fired yet or a prior push failed.
+        if (window.syncManager.markDirty) window.syncManager.markDirty();
         if (_syncPushTimer) clearTimeout(_syncPushTimer);
         _syncPushTimer = setTimeout(() => {
             syncManager.push();
@@ -165,12 +194,14 @@ const store = (() => {
                 const idx = _state.projects.findIndex(p => p.id === payload.id);
                 if (idx !== -1) {
                     const actor = getCurrentWorkspaceActor();
+                    const _now = monotonicNow();
                     const updated = {
                         ..._state.projects[idx],
                         ...payload,
-                        updatedAt: monotonicNow(),
+                        updatedAt: _now,
                         updatedBy: actor.label,
-                        updatedById: actor.id
+                        updatedById: actor.id,
+                        _timestamps: stampFields(_state.projects[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
                     _state.projects[idx] = updated;
@@ -185,7 +216,12 @@ const store = (() => {
                 for (const update of payload) {
                     const idx = _state.projects.findIndex(p => p.id === update.id);
                     if (idx !== -1) {
+                        const _now = monotonicNow();
                         _state.projects[idx].order = update.order;
+                        _state.projects[idx]._timestamps = {
+                            ...(_state.projects[idx]._timestamps || {}),
+                            order: _now,
+                        };
                         await dbAPI.put(storeName, _state.projects[idx]);
                     }
                 }
@@ -262,13 +298,15 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const idx = _state.tasks.findIndex(t => t.id === payload.id);
                 if (idx !== -1) {
+                    const _now = monotonicNow();
                     const updated = {
                         ..._state.tasks[idx],
                         ...payload,
                         updatedBy: actor.label,
                         updatedById: actor.id,
-                        updatedAt: monotonicNow(),
-                        dependencies: payload.dependencies || _state.tasks[idx].dependencies || []
+                        updatedAt: _now,
+                        dependencies: payload.dependencies || _state.tasks[idx].dependencies || [],
+                        _timestamps: stampFields(_state.tasks[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
                     _state.tasks[idx] = updated;
@@ -317,12 +355,14 @@ const store = (() => {
                 const idx = _state.cycles.findIndex(c => c.id === payload.id);
                 if (idx !== -1) {
                     const actor = getCurrentWorkspaceActor();
+                    const _now = monotonicNow();
                     const updated = {
                         ..._state.cycles[idx],
                         ...payload,
-                        updatedAt: monotonicNow(),
+                        updatedAt: _now,
                         updatedBy: actor.label,
-                        updatedById: actor.id
+                        updatedById: actor.id,
+                        _timestamps: stampFields(_state.cycles[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
                     _state.cycles[idx] = updated;
@@ -361,10 +401,12 @@ const store = (() => {
                 storeName = 'decisions';
                 const idx = _state.decisions.findIndex(d => d.id === payload.id);
                 if (idx !== -1) {
+                    const _now = monotonicNow();
                     const updated = {
                         ..._state.decisions[idx],
                         ...payload,
-                        updatedAt: monotonicNow()
+                        updatedAt: _now,
+                        _timestamps: stampFields(_state.decisions[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
                     _state.decisions[idx] = updated;
@@ -457,7 +499,13 @@ const store = (() => {
                 storeName = 'library';
                 const idx = _state.library.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.library[idx], ...payload, updatedAt: monotonicNow() };
+                    const _now = monotonicNow();
+                    const updated = {
+                        ..._state.library[idx],
+                        ...payload,
+                        updatedAt: _now,
+                        _timestamps: stampFields(_state.library[idx], payload, _now),
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.library[idx] = updated;
                     _notify(storeName);
@@ -488,7 +536,13 @@ const store = (() => {
                 storeName = 'interconsultations';
                 const idx = _state.interconsultations.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.interconsultations[idx], ...payload, updatedAt: monotonicNow() };
+                    const _now = monotonicNow();
+                    const updated = {
+                        ..._state.interconsultations[idx],
+                        ...payload,
+                        updatedAt: _now,
+                        _timestamps: stampFields(_state.interconsultations[idx], payload, _now),
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.interconsultations[idx] = updated;
                     _notify(storeName);
@@ -533,7 +587,13 @@ const store = (() => {
                 storeName = 'sessions';
                 const idx = _state.sessions.findIndex(s => s.id === payload.id);
                 if (idx !== -1) {
-                    const updated = { ..._state.sessions[idx], ...payload, updatedAt: monotonicNow() };
+                    const _now = monotonicNow();
+                    const updated = {
+                        ..._state.sessions[idx],
+                        ...payload,
+                        updatedAt: _now,
+                        _timestamps: stampFields(_state.sessions[idx], payload, _now),
+                    };
                     await dbAPI.put(storeName, updated);
                     _state.sessions[idx] = updated;
                     _notify(storeName);
