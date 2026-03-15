@@ -138,14 +138,25 @@ export async function deriveKey(password) {
     const enc = new TextEncoder();
     const saltBytes = await getOrCreateSalt();
 
-    // Import the password as a raw key
-    const rawKey = await crypto.subtle.importKey(
-        'raw',
-        enc.encode(password),
-        'PBKDF2',
-        false,
-        ['deriveKey']
-    );
+    // SECURITY FIX: Hold a reference to the password bytes so we can zero them
+    // immediately after importKey. Without this, the Uint8Array containing the
+    // plaintext password stays in heap memory until the GC decides to collect it,
+    // making it recoverable from a memory dump.
+    // Note: the JS string `password` itself cannot be zeroed (strings are immutable),
+    // but zeroing the derived Uint8Array reduces the attack surface.
+    const pwdBytes = enc.encode(password);
+    let rawKey;
+    try {
+        rawKey = await crypto.subtle.importKey(
+            'raw',
+            pwdBytes,
+            'PBKDF2',
+            false,
+            ['deriveKey']
+        );
+    } finally {
+        pwdBytes.fill(0);
+    }
 
     // Derive an AES-256-GCM key
     return crypto.subtle.deriveKey(
@@ -169,8 +180,14 @@ export async function hashPassword(password) {
     const saltBytes = await getOrCreateSalt();
     const saltB64 = bufferToBase64(saltBytes);
     const enc = new TextEncoder();
+    // SECURITY FIX: zero the plaintext buffer immediately after digest().
     const data = enc.encode(password + saltB64);
-    const hashBuf = await crypto.subtle.digest('SHA-256', data);
+    let hashBuf;
+    try {
+        hashBuf = await crypto.subtle.digest('SHA-256', data);
+    } finally {
+        data.fill(0);
+    }
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 

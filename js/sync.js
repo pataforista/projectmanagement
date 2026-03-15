@@ -724,20 +724,31 @@ const syncManager = (() => {
                 console.warn('[Sync] 401 Unauthorized detected. Attempting silent token refresh...');
                 try {
                     const newAccessToken = await authorize(getConfig().clientId, false);
-                    const newOptions = { ...options };
-                    if (newOptions.headers && newOptions.headers.Authorization) {
-                        newOptions.headers.Authorization = `Bearer ${newAccessToken}`;
-                    }
-                    return await fetch(resource, newOptions);
+                    // BUG FIX: { ...options } is a shallow copy — options.headers is still
+                    // the same object reference, so mutating newOptions.headers.Authorization
+                    // also mutated the original options headers. Use a deep copy of headers.
+                    // Also switch from bare fetch() to fetchWithTimeout() so the retry
+                    // respects the same timeout and circuit-breaker logic.
+                    const retriedOptions = {
+                        ...options,
+                        headers: { ...options.headers, Authorization: `Bearer ${newAccessToken}` },
+                    };
+                    return await fetchWithTimeout(resource, retriedOptions, retryCount + 1);
                 } catch (e) {
                     console.error('[Sync] Silent refresh failed:', e);
                 }
             }
 
-            // Circuit Breaker & Quota Detection
-            const isQuotaError = response.status === 429 || 
-                                (response.status === 403 && response.statusText?.toLowerCase().includes('quota')) ||
-                                (response.status === 403 && response.statusText?.toLowerCase().includes('rate limit'));
+            // BUG FIX: 403-quota errors were excluded from the retry condition
+            // (only 429 and >=500 were retried), so `retryCount` never reached
+            // MAX_RETRIES and the circuit breaker never tripped for quota 403s.
+            // Fix: treat 403-quota the same as 429 — retry with backoff, then trip
+            // the circuit breaker if retries are exhausted.
+            const isQuotaError = response.status === 429 ||
+                                (response.status === 403 && (
+                                    response.statusText?.toLowerCase().includes('quota') ||
+                                    response.statusText?.toLowerCase().includes('rate limit')
+                                ));
 
             if (isQuotaError && retryCount >= MAX_RETRIES) {
                 console.error('[Sync] Persistent Quota/Rate Limit error. Tripping Circuit Breaker.');
@@ -746,8 +757,8 @@ const syncManager = (() => {
                 updateSyncUI('error');
             }
 
-            // Exponential Backoff: Handle 429 (Rate Limit) or 5xx (Server Error)
-            if ((response.status === 429 || response.status >= 500) && retryCount < MAX_RETRIES) {
+            // Exponential Backoff: Handle 429, 403-quota, or 5xx (Server Error)
+            if ((isQuotaError || response.status >= 500) && retryCount < MAX_RETRIES) {
                 const delay = Math.pow(2, retryCount) * 1000 + (Math.random() * 100); // Backoff + jitter
                 console.warn(`[Sync] Request failed (${response.status}). Retrying in ${Math.round(delay)}ms...`);
                 await new Promise(r => setTimeout(r, delay));
