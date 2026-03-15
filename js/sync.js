@@ -27,6 +27,12 @@ const syncManager = (() => {
     // new device with empty local state could push an empty snapshot to Drive
     // before the initial pull completes, wiping all remote data.
     let _remoteChecked = false;
+    // BUG 31: channel for broadcasting IDB updates to sibling tabs (see pull()).
+    const _syncChannel = typeof BroadcastChannel !== 'undefined'
+        ? new BroadcastChannel('nexus-sync')
+        : null;
+    // BUG 32: guard so the visibilitychange listener is registered at most once.
+    let _visibilityListenerRegistered = false;
 
     // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
     // Any key present in the remote JSON that is NOT in this set is "unknown" —
@@ -757,6 +763,10 @@ const syncManager = (() => {
                 await seedFromRemote(remoteData);
                 localStorage.setItem('last_sync_local', String(remoteData.updatedAt));
                 showToast('Datos actualizados desde Drive', 'success');
+                // BUG 31 FIX: Notify sibling tabs that IDB was updated so they can
+                // reload their in-memory _state before making any further edits.
+                // BroadcastChannel only delivers to OTHER tabs, not to this one.
+                _syncChannel?.postMessage({ type: 'data-updated' });
             }
 
             // Remote state verified — push is now safe.
@@ -780,12 +790,31 @@ const syncManager = (() => {
         // Default to a somewhat faster sync for chat/collaboration (e.g. 1 min default if not set otherwise)
         const ms = Math.max(1, Number(minutes) || 1) * 60 * 1000;
         autoSyncTimer = setInterval(async () => {
+            // BUG 32 FIX: Skip sync when the tab is in the background.
+            // On mobile/laptop the token may expire while the page is hidden; firing
+            // requests silently trips the circuit breaker with no user-visible reason.
+            // When hidden, skip the tick entirely — the visibilitychange handler below
+            // fires an immediate pull() the moment the user returns to the tab.
+            if (document.visibilityState === 'hidden') return;
             if (accessToken && !isSyncing && networkOnline) {
                 // Auto-sync sequence: Try to pull new changes first, then push our own changes
                 await pull();
                 if (!isSyncing) await push();
             }
         }, ms);
+
+        // BUG 32 FIX: On tab focus restore, immediately pull fresh data rather than
+        // waiting up to `minutes` for the next interval tick. Register the listener
+        // only once (guard prevents duplicates if configureAutoSync is called again).
+        if (!_visibilityListenerRegistered) {
+            _visibilityListenerRegistered = true;
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && accessToken && !isSyncing && networkOnline) {
+                    console.log('[Sync] Tab became visible — triggering immediate pull.');
+                    pull().then(() => { if (!isSyncing) push(); }).catch(() => {});
+                }
+            });
+        }
 
         // Start the micro-polling Chat Engine
         startChatSync();

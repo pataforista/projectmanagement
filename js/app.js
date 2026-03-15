@@ -324,20 +324,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             /**
-             * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile,
-             * freezing the main thread. We cannot move PBKDF2 off-thread without a
-             * Web Worker refactor, but we can at least give the user feedback so
-             * the app doesn't appear to be hanging. Show a loading message and
-             * disable the form before awaiting unlock(), then restore state.
-             * Note: the UI update fires before the next microtask, so the browser
-             * gets one repaint in before the synchronous PBKDF2 work begins.
+             * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile.
+             * With the BUG 33 Web Worker fix, PBKDF2 runs off the main thread, so
+             * any spinner/animation shown here will remain fluid. Show a loading
+             * message and disable the form before awaiting unlock(), then restore.
+             * The setTimeout(0) yield gives the browser one repaint to render the
+             * loading state before the worker is spawned.
              */
             async function unlockWithFeedback(pwd, submitEl) {
                 const prevText = authSubtitle.textContent;
-                authSubtitle.textContent = 'Verificando contraseña (~1s)…';
+                authSubtitle.textContent = 'Verificando contraseña…';
                 authPassword.disabled = true;
                 if (submitEl) submitEl.disabled = true;
-                // yield to allow the browser one repaint before the CPU-intensive work
+                // Yield one repaint so the loading message renders before worker spawn.
                 await new Promise(r => setTimeout(r, 0));
                 try {
                     if (cryptoLayer) await cryptoLayer.unlock(pwd);

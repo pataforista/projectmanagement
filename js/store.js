@@ -909,6 +909,26 @@ const store = (() => {
         exportState: () => _state, // Raw state for network sync (includes tombstones)
     };
 
+    // BUG 31 FIX: Memory Drift — cross-tab state consistency.
+    // After a pull(), the pulling tab updates its own _state via HYDRATE_STORE.
+    // But sibling tabs still have the pre-pull version of _state in RAM.
+    // If a sibling tab makes an edit and calls push(), it will send the stale
+    // snapshot to Drive, overwriting the fresh data the pulling tab just persisted.
+    // Fix: listen for 'data-updated' on BroadcastChannel('nexus-sync'). When
+    // another tab broadcasts this (after its seedFromRemote completes), reload
+    // _state from IDB — which now holds the merged, up-to-date records.
+    // BroadcastChannel only delivers messages to OTHER tabs, so the broadcasting
+    // tab never receives its own message (no duplicate reload).
+    if (typeof BroadcastChannel !== 'undefined') {
+        const _syncChannel = new BroadcastChannel('nexus-sync');
+        _syncChannel.addEventListener('message', (event) => {
+            if (event.data?.type === 'data-updated') {
+                console.log('[Store] Sibling tab updated IDB — reloading _state from IndexedDB.');
+                load();
+            }
+        });
+    }
+
     return { load, seedIfEmpty, dispatch, subscribe, get };
 })();
 

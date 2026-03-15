@@ -206,19 +206,11 @@ export function injectWorkspaceSalt(saltB64) {
 }
 
 /**
- * Derives a CryptoKey from a password using PBKDF2.
+ * Main-thread fallback: importKey + deriveKey on the calling thread.
+ * Used when the Worker API is unavailable (e.g. old browsers, Service Worker
+ * contexts that cannot spawn nested workers).
  */
-export async function deriveKey(password) {
-    const enc = new TextEncoder();
-    const saltBytes = await getOrCreateSalt();
-
-    // SECURITY FIX: Hold a reference to the password bytes so we can zero them
-    // immediately after importKey. Without this, the Uint8Array containing the
-    // plaintext password stays in heap memory until the GC decides to collect it,
-    // making it recoverable from a memory dump.
-    // Note: the JS string `password` itself cannot be zeroed (strings are immutable),
-    // but zeroing the derived Uint8Array reduces the attack surface.
-    const pwdBytes = enc.encode(password);
+async function _deriveKeyMainThread(pwdBytes, saltBytes, iterations) {
     let rawKey;
     try {
         rawKey = await crypto.subtle.importKey(
@@ -231,23 +223,77 @@ export async function deriveKey(password) {
     } finally {
         pwdBytes.fill(0);
     }
-
-    // Derive an AES-256-GCM key using the iteration count stored for this install.
-    // New installs use TARGET_PBKDF2_ITERATIONS (600,000); existing installs fall
-    // back to LEGACY_PBKDF2_ITERATIONS (310,000) for backward compatibility.
-    const iterations = getStoredIterations();
     return crypto.subtle.deriveKey(
-        {
-            name: 'PBKDF2',
-            salt: saltBytes,
-            iterations,
-            hash: 'SHA-256'
-        },
+        { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
         rawKey,
         { name: 'AES-GCM', length: 256 },
         false,
         ['encrypt', 'decrypt']
     );
+}
+
+/**
+ * Derives a CryptoKey from a password using PBKDF2.
+ *
+ * BUG 33 FIX: 600k iterations blocks the main thread for ~800ms–1.2s on
+ * mid-range mobile, freezing all animations and input. Offload to a Web
+ * Worker so the event loop stays responsive during key derivation.
+ * CryptoKey objects are structured-cloneable (WebCrypto spec §13) and can
+ * be postMessage'd from worker back to the main thread.
+ * Falls back to main-thread derivation if Worker is not available.
+ */
+export async function deriveKey(password) {
+    const enc = new TextEncoder();
+    const saltBytes = await getOrCreateSalt();
+    const iterations = getStoredIterations();
+
+    const pwdBytes = enc.encode(password);
+    // Defensive copy of the salt: if we transfer saltBytes.buffer to the worker,
+    // the underlying ArrayBuffer gets detached and _activeSalt becomes unusable.
+    // Transfer a copy so _activeSalt is untouched in the main thread.
+    const saltCopy = new Uint8Array(saltBytes);
+
+    if (typeof Worker !== 'undefined') {
+        return new Promise((resolve, reject) => {
+            let worker;
+            try {
+                worker = new Worker(new URL('../workers/pbkdf2.worker.js', import.meta.url));
+            } catch (e) {
+                // Worker construction failed (e.g. CSP, bundler issues) — fall back immediately.
+                console.warn('[Fortress] Worker spawn failed, falling back to main-thread PBKDF2:', e);
+                _deriveKeyMainThread(pwdBytes, saltCopy, iterations).then(resolve, reject);
+                return;
+            }
+
+            worker.onmessage = ({ data: { key, error } }) => {
+                worker.terminate();
+                if (error) {
+                    reject(new Error('[Fortress] Worker PBKDF2 failed: ' + error));
+                } else {
+                    resolve(key);
+                }
+            };
+
+            worker.onerror = (e) => {
+                worker.terminate();
+                console.warn('[Fortress] Worker error, falling back to main-thread PBKDF2:', e);
+                // pwdBytes was transferred — create a fresh encoding for fallback.
+                const fallbackPwd = enc.encode(password);
+                _deriveKeyMainThread(fallbackPwd, saltCopy, iterations).then(resolve, reject);
+            };
+
+            // Transfer both buffers: zero-copy into worker memory.
+            // pwdBytes.buffer: password bytes are consumed (no longer in main thread — reduces attack surface).
+            // saltCopy.buffer: defensive copy transferred; original _activeSalt is unaffected.
+            worker.postMessage(
+                { pwdBuffer: pwdBytes.buffer, saltBuffer: saltCopy.buffer, iterations },
+                [pwdBytes.buffer, saltCopy.buffer]
+            );
+        });
+    }
+
+    // Fallback: main-thread derivation (no Worker support).
+    return _deriveKeyMainThread(pwdBytes, saltCopy, iterations);
 }
 
 /**
