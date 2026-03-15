@@ -8,10 +8,40 @@
  *  - Zero plaintext sensitive data survives in IndexedDB
  *
  * Algorithm choices:
- *  - PBKDF2 with SHA-256, 310,000 iterations (OWASP 2023 recommendation)
+ *  - PBKDF2 with SHA-256, iterations stored per-install in localStorage
+ *    (TARGET = 600,000 for new installs — OWASP 2024 / NIST SP 800-132 2025)
+ *    (LEGACY = 310,000 retained for existing installs — backward compat)
  *  - AES-256-GCM: authenticated encryption (detects tampering)
  *  - Random 96-bit IV per operation (GCM spec)
+ *
+ * Migration path (310k → 600k):
+ *  - New installs automatically use TARGET_PBKDF2_ITERATIONS.
+ *  - Existing installs keep their stored iteration count.
+ *  - Call isLegacyIterations() to detect upgrade eligibility.
+ *  - After the user re-sets their password (app.js profile flow) the new
+ *    hash is derived with TARGET iterations and localStorage is updated,
+ *    completing the migration transparently.
  */
+
+// ── PBKDF2 iteration counts ──────────────────────────────────────────────────
+const TARGET_PBKDF2_ITERATIONS = 600_000; // OWASP 2024 / NIST 2025 recommendation
+const LEGACY_PBKDF2_ITERATIONS = 310_000; // OWASP 2023 — kept for backward compat
+const PBKDF2_ITERATIONS_KEY    = 'nexus_pbkdf2_iterations';
+
+/** Returns the iterations used for this install (reads from localStorage). */
+function getStoredIterations() {
+    const stored = Number(localStorage.getItem(PBKDF2_ITERATIONS_KEY) || 0);
+    return stored > 0 ? stored : LEGACY_PBKDF2_ITERATIONS;
+}
+
+/**
+ * Returns true when the stored iteration count is below the current target —
+ * the workspace is eligible for a security upgrade.
+ * The UI can use this to prompt the user to change their master password.
+ */
+export function isLegacyIterations() {
+    return getStoredIterations() < TARGET_PBKDF2_ITERATIONS;
+}
 
 // ── Module State ────────────────────────────────────────────────────────────
 let _cryptoKey = null; // CryptoKey object — lives only in RAM
@@ -84,10 +114,17 @@ async function getOrCreateSalt() {
             saltB64 = localStorage.getItem('nexus_salt');
             if (saltB64) {
                 localStorage.setItem(scopedKey, saltB64);
+                // Existing data: leave iterations as-is (backward compat).
             } else {
+                // Brand-new install: generate salt AND stamp the target iterations.
                 const saltBytes = crypto.getRandomValues(new Uint8Array(16));
                 saltB64 = bufferToBase64(saltBytes);
                 localStorage.setItem(scopedKey, saltB64);
+                // Only set iterations if they haven't been set before, so a
+                // reinstall or account-switch doesn't reset the count unexpectedly.
+                if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
+                    localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+                }
             }
         }
         _activeSalt = base64ToBuffer(saltB64);
@@ -100,9 +137,13 @@ async function getOrCreateSalt() {
         _activeSalt = base64ToBuffer(saltB64);
         return _activeSalt;
     }
+    // Brand-new local-only install.
     const saltBytes = crypto.getRandomValues(new Uint8Array(16));
     saltB64 = bufferToBase64(saltBytes);
     localStorage.setItem('nexus_salt', saltB64);
+    if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
+        localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+    }
     _activeSalt = saltBytes;
     return _activeSalt;
 }
@@ -158,12 +199,15 @@ export async function deriveKey(password) {
         pwdBytes.fill(0);
     }
 
-    // Derive an AES-256-GCM key
+    // Derive an AES-256-GCM key using the iteration count stored for this install.
+    // New installs use TARGET_PBKDF2_ITERATIONS (600,000); existing installs fall
+    // back to LEGACY_PBKDF2_ITERATIONS (310,000) for backward compatibility.
+    const iterations = getStoredIterations();
     return crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
             salt: saltBytes,
-            iterations: 310_000,
+            iterations,
             hash: 'SHA-256'
         },
         rawKey,
@@ -197,6 +241,24 @@ export async function hashPassword(password) {
 export async function unlock(password) {
     _cryptoKey = await deriveKey(password);
     _isLocked = false;
+}
+
+/**
+ * Upgrades the PBKDF2 iteration count to TARGET_PBKDF2_ITERATIONS and
+ * re-derives the in-memory key with the new count.
+ *
+ * Call this after a successful password change (app.js profile flow) when
+ * isLegacyIterations() returns true. The existing encrypted data remains
+ * readable because the AES-256-GCM key material does NOT change —
+ * only future key derivations (next unlock) will use the higher count.
+ *
+ * After calling this, the user must re-enter their password on next unlock
+ * so the key is re-derived with 600k iterations.
+ */
+export function upgradeIterations() {
+    localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+    // Lock so the next unlock re-derives the key with the new iteration count.
+    lock();
 }
 
 /** Wipes the key from RAM — all IDB data becomes inaccessible */

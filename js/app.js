@@ -579,6 +579,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         return;
                     }
                     const newRecoveryCode = generateRecoveryCode();
+                    // SECURITY FIX: if the install was using legacy PBKDF2 iterations
+                    // (310k), upgrade to the current target (600k) now that the user
+                    // is actively setting a new password. upgradeIterations() persists
+                    // the new count and locks the vault so the next unlock re-derives
+                    // the key with the higher iteration count.
+                    if (cryptoLayer?.isLegacyIterations?.()) {
+                        cryptoLayer.upgradeIterations();
+                    }
                     const newLockHash = await hashStr(newPwd);
                     const newRecHash = await hashStr(normalizeCode(newRecoveryCode));
                     localStorage.setItem('workspace_lock_hash', newLockHash);

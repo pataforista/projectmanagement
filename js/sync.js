@@ -461,9 +461,15 @@ const syncManager = (() => {
         if (hasKey() && !isLocked()) {
             console.log('[Sync] Applying E2EE to snapshot...');
             try {
+                // PRIVACY FIX: strip `actor` from the plaintext metadata when E2EE is
+                // active. `actor` holds the user's display name. Leaving it in the outer
+                // (unencrypted) layer of the Drive JSON exposes who last edited the
+                // workspace to anyone with Drive access — even though the content is E2EE.
+                const { actor: _actor, ...e2eeMetadata } = data.metadata;
                 const encryptedData = {
                     ...data,
                     e2ee: true,
+                    metadata: e2eeMetadata,
                     projects: await Promise.all(data.projects.map(encryptRecord)),
                     tasks: await Promise.all(data.tasks.map(encryptRecord)),
                     cycles: await Promise.all(data.cycles.map(encryptRecord)),
