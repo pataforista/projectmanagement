@@ -799,6 +799,17 @@
     text-align: center;
 }
 
+.search-section-label {
+    padding: 6px 18px 3px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--bg-surface-2);
+    border-top: 1px solid var(--border-color);
+}
+
 /* ── Project Cards ──────────────────────────────────────────────────────────── */
 .projects-grid {
     display: grid;

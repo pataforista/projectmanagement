@@ -11,7 +11,8 @@ let canvasState = {
     isDrawing: false,
     color: '#5e6ad2', // Default accent primary
     width: 2,
-    mode: 'draw' // 'draw' | 'erase'
+    mode: 'draw', // 'draw' | 'erase'
+    diagramXml: '' // XML guardado para diagrams.net
 };
 
 let ctx;
@@ -57,6 +58,9 @@ const renderCanvas = (root) => {
            <input type="color" id="canvas-color-picker" value="${canvasState.color}" style="border:none; width:32px; height:32px; border-radius:4px; cursor:pointer; background:transparent;">
            <div class="divider" style="width:1px; height:24px; background:var(--border-color);"></div>
            
+           <button class="btn btn-secondary btn-sm" id="btn-diagrams" title="Abrir editor de diagramas (diagrams.net)">
+             <i data-feather="git-branch"></i> Diagramas
+           </button>
            <button class="btn btn-secondary btn-sm" id="btn-export-png" title="Descargar como PNG">
              <i data-feather="download"></i> Exportar
            </button>
@@ -240,6 +244,11 @@ const renderCanvas = (root) => {
         document.body.removeChild(a);
     });
 
+    // ── Diagrams.net integration ──────────────────────────────────────────────
+    root.querySelector('#btn-diagrams').addEventListener('click', () => {
+        openDiagramsEditor(canvasState.id, canvasState.diagramXml);
+    });
+
     // Return cleanup function to Router to prevent memory leaks
     return () => {
         window.removeEventListener('resize', resizeCanvas);
@@ -318,9 +327,11 @@ async function loadCanvasState(id = 'canvas_global') {
         if (doc) {
             canvasState.strokes = doc.strokes || [];
             canvasState.title = doc.title || (id === 'canvas_global' ? 'Borrador Principal' : 'Canvas');
+            canvasState.diagramXml = doc.diagramXml || '';
         } else {
             canvasState.strokes = [];
             canvasState.title = id === 'canvas_global' ? 'Borrador Principal' : 'Nuevo Canvas';
+            canvasState.diagramXml = '';
         }
     } catch (e) {
         console.error('Failed to load canvas', e);
@@ -334,11 +345,105 @@ async function saveCanvasState() {
             type: 'canvas', // Explicitly marking it to differentiate from markdown/rich-text notes
             title: canvasState.title,
             strokes: canvasState.strokes,
+            diagramXml: canvasState.diagramXml,
             updatedAt: Date.now()
         });
     } catch (e) {
         console.error('Failed to save canvas', e);
     }
+}
+
+/**
+ * Abre el editor de diagramas diagrams.net en un overlay de pantalla completa.
+ * Usa la API de embebido oficial (proto=json) para cargar/guardar el XML del diagrama.
+ * @param {string} canvasId - ID del canvas activo (para guardar correctamente).
+ * @param {string} initialXml - XML previo del diagrama (vacío si es nuevo).
+ */
+function openDiagramsEditor(canvasId, initialXml = '') {
+    // Detectar tema actual para pasar a diagrams.net
+    const isDark = document.body.classList.contains('theme-dark');
+    const uiTheme = isDark ? 'dark' : 'kennedy';
+
+    // Crear overlay de pantalla completa
+    const overlay = document.createElement('div');
+    overlay.id = 'diagrams-overlay';
+    overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        background: var(--bg-body);
+        display: flex; flex-direction: column;
+    `;
+
+    overlay.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px; padding:8px 16px;
+                    background:var(--bg-card); border-bottom:1px solid var(--border-color); flex-shrink:0;">
+            <i data-feather="git-branch" style="width:16px; color:var(--accent-primary);"></i>
+            <span style="font-weight:600; font-size:0.9rem;">Diagrams.net — ${canvasState.title}</span>
+            <span style="font-size:0.75rem; color:var(--text-muted); margin-left:4px;">
+                El diagrama se guarda automáticamente al cerrar.
+            </span>
+            <button id="btn-diagrams-close" class="btn btn-ghost btn-sm" style="margin-left:auto;">
+                <i data-feather="x"></i> Cerrar y guardar
+            </button>
+        </div>
+        <iframe id="diagrams-iframe"
+            src="https://embed.diagrams.net/?embed=1&spin=1&proto=json&ui=${uiTheme}&lang=es&noSaveBtn=0&saveAndExit=1&noExitBtn=0"
+            style="flex:1; border:none; width:100%; height:100%;"
+            allow="clipboard-read; clipboard-write">
+        </iframe>
+    `;
+
+    document.body.appendChild(overlay);
+    if (window.feather) feather.replace();
+
+    const iframe = overlay.querySelector('#diagrams-iframe');
+    let diagramLoaded = false;
+
+    // Handler para mensajes del iframe de diagrams.net
+    const onDiagramMessage = async (e) => {
+        if (e.source !== iframe.contentWindow) return;
+
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        if (msg.event === 'init') {
+            // Enviar XML existente (o plantilla vacía) cuando el editor esté listo
+            iframe.contentWindow.postMessage(JSON.stringify({
+                action: 'load',
+                autosave: 1,
+                xml: initialXml || '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>'
+            }), '*');
+            diagramLoaded = true;
+        } else if (msg.event === 'autosave' || msg.event === 'save') {
+            // Guardar XML en estado y persistir
+            canvasState.diagramXml = msg.xml;
+            canvasState.id = canvasId;
+            await saveCanvasState();
+            if (msg.event === 'save') {
+                showToast('Diagrama guardado.', 'success');
+            }
+        } else if (msg.event === 'exit') {
+            // El usuario cerró el editor con el botón interno
+            closeDiagramsOverlay();
+        }
+    };
+
+    const closeDiagramsOverlay = async () => {
+        window.removeEventListener('message', onDiagramMessage);
+        overlay.remove();
+    };
+
+    window.addEventListener('message', onDiagramMessage);
+
+    overlay.querySelector('#btn-diagrams-close').addEventListener('click', async () => {
+        // Solicitar el XML actual antes de cerrar
+        if (diagramLoaded) {
+            iframe.contentWindow.postMessage(JSON.stringify({ action: 'export', format: 'xml' }), '*');
+            // Pequeña espera para recibir el export antes de cerrar
+            await new Promise(r => setTimeout(r, 300));
+        }
+        closeDiagramsOverlay();
+        showToast('Diagrama guardado.', 'success');
+    });
 }
 
 window.renderCanvas = renderCanvas;
