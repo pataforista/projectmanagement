@@ -67,8 +67,23 @@ function renderCollaboration(root) {
     return (now - task.updatedAt) <= (15 * 60 * 1000);
   });
 
+  // SECURITY: Import hasMemberId helper
+  const { hasMemberId, setCurrentMemberId } = await import('../utils.js');
+
+  // WARNING: If no memberId configured, show alert banner
+  const memberIdWarning = !hasMemberId() ? `
+    <div style="background:var(--accent-warning);color:#000;padding:12px 16px;margin-bottom:16px;border-radius:8px;display:flex;align-items:center;gap:12px;">
+      <span style="font-size:1.5rem;">⚠️</span>
+      <div>
+        <strong>Identidad no configurada</strong><br/>
+        Tu perfil de usuario no está vinculado a un miembro del equipo. Esto afecta a la autoría de cambios y la trazabilidad. Selecciona tu miembro en la sección "Usuario activo" abajo.
+      </div>
+    </div>
+  ` : '';
+
   root.innerHTML = `
     <div class="view-inner">
+      ${memberIdWarning}
       <div class="view-header">
         <div class="view-header-text">
           <h1>Colaboración de Equipo</h1>
@@ -89,6 +104,11 @@ function renderCollaboration(root) {
             </div>
           </div>
           <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat. Recomendación: define correo de identidad en Perfil para mantener continuidad aunque cambies de equipo o dispositivo.</p>
+          ${!linkedMember ? `
+            <button id="selectMemberBtn" style="margin-top:12px;padding:8px 12px;background:var(--accent-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
+              Seleccionar mi miembro →
+            </button>
+          ` : ''}
         </div>
 
         <div class="glass-panel" style="padding:16px;">
@@ -229,6 +249,29 @@ function renderCollaboration(root) {
         ` : `<p style="color:var(--text-muted);margin:0;">No hay miembros cargados aún.</p>`}
       </div>
     </div>`;
+
+  // Setup member selector button
+  const selectBtn = root.querySelector('#selectMemberBtn');
+  if (selectBtn) {
+    selectBtn.onclick = async () => {
+      const choice = prompt(
+        'Selecciona tu miembro del equipo:\n\n' +
+        members.map((m, i) => `${i+1}. ${m.name} (ID: ${m.id})`).join('\n'),
+        members[0]?.id || ''
+      );
+      if (choice) {
+        const selected = members.find(m => m.id === choice);
+        if (selected) {
+          setCurrentMemberId(selected.id);
+          showToast(`✓ Miembro configurado: ${selected.name}`, 'success');
+          // Re-render to remove warning
+          renderCollaboration(root);
+        } else {
+          showToast('Miembro no válido seleccionado.', 'error');
+        }
+      }
+    };
+  }
 
   feather.replace();
 }

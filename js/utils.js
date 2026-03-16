@@ -154,6 +154,33 @@ function renderCompatibilityNotice({
     `;
 }
 
+/**
+ * Check if current user has configured their workspace member ID.
+ * memberId is required for proper audit trails and collaboration tracking.
+ *
+ * @returns {boolean} true if memberId is set
+ */
+function hasMemberId() {
+    return !!localStorage.getItem('workspace_user_member_id');
+}
+
+/**
+ * Set the current user's workspace member ID.
+ * This creates the link between OAuth identity and workspace team member.
+ *
+ * @param {string} memberId - ID of the team member (from members store)
+ * @returns {boolean} true if set successfully
+ */
+function setCurrentMemberId(memberId) {
+    if (!memberId) {
+        console.warn('[Utils] Attempted to set empty memberId');
+        return false;
+    }
+    localStorage.setItem('workspace_user_member_id', memberId);
+    console.log(`[Utils] Configured memberId: ${memberId}`);
+    return true;
+}
+
 function getCurrentWorkspaceMember() {
     if (!window.store || !store.get || !store.get.members) return null;
     const members = store.get.members();
@@ -415,4 +442,4 @@ window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 window.fetchWithTimeout = fetchWithTimeout;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId };
