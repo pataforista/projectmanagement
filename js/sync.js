@@ -1894,13 +1894,46 @@ const syncManager = (() => {
     const CHAT_OUTBOX_KEY = 'chat_outbox_v1';
     const CHAT_OUTBOX_MAX = 1000;
     const CHAT_OUTBOX_WARN_AT = 800;
-    const PBKDF2_MIN_ITERATIONS = 310000;
-    const PBKDF2_MAX_ITERATIONS = 1200000;
 
+    // ── PBKDF2 Security Constants ────────────────────────────────────────────
+    // SECURITY: Bounds on PBKDF2 iteration count from remote workspace.
+    // MIN: 310,000 is the legacy safe value (OWASP 2023). Older devices may have this.
+    // MAX: 1,200,000 is 2x the current target (600k, OWASP 2024). This prevents DoS:
+    //   - A collaborator cannot force unbounded iterations (would freeze mobile devices).
+    //   - Legitimate upgrades (current → future standard) are accommodated with 2x headroom.
+    //
+    // DoS Scenario Prevented:
+    //   A malicious collaborator uploads pbkdf2Iterations = 100,000,000 to Drive.
+    //   Without bounds, next unlock would derive key for ~1 hour on mobile → UX lock.
+    //   With bounds, clamped to 1.2M (reasonable derivation time ~2s on modern mobile).
+    const PBKDF2_MIN_ITERATIONS = 310_000;   // OWASP 2023 legacy minimum
+    const PBKDF2_TARGET_ITERATIONS = 600_000; // Current target (OWASP 2024)
+    const PBKDF2_MAX_ITERATIONS = 1_200_000;  // DoS protection upper bound (2x target)
+
+    /**
+     * Normalize PBKDF2 iteration count received from remote workspace.
+     * Prevents DoS via unbounded iterations while allowing legitimate upgrades.
+     *
+     * @param {*} rawValue - Raw value from remote snapshot (untrusted)
+     * @returns {number|null} Bounded iteration count, or null if invalid
+     */
     function normalizeRemoteIterations(rawValue) {
         const parsed = Number(rawValue || 0);
         if (!Number.isFinite(parsed) || parsed <= 0) return null;
-        const bounded = Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, Math.floor(parsed)));
+
+        const parsed_floor = Math.floor(parsed);
+        const bounded = Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, parsed_floor));
+
+        // Log clamping to help detect tampering or malicious uploads
+        if (bounded !== parsed_floor) {
+            const direction = parsed_floor > PBKDF2_MAX_ITERATIONS ? 'capped' : 'floored';
+            console.warn(`[Fortress] PBKDF2 iterations ${direction}: received=${parsed_floor}, normalized=${bounded}`);
+            if (parsed_floor > PBKDF2_MAX_ITERATIONS) {
+                // DoS attempt detected: log explicitly for audit trail
+                console.error(`[Fortress] ⚠️ SECURITY: Attempted DoS via excessive PBKDF2 iterations (${parsed_floor} > ${PBKDF2_MAX_ITERATIONS}). Clamped to ${bounded}.`);
+            }
+        }
+
         return bounded;
     }
 
@@ -1915,19 +1948,41 @@ const syncManager = (() => {
         }
     }
 
+    /**
+     * Persist chat messages to outbox with overflow protection.
+     * ⚠️ IMPORTANT: Messages exceeding CHAT_OUTBOX_MAX are silently dropped to prevent
+     *              unbounded localStorage growth during extended offline periods.
+     *              This is acceptable for chat (non-critical messages), but users should
+     *              be warned so they can re-connect to avoid message loss.
+     *
+     * @param {Array} messages - Pending chat messages (untrusted size)
+     * @returns {number} Actual count persisted to localStorage
+     */
     function writeChatOutbox(messages) {
+        if (!Array.isArray(messages)) {
+            console.error('[ChatSync] Invalid messages passed to writeChatOutbox');
+            return 0;
+        }
+
         const trimmed = messages.slice(-CHAT_OUTBOX_MAX);
         const dropped = Math.max(0, messages.length - trimmed.length);
+
         localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(trimmed));
+
+        // Data loss warning: explicitly inform user if messages were dropped
         if (dropped > 0) {
-            console.warn(`[ChatSync] Outbox reached limit (${CHAT_OUTBOX_MAX}). Dropped ${dropped} old message(s).`);
+            const msg = `⚠️ Cola de chat llena (${CHAT_OUTBOX_MAX} límite). Se perdieron ${dropped} mensaje(s) antiguo(s) sin enviar. Conecta a internet pronto.`;
+            console.error(`[ChatSync] ${msg}`);
             if (window.showToast) {
-                showToast(`Se alcanzó el límite del outbox (${CHAT_OUTBOX_MAX}). Se descartaron ${dropped} mensajes antiguos.`, 'warning', true);
+                showToast(msg, 'error', true); // persistent=true: don't auto-dismiss
             }
         }
-        if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
-            showToast(`Outbox con ${trimmed.length} mensajes pendientes. Revisa tu conexión para evitar pérdidas.`, 'warning');
+        // Capacity warning: user should sync soon
+        else if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
+            const remaining = CHAT_OUTBOX_MAX - trimmed.length;
+            showToast(`Cola de chat al ${Math.round(trimmed.length / CHAT_OUTBOX_MAX * 100)}% (${remaining} espacios). Conecta para sincronizar.`, 'warning');
         }
+
         return trimmed.length;
     }
 

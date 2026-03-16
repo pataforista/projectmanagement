@@ -308,10 +308,29 @@ function getObsidianFileName(uri) {
 }
 
 // ── Settings Sync ────────────────────────────────────────────────────────────
-// SECURITY: nexus_salt is intentionally excluded — it is a per-device
-// PBKDF2 derivation parameter and must never travel in a shared Drive file.
-// workspace_lock_hash is also excluded; each user manages their own
-// local password independently of the team workspace file.
+/**
+ * SECURITY POLICY: Which settings can be synchronized across devices via the shared Drive file?
+ *
+ * ✅ SYNCABLE (collaborative / non-sensitive):
+ *    - workspace_user_* (name, role, avatar, email, member_id)
+ *    - workspace_team_label, autolock_enabled, low_feedback_enabled
+ *    These contain identity and preferences shared across the team.
+ *
+ * ❌ NEVER SYNCABLE (per-device / authentication secrets):
+ *    - nexus_salt: PBKDF2 derivation parameter scoped to user email. Each device
+ *                 derives its own key → salt never travels to Drive (crypto.js scopes it).
+ *    - workspace_lock_hash: Master password hash. Each user has THEIR OWN local password,
+ *                          independent of the team workspace. Importing a remote hash would
+ *                          allow any collaborator with Drive access to replace another user's
+ *                          password → take over their workspace. MUST NEVER SYNC.
+ *    - workspace_recovery_hash: Same reason as workspace_lock_hash.
+ *
+ * References:
+ *   - AUDIT_TEAM_SYNC.md §3.5 (Issue #3.5)
+ *   - VALIDATION_LINKING_ENCRYPTION_SYNC_2026-03-16.md (Error E1.1)
+ *   - app.js:286-290 (handleRemoteWorkspace)
+ *   - sync.js:1349 (seedFromRemote → syncSettingsToLocalStorage)
+ */
 export const SYNCABLE_SETTINGS_KEYS = [
     'workspace_user_name',
     'workspace_user_role',
@@ -323,17 +342,31 @@ export const SYNCABLE_SETTINGS_KEYS = [
     'low_feedback_enabled'
 ];
 
+// These MUST NEVER be in SYNCABLE_SETTINGS_KEYS. Defensive check.
+const FORBIDDEN_SYNC_KEYS = new Set(['workspace_lock_hash', 'workspace_recovery_hash', 'nexus_salt']);
+
 /**
  * Persiste los ajustes recibidos desde el cloud en el almacenamiento local.
- * Filtra solo las claves autorizadas para evitar inyecciones de configuración.
- * @param {Object} settings - Diccionario de ajustes clave-valor.
+ * - Solo sincroniza claves en SYNCABLE_SETTINGS_KEYS (whitelist approach)
+ * - Rechaza explícitamente claves de seguridad que podrían permitir account takeover
+ * - Cada usuario mantiene su contraseña maestra local, independientemente del workspace compartido
+ *
+ * @param {Object} settings - Diccionario de ajustes clave-valor (untrusted from remote)
  */
 function syncSettingsToLocalStorage(settings) {
     if (!settings || typeof settings !== 'object') return;
 
     let changed = false;
-    let securityChanged = false;
 
+    // Defensive: detect and reject forbidden security keys in remote settings
+    for (const forbiddenKey of FORBIDDEN_SYNC_KEYS) {
+        if (Object.prototype.hasOwnProperty.call(settings, forbiddenKey)) {
+            console.error(`[Utils] ⚠️ SECURITY: Attempted sync of forbidden key "${forbiddenKey}" from remote settings. Rejecting.`);
+            // We intentionally do NOT import this key, protecting the user's local credential.
+        }
+    }
+
+    // Whitelist: only import approved settings keys
     SYNCABLE_SETTINGS_KEYS.forEach(key => {
         if (Object.prototype.hasOwnProperty.call(settings, key)) {
             const oldValue = localStorage.getItem(key);
@@ -341,22 +374,11 @@ function syncSettingsToLocalStorage(settings) {
             if (oldValue !== newValue) {
                 localStorage.setItem(key, newValue);
                 changed = true;
-                if (key === 'nexus_salt' || key === 'workspace_lock_hash') {
-                    securityChanged = true;
-                }
             }
         }
     });
 
-    if (securityChanged) {
-        console.warn('[Utils] Security context changed from remote. Forcing relock.');
-        if (window.lockWorkspace) {
-            window.lockWorkspace();
-            showToast('Ajustes de seguridad actualizados desde otro dispositivo. Sesion bloqueada.', 'warning', true);
-        } else {
-            location.reload();
-        }
-    } else if (changed) {
+    if (changed) {
         console.log('[Utils] Settings synchronized from remote.');
         if (window.updateUserProfileUI) window.updateUserProfileUI();
     }
