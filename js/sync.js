@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, computeSaltChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -634,6 +634,14 @@ const syncManager = (() => {
                 // INTEGRITY FIX: Compute checksum AFTER encryption so the remote
                 // receiver can verify integrity on the encrypted payload.
                 encryptedData.metadata.checksum = await computeChecksum(encryptedData);
+
+                // SECURITY FIX: Compute HMAC checksum of the workspace salt
+                // so remote recipients can detect if salt was poisoned by a collaborator.
+                const email = localStorage.getItem('workspace_user_email') || '';
+                if (data.workspaceSalt) {
+                    encryptedData.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
+                }
+
                 return encryptedData;
             } catch (e) {
                 console.error('[Sync] E2EE failed, sending plaintext:', e);
@@ -642,6 +650,13 @@ const syncManager = (() => {
 
         // Plaintext path: compute checksum on unencrypted snapshot.
         data.metadata.checksum = await computeChecksum(data);
+
+        // SECURITY FIX: Compute HMAC checksum of the workspace salt (plaintext path too)
+        const email = localStorage.getItem('workspace_user_email') || '';
+        if (data.workspaceSalt) {
+            data.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
+        }
+
         return data;
     }
 
@@ -1280,6 +1295,32 @@ const syncManager = (() => {
      * @param {Object} remote - Record received from the Drive snapshot.
      * @returns {Object}        The merged record.
      */
+    // Detected conflicts: { recordId: [{ field, local, remote, timestamp }] }
+    let _detectedConflicts = {};
+
+    /**
+     * Detect conflicts during merge: when local and remote have different values
+     * for the same field with equal timestamps. This requires user intervention.
+     *
+     * @param {string} recordId - ID of the record (for logging)
+     * @param {string} field - Field name where conflict was detected
+     * @param {*} localValue - Local value
+     * @param {*} remoteValue - Remote value
+     * @param {number} timestamp - Timestamp of the conflict (local === remote timestamp)
+     */
+    function recordConflict(recordId, field, localValue, remoteValue, timestamp) {
+        if (!_detectedConflicts[recordId]) {
+            _detectedConflicts[recordId] = [];
+        }
+        _detectedConflicts[recordId].push({
+            field,
+            local: localValue,
+            remote: remoteValue,
+            timestamp,
+            decision: null // Will be set by user via UI
+        });
+    }
+
     function fieldLevelMerge(local, remote) {
         // If one side is absent, the other wins unconditionally.
         if (!local) return remote;
@@ -1300,7 +1341,15 @@ const syncManager = (() => {
             const localTime  = local._timestamps?.[key]  || local.updatedAt  || local.updated_at  || 0;
             const remoteTime = remote._timestamps?.[key] || remote.updatedAt || remote.updated_at || 0;
 
-            merged[key] = localTime > remoteTime ? local[key] : remote[key];
+            // CONFLICT DETECTION: Equal timestamps + different values = real conflict
+            if (localTime === remoteTime && localTime > 0 && local[key] !== remote[key]) {
+                recordConflict(local.id, key, local[key], remote[key], localTime);
+                // For now: keep local (user has priority in their own device)
+                merged[key] = local[key];
+            } else {
+                // LWW: last-write-wins by timestamp
+                merged[key] = localTime > remoteTime ? local[key] : remote[key];
+            }
         });
 
         // Merge the _timestamps maps so future merges keep the highest-known value
@@ -1350,8 +1399,16 @@ const syncManager = (() => {
         }
 
         if (data.e2ee && data.workspaceSalt) {
-            const locked = injectWorkspaceSalt(data.workspaceSalt);
-            if (locked) {
+            // SECURITY FIX: Validate salt checksum to detect poisoning
+            const saltChecksum = data.metadata?.saltChecksum || null;
+            const result = await injectWorkspaceSalt(data.workspaceSalt, saltChecksum);
+
+            if (result.rejected) {
+                console.error('[Sync] Salt validation failed — aborting hydration');
+                return; // Abort hydration, data remains unchanged
+            }
+
+            if (result.locked) {
                 if (window.showToast) showToast('Se actualizó la llave desde Drive. Por favor ingresa tu contraseña.', 'warning', true);
                 if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
                 return; // Abort hydration
@@ -1474,6 +1531,26 @@ const syncManager = (() => {
         }
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
+
+        // CONFLICT RESOLUTION: Notify user if there were simultaneous edits
+        if (Object.keys(_detectedConflicts).length > 0) {
+            const conflictCount = Object.keys(_detectedConflicts).length;
+            const msg = `⚠️ Se detectaron ${conflictCount} conflicto(s) de edición simultánea. Se mantuvieron los cambios locales.`;
+            console.warn(`[Sync] ${msg}`, _detectedConflicts);
+            if (window.showToast) {
+                showToast(msg, 'warning', true); // persistent=true
+            }
+            // Log conflict details for audit trail
+            if (store.dispatch) {
+                await store.dispatch('ADD_LOG', {
+                    type: 'conflict',
+                    timestamp: Date.now(),
+                    message: `Conflictos detectados: ${JSON.stringify(_detectedConflicts)}`
+                });
+            }
+        }
+        // Clear conflicts for next sync
+        _detectedConflicts = {};
 
         // Advance the local snapshot counter to the accepted remote value.
         if (data.snapshotSeq !== undefined && data.snapshotSeq > localSeq) {

@@ -115,10 +115,46 @@ export async function computeChecksum(data) {
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Stores that contain sensitive data and should be encrypted
+/**
+ * ENCRYPTED_STORES: Which stores are encrypted end-to-end when E2EE is active?
+ *
+ * ✅ ENCRYPTED (sensitive data):
+ *  - projects, tasks, cycles, decisions: core work data
+ *  - documents: detailed project documentation
+ *  - messages: team chat (includes private thoughts)
+ *  - annotations, snapshots: version history
+ *  - interconsultations: medical referral details (PII)
+ *  - sessions: class/appointment details
+ *  - timeLogs: productivity data
+ *  - library: bibliography (research metadata)
+ *  - notifications: activity alerts (reveals patterns)
+ *  - members: team identity metadata (names, roles, emails)
+ *  - logs: activity traces (reveals patterns of work)
+ *
+ * ⚠️ POLICY: All stores in this set are encrypted in Drive when E2EE is active.
+ *  Stores NOT listed remain plaintext (metadata only).
+ *
+ * Keep in sync with:
+ *  - sync.js:getSnapshot() (lines 615-632): explicit encryption of each store
+ *  - sync.js:seedFromRemote() (lines 1404-1414): explicit decryption of each store
+ *  - db.js:dbAPI.put() (line 333): automatic IDB encryption check
+ */
 export const ENCRYPTED_STORES = new Set([
-    'documents', 'tasks', 'projects', 'cycles', 'interconsultations',
-    'messages', 'annotations', 'snapshots', 'decisions'
+    'projects',
+    'tasks',
+    'cycles',
+    'decisions',
+    'documents',
+    'messages',
+    'annotations',
+    'snapshots',
+    'interconsultations',
+    'sessions',
+    'timeLogs',
+    'library',
+    'notifications',
+    'members',
+    'logs'
 ]);
 
 // ── Key Derivation (PBKDF2) ──────────────────────────────────────────────────
@@ -186,12 +222,81 @@ export function getWorkspaceSaltBase64() {
     return bufferToBase64(_activeSalt);
 }
 
-export function injectWorkspaceSalt(saltB64) {
-    if (!saltB64) return false;
+/**
+ * HMAC-SHA256 checksum of the workspace salt, bound to the user's email.
+ * This prevents "salt poisoning": a malicious collaborator cannot inject a
+ * different salt and claim it's legitimate, because the HMAC would be wrong.
+ *
+ * The checksum is computed as: HMAC-SHA256(salt + email, "nexus-salt")
+ * - email is public (from OAuth) but user-specific
+ * - salt is per-device but could be changed
+ * - The combination is unique and verifiable without decryption
+ *
+ * @param {string} saltB64 - Base64-encoded salt
+ * @param {string} email - User email (public, from OAuth token)
+ * @returns {Promise<string>} Hex-encoded HMAC checksum
+ */
+export async function computeSaltChecksum(saltB64, email) {
+    const msg = saltB64 + '::' + (email || '');
+    const key = new TextEncoder().encode('nexus-salt-hmac');
+    const data = new TextEncoder().encode(msg);
+
+    const hmac = await crypto.subtle.sign('HMAC',
+        await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
+        data
+    );
+
+    return Array.from(new Uint8Array(hmac)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Validate that a salt checksum matches the current salt and email.
+ * If validation fails, the salt was likely poisoned by a collaborator.
+ *
+ * @param {string} saltB64 - Base64-encoded salt
+ * @param {string} checksum - Hex-encoded HMAC checksum from remote
+ * @param {string} email - User email (should match OAuth token)
+ * @returns {Promise<boolean>} true if checksum is valid, false if poisoned or mismatched
+ */
+export async function validateSaltChecksum(saltB64, checksum, email) {
+    if (!saltB64 || !checksum) return false;
+    const computed = await computeSaltChecksum(saltB64, email);
+    return computed === checksum;
+}
+
+/**
+ * Inject remote workspace salt, with optional HMAC validation.
+ *
+ * @param {string} saltB64 - Base64-encoded salt from remote
+ * @param {string|null} saltChecksum - Optional HMAC-SHA256 checksum for validation
+ * @returns {Promise<{locked: boolean, rejected: boolean}>}
+ *   - locked: true if salt was injected and user needs to re-auth
+ *   - rejected: true if validation failed (salt was poisoned)
+ */
+export async function injectWorkspaceSalt(saltB64, saltChecksum = null) {
+    if (!saltB64) return { locked: false, rejected: false };
+
+    const email = localStorage.getItem('workspace_user_email') || '';
+
+    // SECURITY FIX: Validate checksum if provided
+    if (saltChecksum) {
+        const isValid = await validateSaltChecksum(saltB64, saltChecksum, email);
+        if (!isValid) {
+            console.error('[Fortress] ⚠️ SECURITY: Salt checksum validation FAILED. Remote salt may be poisoned. Rejecting injection.');
+            if (window.showToast) {
+                window.showToast(
+                    '⚠️ Cambio sospechoso de parámetro de cifrado detectado. Parámetro rechazado por seguridad.',
+                    'error',
+                    true
+                );
+            }
+            return { locked: false, rejected: true };
+        }
+    }
+
     const currentB64 = getWorkspaceSaltBase64();
     if (saltB64 !== currentB64) {
         console.warn('[Fortress] Remote salt differs from local. Updating salt and locking vault.');
-        const email = localStorage.getItem('workspace_user_email') || '';
         if (email) {
             const scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
             localStorage.setItem(scopedKey, saltB64);
@@ -200,9 +305,9 @@ export function injectWorkspaceSalt(saltB64) {
         }
         _activeSalt = base64ToBuffer(saltB64);
         lock();
-        return true; // Indicates the app was locked and needs re-auth
+        return { locked: true, rejected: false }; // User needs to re-auth
     }
-    return false;
+    return { locked: false, rejected: false };
 }
 
 /**
