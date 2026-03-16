@@ -1,4 +1,4 @@
-import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
+import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, computeSaltChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
 
 const syncManager = (() => {
@@ -634,6 +634,14 @@ const syncManager = (() => {
                 // INTEGRITY FIX: Compute checksum AFTER encryption so the remote
                 // receiver can verify integrity on the encrypted payload.
                 encryptedData.metadata.checksum = await computeChecksum(encryptedData);
+
+                // SECURITY FIX: Compute HMAC checksum of the workspace salt
+                // so remote recipients can detect if salt was poisoned by a collaborator.
+                const email = localStorage.getItem('workspace_user_email') || '';
+                if (data.workspaceSalt) {
+                    encryptedData.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
+                }
+
                 return encryptedData;
             } catch (e) {
                 console.error('[Sync] E2EE failed, sending plaintext:', e);
@@ -642,6 +650,13 @@ const syncManager = (() => {
 
         // Plaintext path: compute checksum on unencrypted snapshot.
         data.metadata.checksum = await computeChecksum(data);
+
+        // SECURITY FIX: Compute HMAC checksum of the workspace salt (plaintext path too)
+        const email = localStorage.getItem('workspace_user_email') || '';
+        if (data.workspaceSalt) {
+            data.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
+        }
+
         return data;
     }
 
@@ -1280,6 +1295,32 @@ const syncManager = (() => {
      * @param {Object} remote - Record received from the Drive snapshot.
      * @returns {Object}        The merged record.
      */
+    // Detected conflicts: { recordId: [{ field, local, remote, timestamp }] }
+    let _detectedConflicts = {};
+
+    /**
+     * Detect conflicts during merge: when local and remote have different values
+     * for the same field with equal timestamps. This requires user intervention.
+     *
+     * @param {string} recordId - ID of the record (for logging)
+     * @param {string} field - Field name where conflict was detected
+     * @param {*} localValue - Local value
+     * @param {*} remoteValue - Remote value
+     * @param {number} timestamp - Timestamp of the conflict (local === remote timestamp)
+     */
+    function recordConflict(recordId, field, localValue, remoteValue, timestamp) {
+        if (!_detectedConflicts[recordId]) {
+            _detectedConflicts[recordId] = [];
+        }
+        _detectedConflicts[recordId].push({
+            field,
+            local: localValue,
+            remote: remoteValue,
+            timestamp,
+            decision: null // Will be set by user via UI
+        });
+    }
+
     function fieldLevelMerge(local, remote) {
         // If one side is absent, the other wins unconditionally.
         if (!local) return remote;
@@ -1300,7 +1341,15 @@ const syncManager = (() => {
             const localTime  = local._timestamps?.[key]  || local.updatedAt  || local.updated_at  || 0;
             const remoteTime = remote._timestamps?.[key] || remote.updatedAt || remote.updated_at || 0;
 
-            merged[key] = localTime > remoteTime ? local[key] : remote[key];
+            // CONFLICT DETECTION: Equal timestamps + different values = real conflict
+            if (localTime === remoteTime && localTime > 0 && local[key] !== remote[key]) {
+                recordConflict(local.id, key, local[key], remote[key], localTime);
+                // For now: keep local (user has priority in their own device)
+                merged[key] = local[key];
+            } else {
+                // LWW: last-write-wins by timestamp
+                merged[key] = localTime > remoteTime ? local[key] : remote[key];
+            }
         });
 
         // Merge the _timestamps maps so future merges keep the highest-known value
@@ -1350,8 +1399,16 @@ const syncManager = (() => {
         }
 
         if (data.e2ee && data.workspaceSalt) {
-            const locked = injectWorkspaceSalt(data.workspaceSalt);
-            if (locked) {
+            // SECURITY FIX: Validate salt checksum to detect poisoning
+            const saltChecksum = data.metadata?.saltChecksum || null;
+            const result = await injectWorkspaceSalt(data.workspaceSalt, saltChecksum);
+
+            if (result.rejected) {
+                console.error('[Sync] Salt validation failed — aborting hydration');
+                return; // Abort hydration, data remains unchanged
+            }
+
+            if (result.locked) {
                 if (window.showToast) showToast('Se actualizó la llave desde Drive. Por favor ingresa tu contraseña.', 'warning', true);
                 if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
                 return; // Abort hydration
@@ -1474,6 +1531,26 @@ const syncManager = (() => {
         }
 
         if (store.dispatch) await store.dispatch('HYDRATE_STORE', hydrationData);
+
+        // CONFLICT RESOLUTION: Notify user if there were simultaneous edits
+        if (Object.keys(_detectedConflicts).length > 0) {
+            const conflictCount = Object.keys(_detectedConflicts).length;
+            const msg = `⚠️ Se detectaron ${conflictCount} conflicto(s) de edición simultánea. Se mantuvieron los cambios locales.`;
+            console.warn(`[Sync] ${msg}`, _detectedConflicts);
+            if (window.showToast) {
+                showToast(msg, 'warning', true); // persistent=true
+            }
+            // Log conflict details for audit trail
+            if (store.dispatch) {
+                await store.dispatch('ADD_LOG', {
+                    type: 'conflict',
+                    timestamp: Date.now(),
+                    message: `Conflictos detectados: ${JSON.stringify(_detectedConflicts)}`
+                });
+            }
+        }
+        // Clear conflicts for next sync
+        _detectedConflicts = {};
 
         // Advance the local snapshot counter to the accepted remote value.
         if (data.snapshotSeq !== undefined && data.snapshotSeq > localSeq) {
@@ -1894,13 +1971,46 @@ const syncManager = (() => {
     const CHAT_OUTBOX_KEY = 'chat_outbox_v1';
     const CHAT_OUTBOX_MAX = 1000;
     const CHAT_OUTBOX_WARN_AT = 800;
-    const PBKDF2_MIN_ITERATIONS = 310000;
-    const PBKDF2_MAX_ITERATIONS = 1200000;
 
+    // ── PBKDF2 Security Constants ────────────────────────────────────────────
+    // SECURITY: Bounds on PBKDF2 iteration count from remote workspace.
+    // MIN: 310,000 is the legacy safe value (OWASP 2023). Older devices may have this.
+    // MAX: 1,200,000 is 2x the current target (600k, OWASP 2024). This prevents DoS:
+    //   - A collaborator cannot force unbounded iterations (would freeze mobile devices).
+    //   - Legitimate upgrades (current → future standard) are accommodated with 2x headroom.
+    //
+    // DoS Scenario Prevented:
+    //   A malicious collaborator uploads pbkdf2Iterations = 100,000,000 to Drive.
+    //   Without bounds, next unlock would derive key for ~1 hour on mobile → UX lock.
+    //   With bounds, clamped to 1.2M (reasonable derivation time ~2s on modern mobile).
+    const PBKDF2_MIN_ITERATIONS = 310_000;   // OWASP 2023 legacy minimum
+    const PBKDF2_TARGET_ITERATIONS = 600_000; // Current target (OWASP 2024)
+    const PBKDF2_MAX_ITERATIONS = 1_200_000;  // DoS protection upper bound (2x target)
+
+    /**
+     * Normalize PBKDF2 iteration count received from remote workspace.
+     * Prevents DoS via unbounded iterations while allowing legitimate upgrades.
+     *
+     * @param {*} rawValue - Raw value from remote snapshot (untrusted)
+     * @returns {number|null} Bounded iteration count, or null if invalid
+     */
     function normalizeRemoteIterations(rawValue) {
         const parsed = Number(rawValue || 0);
         if (!Number.isFinite(parsed) || parsed <= 0) return null;
-        const bounded = Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, Math.floor(parsed)));
+
+        const parsed_floor = Math.floor(parsed);
+        const bounded = Math.min(PBKDF2_MAX_ITERATIONS, Math.max(PBKDF2_MIN_ITERATIONS, parsed_floor));
+
+        // Log clamping to help detect tampering or malicious uploads
+        if (bounded !== parsed_floor) {
+            const direction = parsed_floor > PBKDF2_MAX_ITERATIONS ? 'capped' : 'floored';
+            console.warn(`[Fortress] PBKDF2 iterations ${direction}: received=${parsed_floor}, normalized=${bounded}`);
+            if (parsed_floor > PBKDF2_MAX_ITERATIONS) {
+                // DoS attempt detected: log explicitly for audit trail
+                console.error(`[Fortress] ⚠️ SECURITY: Attempted DoS via excessive PBKDF2 iterations (${parsed_floor} > ${PBKDF2_MAX_ITERATIONS}). Clamped to ${bounded}.`);
+            }
+        }
+
         return bounded;
     }
 
@@ -1915,19 +2025,41 @@ const syncManager = (() => {
         }
     }
 
+    /**
+     * Persist chat messages to outbox with overflow protection.
+     * ⚠️ IMPORTANT: Messages exceeding CHAT_OUTBOX_MAX are silently dropped to prevent
+     *              unbounded localStorage growth during extended offline periods.
+     *              This is acceptable for chat (non-critical messages), but users should
+     *              be warned so they can re-connect to avoid message loss.
+     *
+     * @param {Array} messages - Pending chat messages (untrusted size)
+     * @returns {number} Actual count persisted to localStorage
+     */
     function writeChatOutbox(messages) {
+        if (!Array.isArray(messages)) {
+            console.error('[ChatSync] Invalid messages passed to writeChatOutbox');
+            return 0;
+        }
+
         const trimmed = messages.slice(-CHAT_OUTBOX_MAX);
         const dropped = Math.max(0, messages.length - trimmed.length);
+
         localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(trimmed));
+
+        // Data loss warning: explicitly inform user if messages were dropped
         if (dropped > 0) {
-            console.warn(`[ChatSync] Outbox reached limit (${CHAT_OUTBOX_MAX}). Dropped ${dropped} old message(s).`);
+            const msg = `⚠️ Cola de chat llena (${CHAT_OUTBOX_MAX} límite). Se perdieron ${dropped} mensaje(s) antiguo(s) sin enviar. Conecta a internet pronto.`;
+            console.error(`[ChatSync] ${msg}`);
             if (window.showToast) {
-                showToast(`Se alcanzó el límite del outbox (${CHAT_OUTBOX_MAX}). Se descartaron ${dropped} mensajes antiguos.`, 'warning', true);
+                showToast(msg, 'error', true); // persistent=true: don't auto-dismiss
             }
         }
-        if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
-            showToast(`Outbox con ${trimmed.length} mensajes pendientes. Revisa tu conexión para evitar pérdidas.`, 'warning');
+        // Capacity warning: user should sync soon
+        else if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
+            const remaining = CHAT_OUTBOX_MAX - trimmed.length;
+            showToast(`Cola de chat al ${Math.round(trimmed.length / CHAT_OUTBOX_MAX * 100)}% (${remaining} espacios). Conecta para sincronizar.`, 'warning');
         }
+
         return trimmed.length;
     }
 
