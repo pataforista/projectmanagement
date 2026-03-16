@@ -22,6 +22,7 @@ const ROUTES = {
     '/canvas': 'canvas',
     '/graph': 'graph',
     '/collaboration': 'collaboration',
+    '/notes-wiki': 'notes-wiki',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -41,6 +42,7 @@ const ROUTE_META = {
     integrations: { label: 'Integraciones', subtitle: 'Conecta con Google, Zotero y Todoist.' },
     canvas: { label: 'Canvas', subtitle: 'Tablero visual de ideas y proyectos.' },
     collaboration: { label: 'Colaboración', subtitle: 'Estado operativo del equipo, asignaciones y protocolos.' },
+    'notes-wiki': { label: 'Wiki', subtitle: 'Documentación jerárquica: Libros, Capítulos y Páginas.' },
     project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
     document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
 };

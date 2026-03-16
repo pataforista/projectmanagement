@@ -2,6 +2,49 @@
  * views/writing.js — Manuscript Mode (Scrivener-like)
  */
 
+const EDITOR_TOOLBAR_CSS = `
+  .wr-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 6px 12px;
+    background: var(--bg-surface-2);
+    border-bottom: 1px solid var(--border-color);
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .wr-toolbar-btn {
+    padding: 4px 7px;
+    border: none;
+    background: transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-family: inherit;
+    line-height: 1;
+    transition: background 0.12s, color 0.12s;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+  }
+  .wr-toolbar-btn:hover {
+    background: var(--bg-accent);
+    color: var(--text-primary);
+  }
+  .wr-toolbar-btn i {
+    width: 13px;
+    height: 13px;
+  }
+  .wr-toolbar-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+    margin: 0 4px;
+  }
+`;
+
 const SLASH_MENU_CSS = `
   .slash-menu {
     position: absolute;
@@ -61,6 +104,14 @@ window.addAIChatMessage = function (text, type = 'system') {
 };
 
 function renderWriting(root) {
+  // Inject toolbar CSS once
+  if (!document.getElementById('wr-toolbar-style')) {
+    const s = document.createElement('style');
+    s.id = 'wr-toolbar-style';
+    s.textContent = EDITOR_TOOLBAR_CSS;
+    document.head.appendChild(s);
+  }
+
   // Include all project types that involve text work
   const projects = store.get.projects().filter(p =>
     ['Artículo', 'Libro', 'Investigación', 'Clase', 'Presentación', 'Capítulo'].includes(p.type)
@@ -153,6 +204,8 @@ function renderWriting(root) {
               <button class="btn btn-icon btn-sm" title="Exportar Markdown plano" id="wr-export"><i data-feather="download"></i></button>
               <button class="btn btn-icon btn-sm" title="Exportar Pandoc (.md con frontmatter YAML + bibliografía)" id="wr-export-pandoc"><i data-feather="file-text"></i></button>
               <button class="btn btn-icon btn-sm" id="wr-export-quarto" title="Exportar Quarto (.qmd)"><i data-feather="share"></i></button>
+              <button class="btn btn-icon btn-sm" id="wr-export-pdf" title="Exportar a PDF (impresión)"><i data-feather="printer"></i></button>
+              <button class="btn btn-icon btn-sm" id="wr-export-html" title="Exportar HTML autocontenido"><i data-feather="code"></i></button>
               <button class="btn btn-primary btn-sm" id="wr-save">Guardar</button>
             </div>
           </header>
@@ -164,6 +217,27 @@ function renderWriting(root) {
             <textarea id="wr-properties" class="form-textarea" style="min-height:60px; font-family:monospace; font-size:0.75rem; border:none; background:transparent; padding:0 0 12px 0;" placeholder="estado: borrador&#10;revisor: Dr. Gomez">
 ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify(doc.properties, null, 2)) : ''}
             </textarea>
+          </div>
+          <!-- Markdown Formatting Toolbar (Lexical-inspired) -->
+          <div class="wr-toolbar" id="wr-format-toolbar">
+            <button class="wr-toolbar-btn" data-fmt="bold" title="Negrita (Ctrl+B)"><b>B</b></button>
+            <button class="wr-toolbar-btn" data-fmt="italic" title="Cursiva (Ctrl+I)"><i>I</i></button>
+            <button class="wr-toolbar-btn" data-fmt="strikethrough" title="Tachado"><s>S</s></button>
+            <button class="wr-toolbar-btn" data-fmt="code-inline" title="Código inline"><i data-feather="code" style="width:12px;height:12px;"></i></button>
+            <div class="wr-toolbar-sep"></div>
+            <button class="wr-toolbar-btn" data-fmt="h1" title="Título H1">H1</button>
+            <button class="wr-toolbar-btn" data-fmt="h2" title="Título H2">H2</button>
+            <button class="wr-toolbar-btn" data-fmt="h3" title="Título H3">H3</button>
+            <div class="wr-toolbar-sep"></div>
+            <button class="wr-toolbar-btn" data-fmt="ul" title="Lista desordenada"><i data-feather="list" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="ol" title="Lista numerada"><i data-feather="hash" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="blockquote" title="Cita blockquote"><i data-feather="message-square" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="hr" title="Línea horizontal">—</button>
+            <div class="wr-toolbar-sep"></div>
+            <button class="wr-toolbar-btn" data-fmt="link" title="Enlace"><i data-feather="link" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="image" title="Imagen"><i data-feather="image" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="table" title="Tabla markdown"><i data-feather="grid" style="width:12px;height:12px;"></i></button>
+            <button class="wr-toolbar-btn" data-fmt="code-block" title="Bloque de código"><i data-feather="terminal" style="width:12px;height:12px;"></i></button>
           </div>
           <div class="editor-body" style="position:relative; flex:1; display:flex; flex-direction:column;">
             <div id="wr-markdown-preview" style="position:absolute; inset:0; background:var(--bg-surface); z-index:3; overflow-y:auto; padding:20px; display:none; line-height:1.6;" class="content-view"></div>
@@ -205,6 +279,67 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
     `;
 
     feather.replace();
+
+    // ── Markdown Formatting Toolbar ───────────────────────────────────────────
+    const applyFormat = (fmt) => {
+      const ta = root.querySelector('#wr-editor');
+      if (!ta) return;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const sel = ta.value.substring(start, end);
+      const before = ta.value.substring(0, start);
+      const after = ta.value.substring(end);
+
+      const insertAround = (prefix, suffix = prefix) => {
+        ta.value = before + prefix + sel + suffix + after;
+        ta.setSelectionRange(start + prefix.length, end + prefix.length);
+        ta.focus();
+      };
+      const insertLine = (prefix) => {
+        // Find start of line
+        const lineStart = before.lastIndexOf('\n') + 1;
+        const lineContent = ta.value.substring(lineStart);
+        const lineEnd = lineContent.indexOf('\n');
+        const line = lineEnd >= 0 ? lineContent.substring(0, lineEnd) : lineContent;
+        ta.value = ta.value.substring(0, lineStart) + prefix + line + ta.value.substring(lineStart + line.length);
+        ta.setSelectionRange(lineStart + prefix.length, lineStart + prefix.length + sel.length);
+        ta.focus();
+      };
+      const insertBlock = (text) => {
+        const nl = before.endsWith('\n') || before === '' ? '' : '\n';
+        ta.value = before + nl + text + '\n' + after;
+        ta.focus();
+      };
+
+      if (fmt === 'bold') insertAround('**');
+      else if (fmt === 'italic') insertAround('*');
+      else if (fmt === 'strikethrough') insertAround('~~');
+      else if (fmt === 'code-inline') insertAround('`');
+      else if (fmt === 'h1') insertLine('# ');
+      else if (fmt === 'h2') insertLine('## ');
+      else if (fmt === 'h3') insertLine('### ');
+      else if (fmt === 'blockquote') insertLine('> ');
+      else if (fmt === 'ul') insertLine('- ');
+      else if (fmt === 'ol') insertLine('1. ');
+      else if (fmt === 'hr') insertBlock('\n---');
+      else if (fmt === 'link') insertAround('[', '](url)');
+      else if (fmt === 'image') insertBlock(`![${sel || 'descripción'}](url)`);
+      else if (fmt === 'table') insertBlock('| Columna 1 | Columna 2 | Columna 3 |\n|-----------|-----------|----------|\n| celda 1   | celda 2   | celda 3  |');
+      else if (fmt === 'code-block') insertBlock('```\n' + sel + '\n```');
+
+      updateWordCount();
+    };
+
+    root.querySelector('#wr-format-toolbar')?.querySelectorAll('[data-fmt]').forEach(btn => {
+      btn.addEventListener('click', () => applyFormat(btn.dataset.fmt));
+    });
+
+    // Keyboard shortcuts for common formats
+    root.querySelector('#wr-editor')?.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); applyFormat('bold'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'i') { e.preventDefault(); applyFormat('italic'); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); applyFormat('link'); }
+    });
 
     // AI & ELN Listeners
     root.querySelector('#wr-ai-toggle')?.addEventListener('click', () => {
@@ -768,6 +903,109 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
 
       downloadFile(`${title}.qmd`, qmdContent);
       showToast('Archivo Quarto (.qmd) exportado.', 'success');
+    });
+
+    // ── PDF Export (via print dialog) ─────────────────────────────────────────
+    root.querySelector('#wr-export-pdf')?.addEventListener('click', () => {
+      const title = root.querySelector('#wr-section-title').value.trim() || p?.name || 'Manuscrito';
+      const content = root.querySelector('#wr-editor').value;
+
+      // Render markdown to HTML for printing
+      const html = content
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+        .replace(/^\- (.*$)/gim, '<li>$1</li>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/~~(.*?)~~/g, '<del>$1</del>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^---$/gim, '<hr>')
+        .replace(/\n/g, '<br>');
+
+      const printWin = window.open('', '_blank', 'width=800,height=900');
+      printWin.document.write(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; color: #111; line-height: 1.7; font-size: 12pt; }
+    h1, h2, h3 { font-family: 'Helvetica Neue', sans-serif; margin-top: 1.5em; }
+    h1 { font-size: 2em; border-bottom: 2px solid #111; padding-bottom: 0.3em; }
+    h2 { font-size: 1.5em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; }
+    blockquote { border-left: 4px solid #999; padding-left: 1em; color: #555; margin: 1em 0; }
+    code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
+    pre { background: #f4f4f4; padding: 1em; border-radius: 5px; overflow-x: auto; }
+    li { margin-bottom: 0.3em; }
+    hr { border: none; border-top: 1px solid #ccc; margin: 2em 0; }
+    @media print { body { margin: 20mm; } }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div>${html}</div>
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`);
+      printWin.document.close();
+      showToast('Ventana de impresión abierta. Guarda como PDF desde el diálogo de impresión.', 'info');
+    });
+
+    // ── HTML Export (descarga archivo .html autocontenido) ────────────────────
+    root.querySelector('#wr-export-html')?.addEventListener('click', () => {
+      const title = root.querySelector('#wr-section-title').value.trim() || p?.name || 'Manuscrito';
+      const content = root.querySelector('#wr-editor').value;
+      const today = new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      const html = content
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>')
+        .replace(/^\- (.*$)/gim, '<li>$1</li>')
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/~~(.*?)~~/g, '<del>$1</del>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/^---$/gim, '<hr>')
+        .replace(/\n/g, '<br>');
+
+      const htmlFile = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body { font-family: Georgia, serif; max-width: 760px; margin: 48px auto; color: #1a1a1a; line-height: 1.75; font-size: 16px; padding: 0 24px; }
+    h1, h2, h3 { font-family: 'Helvetica Neue', Arial, sans-serif; color: #111; }
+    h1 { font-size: 2.2em; border-bottom: 2px solid #111; padding-bottom: 0.4em; margin-top: 0; }
+    h2 { font-size: 1.6em; border-bottom: 1px solid #ddd; padding-bottom: 0.2em; margin-top: 1.8em; }
+    h3 { font-size: 1.2em; margin-top: 1.4em; }
+    blockquote { border-left: 4px solid #6b7280; padding: 0.5em 1em; background: #f9fafb; color: #374151; margin: 1.2em 0; border-radius: 0 6px 6px 0; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.88em; color: #374151; }
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 2.5em 0; }
+    li { margin-bottom: 0.4em; }
+    .meta { color: #6b7280; font-size: 0.88em; margin-bottom: 2em; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <p class="meta">Exportado el ${today} — Workspace de Producción</p>
+  <div>${html}</div>
+</body>
+</html>`;
+
+      const blob = new Blob([htmlFile], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${title}.html`;
+      a.click(); URL.revokeObjectURL(url);
+      showToast('Archivo HTML exportado.', 'success');
     });
 
     // Preview and Dataview parser

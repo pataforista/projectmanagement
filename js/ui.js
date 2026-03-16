@@ -149,30 +149,142 @@ export function closeSearch() {
     if (document.getElementById('search-input')) document.getElementById('search-input').value = '';
 }
 
-export function handleSearch(q) {
+export async function handleSearch(q) {
     const results = document.getElementById('search-results');
     if (!results) return;
-    if (!q.trim()) { results.innerHTML = `<div class="search-hint">Escribe para buscar...</div>`; return; }
+    if (!q.trim()) { results.innerHTML = `<div class="search-hint">Escribe para buscar tareas, proyectos, documentos y notas…</div>`; return; }
     const ql = q.toLowerCase();
-    const matchedProjs = store.get.projects().filter(p => p.name.toLowerCase().includes(ql)).slice(0, 4);
-    const matchedTasks = store.get.allTasks().filter(t => t.title.toLowerCase().includes(ql)).slice(0, 8);
 
-    if (!matchedTasks.length && !matchedProjs.length) {
-        results.innerHTML = `<div class="search-hint">Sin resultados para "${esc(q)}".</div>`;
+    // ── Búsqueda básica (en memoria, sin async) ──────────────────────────────
+    const matchedProjs = store.get.projects().filter(p => p.name.toLowerCase().includes(ql)).slice(0, 4);
+    const matchedTasks = store.get.allTasks().filter(t =>
+        t.title.toLowerCase().includes(ql) ||
+        (t.description || '').toLowerCase().includes(ql)
+    ).slice(0, 6);
+
+    // ── Full-text en documentos (desde dbAPI para incluir contenido) ──────────
+    let matchedDocs = [];
+    let matchedWiki = [];
+    try {
+        const allDocs = await window.dbAPI.getAll('documents');
+        allDocs.filter(d => !d._deleted && d.wikiType === undefined).forEach(d => {
+            const titleMatch = (d.title || '').toLowerCase().includes(ql);
+            const contentMatch = (d.content || '').toLowerCase().includes(ql);
+            if (titleMatch || contentMatch) {
+                // Get a short excerpt around the match
+                let excerpt = '';
+                if (contentMatch && !titleMatch) {
+                    const idx = (d.content || '').toLowerCase().indexOf(ql);
+                    const start = Math.max(0, idx - 40);
+                    excerpt = '…' + (d.content || '').substring(start, start + 100).replace(/\n/g, ' ') + '…';
+                }
+                matchedDocs.push({ ...d, _excerpt: excerpt });
+            }
+        });
+        matchedDocs = matchedDocs.slice(0, 5);
+
+        // ── Full-text en notas Wiki ────────────────────────────────────────────
+        allDocs.filter(d => !d._deleted && d.wikiType && d.wikiType.startsWith('wiki-')).forEach(d => {
+            const titleMatch = (d.title || '').toLowerCase().includes(ql);
+            const contentMatch = (d.content || '').toLowerCase().includes(ql);
+            if (titleMatch || contentMatch) {
+                let excerpt = '';
+                if (contentMatch && !titleMatch) {
+                    const idx = (d.content || '').toLowerCase().indexOf(ql);
+                    const start = Math.max(0, idx - 30);
+                    excerpt = '…' + (d.content || '').substring(start, start + 80).replace(/\n/g, ' ') + '…';
+                }
+                matchedWiki.push({ ...d, _excerpt: excerpt });
+            }
+        });
+        matchedWiki = matchedWiki.slice(0, 4);
+    } catch (_e) { /* DB not ready yet */ }
+
+    // ── Búsqueda en biblioteca ─────────────────────────────────────────────────
+    const matchedLib = (store.get.library ? store.get.library() : []).filter(lib =>
+        (lib.title || '').toLowerCase().includes(ql) ||
+        (lib.author || '').toLowerCase().includes(ql) ||
+        (lib.citeKey || '').toLowerCase().includes(ql)
+    ).slice(0, 3);
+
+    const total = matchedProjs.length + matchedTasks.length + matchedDocs.length + matchedWiki.length + matchedLib.length;
+
+    if (!total) {
+        results.innerHTML = `<div class="search-hint">Sin resultados para "<b>${esc(q)}</b>".</div>`;
         return;
     }
-    results.innerHTML = [
-        ...matchedProjs.map(p => `
+
+    // Highlight matching term in text
+    const highlight = (text) => {
+        if (!text) return '';
+        const safe = esc(text);
+        const re = new RegExp(`(${esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return safe.replace(re, '<mark style="background:var(--accent-primary); color:white; border-radius:2px; padding:0 2px;">$1</mark>');
+    };
+
+    const sections = [];
+
+    if (matchedProjs.length) {
+        sections.push(`<div class="search-section-label">Proyectos</div>`);
+        sections.push(...matchedProjs.map(p => `
             <div class="search-result-item" onclick="router.navigate('/project/${p.id}'); closeSearch();">
                 <i data-feather="briefcase" style="color:${p.color || 'var(--accent-primary)'}"></i>
-                <div class="res-info"><span class="res-title">${esc(p.name)}</span><span class="res-meta">Proyecto</span></div>
-            </div>`),
-        ...matchedTasks.map(t => `
+                <div class="res-info">
+                    <span class="res-title">${highlight(p.name)}</span>
+                    <span class="res-meta">Proyecto · ${p.status || ''}</span>
+                </div>
+            </div>`));
+    }
+
+    if (matchedTasks.length) {
+        sections.push(`<div class="search-section-label">Tareas</div>`);
+        sections.push(...matchedTasks.map(t => `
             <div class="search-result-item" onclick="router.navigate('/backlog'); closeSearch();">
                 <i data-feather="check-square"></i>
-                <div class="res-info"><span class="res-title">${esc(t.title)}</span><span class="res-meta">Tarea</span></div>
-            </div>`)
-    ].join('');
+                <div class="res-info">
+                    <span class="res-title">${highlight(t.title)}</span>
+                    <span class="res-meta">Tarea · ${t.status || ''}</span>
+                </div>
+            </div>`));
+    }
+
+    if (matchedDocs.length) {
+        sections.push(`<div class="search-section-label">Documentos</div>`);
+        sections.push(...matchedDocs.map(d => `
+            <div class="search-result-item" onclick="router.navigate('/writing'); closeSearch();">
+                <i data-feather="file-text" style="color:var(--accent-teal)"></i>
+                <div class="res-info">
+                    <span class="res-title">${highlight(d.title || 'Documento sin título')}</span>
+                    ${d._excerpt ? `<span class="res-meta" style="font-style:italic;">${highlight(d._excerpt)}</span>` : '<span class="res-meta">Documento de escritura</span>'}
+                </div>
+            </div>`));
+    }
+
+    if (matchedWiki.length) {
+        sections.push(`<div class="search-section-label">Wiki</div>`);
+        sections.push(...matchedWiki.map(d => `
+            <div class="search-result-item" onclick="router.navigate('/notes-wiki'); closeSearch();">
+                <i data-feather="book-open" style="color:var(--accent-warning)"></i>
+                <div class="res-info">
+                    <span class="res-title">${highlight(d.title || 'Página sin título')}</span>
+                    ${d._excerpt ? `<span class="res-meta" style="font-style:italic;">${highlight(d._excerpt)}</span>` : `<span class="res-meta">${d.wikiType === 'wiki-book' ? 'Libro' : d.wikiType === 'wiki-chapter' ? 'Capítulo' : 'Página'} de Wiki</span>`}
+                </div>
+            </div>`));
+    }
+
+    if (matchedLib.length) {
+        sections.push(`<div class="search-section-label">Biblioteca</div>`);
+        sections.push(...matchedLib.map(lib => `
+            <div class="search-result-item" onclick="router.navigate('/library'); closeSearch();">
+                <i data-feather="book" style="color:var(--accent-primary)"></i>
+                <div class="res-info">
+                    <span class="res-title">${highlight(lib.title || 'Recurso sin título')}</span>
+                    <span class="res-meta">${lib.author ? highlight(lib.author) : 'Biblioteca'}</span>
+                </div>
+            </div>`));
+    }
+
+    results.innerHTML = sections.join('');
     if (window.feather) feather.replace();
 }
 
