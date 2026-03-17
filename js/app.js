@@ -155,6 +155,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             authCodeDone.onclick = onDone;
         };
 
+        /**
+         * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile.
+         * With the BUG 33 Web Worker fix, PBKDF2 runs off the main thread, so
+         * any spinner/animation shown here will remain fluid. Show a loading
+         * message and disable the form before awaiting unlock(), then restore.
+         * The setTimeout(0) yield gives the browser one repaint to render the
+         * loading state before the worker is spawned.
+         */
+        async function unlockWithFeedback(pwd, submitEl) {
+            const prevText = authSubtitle.textContent;
+            authSubtitle.textContent = 'Verificando contraseña…';
+            authPassword.disabled = true;
+            if (submitEl) submitEl.disabled = true;
+            // Yield one repaint so the loading message renders before worker spawn.
+            await new Promise(r => setTimeout(r, 0));
+            try {
+                if (cryptoLayer) await cryptoLayer.unlock(pwd);
+            } finally {
+                authPassword.disabled = false;
+                if (submitEl) submitEl.disabled = false;
+                authSubtitle.textContent = prevText;
+            }
+        }
+
         if (!savedHash) {
             authOverlay.classList.add('open');
             const setupPanel = document.getElementById('auth-setup-panel');
@@ -321,30 +345,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Fallback si por alguna razón no están los elementos nuevos
                 authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
                 setupPasswordCreation(false);
-            }
-
-            /**
-             * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile.
-             * With the BUG 33 Web Worker fix, PBKDF2 runs off the main thread, so
-             * any spinner/animation shown here will remain fluid. Show a loading
-             * message and disable the form before awaiting unlock(), then restore.
-             * The setTimeout(0) yield gives the browser one repaint to render the
-             * loading state before the worker is spawned.
-             */
-            async function unlockWithFeedback(pwd, submitEl) {
-                const prevText = authSubtitle.textContent;
-                authSubtitle.textContent = 'Verificando contraseña…';
-                authPassword.disabled = true;
-                if (submitEl) submitEl.disabled = true;
-                // Yield one repaint so the loading message renders before worker spawn.
-                await new Promise(r => setTimeout(r, 0));
-                try {
-                    if (cryptoLayer) await cryptoLayer.unlock(pwd);
-                } finally {
-                    authPassword.disabled = false;
-                    if (submitEl) submitEl.disabled = false;
-                    authSubtitle.textContent = prevText;
-                }
             }
 
             function setupPasswordCreation(isRemotePresent = false) {

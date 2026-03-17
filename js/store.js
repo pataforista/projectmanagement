@@ -839,7 +839,6 @@ const store = (() => {
                 // (Must run after merge so a fresh tombstone from a remote device is
                 // still applied before potentially being eligible for pruning — in
                 // practice a just-deleted record is < 30 days old and will pass.)
-                const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
                 const _tombstoneCutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
                 for (const key of validKeys) {
                     if (Array.isArray(sanitizedPayload[key])) {

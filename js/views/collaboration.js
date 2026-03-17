@@ -2,7 +2,7 @@
  * views/collaboration.js — Team collaboration diagnostics and protocol guide
  */
 
-function renderCollaboration(root) {
+async function renderCollaboration(root) {
   const members = store.get.members();
   const tasks = store.get.allTasks();
   const messages = store.get.messages ? store.get.messages() : [];
