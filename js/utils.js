@@ -340,12 +340,21 @@ function getObsidianFileName(uri) {
 /**
  * SECURITY POLICY: Which settings can be synchronized across devices via the shared Drive file?
  *
- * ✅ SYNCABLE (collaborative / non-sensitive):
- *    - workspace_user_* (name, role, avatar, email, member_id)
- *    - workspace_team_label, autolock_enabled, low_feedback_enabled
- *    These contain identity and preferences shared across the team.
+ * ✅ SYNCABLE (workspace-global / non-identity):
+ *    - workspace_team_label: Team name, shared across all members.
+ *    - autolock_enabled, low_feedback_enabled: Workspace-wide UI/security preferences.
  *
- * ❌ NEVER SYNCABLE (per-device / authentication secrets):
+ * ❌ NEVER SYNCABLE — per-user identity (BUG FIX: user overwrite):
+ *    - workspace_user_name, workspace_user_email, workspace_user_avatar,
+ *      workspace_user_role, workspace_user_member_id:
+ *      These fields identify the LOCAL authenticated user. They are set by
+ *      syncIdentityToWorkspaceProfile() from the Google ID token on sign-in.
+ *      Including them in the Drive snapshot caused every pull to overwrite the
+ *      current user's identity with the last person who pushed — e.g. always
+ *      reverting to the coordinating user regardless of who is logged in.
+ *      MUST NEVER be imported from a remote snapshot.
+ *
+ * ❌ NEVER SYNCABLE — per-device authentication secrets:
  *    - nexus_salt: PBKDF2 derivation parameter scoped to user email. Each device
  *                 derives its own key → salt never travels to Drive (crypto.js scopes it).
  *    - workspace_lock_hash: Master password hash. Each user has THEIR OWN local password,
@@ -361,23 +370,33 @@ function getObsidianFileName(uri) {
  *   - sync.js:1349 (seedFromRemote → syncSettingsToLocalStorage)
  */
 export const SYNCABLE_SETTINGS_KEYS = [
-    'workspace_user_name',
-    'workspace_user_role',
-    'workspace_user_avatar',
-    'workspace_user_member_id',
-    'workspace_user_email',
     'workspace_team_label',
     'autolock_enabled',
     'low_feedback_enabled'
 ];
 
 // These MUST NEVER be in SYNCABLE_SETTINGS_KEYS. Defensive check.
-const FORBIDDEN_SYNC_KEYS = new Set(['workspace_lock_hash', 'workspace_recovery_hash', 'nexus_salt']);
+// Includes user identity keys to prevent the user-overwrite bug: remote snapshots
+// must never replace the local authenticated user's identity.
+const FORBIDDEN_SYNC_KEYS = new Set([
+    'workspace_lock_hash',
+    'workspace_recovery_hash',
+    'nexus_salt',
+    'workspace_user_name',
+    'workspace_user_email',
+    'workspace_user_avatar',
+    'workspace_user_role',
+    'workspace_user_member_id',
+]);
 
 /**
  * Persiste los ajustes recibidos desde el cloud en el almacenamiento local.
  * - Solo sincroniza claves en SYNCABLE_SETTINGS_KEYS (whitelist approach)
- * - Rechaza explícitamente claves de seguridad que podrían permitir account takeover
+ * - Rechaza explícitamente claves de identidad de usuario: la identidad del usuario
+ *   local se establece exclusivamente desde el token de Google (syncIdentityToWorkspaceProfile),
+ *   nunca desde el snapshot de Drive. Importarlas causaría que cualquier sync sobreescriba
+ *   al usuario actual con la identidad de quien hizo el último push (BUG: user-overwrite).
+ * - Rechaza claves de autenticación que podrían permitir account takeover
  * - Cada usuario mantiene su contraseña maestra local, independientemente del workspace compartido
  *
  * @param {Object} settings - Diccionario de ajustes clave-valor (untrusted from remote)
