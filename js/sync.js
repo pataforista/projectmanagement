@@ -92,11 +92,25 @@ const syncManager = (() => {
     }
 
     function saveConfig(next) {
+        const current = getConfig();
         const normalized = {
             ...defaultConfig,
             ...next,
             autoSyncMinutes: Math.max(1, Number(next.autoSyncMinutes) || defaultConfig.autoSyncMinutes),
         };
+        
+        // BUG FIX: If the user changes target folder or file name, we MUST clear the
+        // cached Drive IDs from localStorage so the app forcefully searches for or creates
+        // the new file in the new location, instead of blindly using the old file ID.
+        if (current.sharedFolderId !== normalized.sharedFolderId || current.fileName !== normalized.fileName) {
+            console.log('[Sync] Drive settings changed. Purging cached IDs to force relocation.');
+            localStorage.removeItem('gdrive_file_id');
+            localStorage.removeItem('gdrive_folder_id'); // Allow resolving the new link or falling back to root
+            localStorage.removeItem('gdrive_chat_folder_id');
+            localStorage.removeItem('gdrive_chat_last_poll'); // Reset poll cursor for the new chat folder
+            _remoteChecked = false; // Reset the ghost wipe guard
+        }
+
         localStorage.setItem(CONFIG_KEY, JSON.stringify(normalized));
         configureAutoSync(normalized.autoSyncMinutes);
         return normalized;
