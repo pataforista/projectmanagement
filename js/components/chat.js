@@ -303,6 +303,7 @@ export const ChatManager = (() => {
 
         // Color helper: Hash string to HSL color
         const stringToColor = (str) => {
+            if (!str) return 'var(--accent-primary)'; // Fallback for missing sender
             let hash = 0;
             for (let i = 0; i < str.length; i++) {
                 hash = str.charCodeAt(i) + ((hash << 5) - hash);
@@ -314,15 +315,16 @@ export const ChatManager = (() => {
         list.innerHTML = messages
             .sort((a, b) => a.timestamp - b.timestamp)
             .map(m => {
-                const isMe = (m.senderId && m.senderId === currentUser.id) || m.sender === currentUser.label || m.sender === currentUser.name;
-                const userColor = stringToColor(m.sender);
-                const initials = (m.sender || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                const senderName = m.sender || 'Usuario Desconocido';
+                const isMe = (m.senderId && m.senderId === currentUser.id) || senderName === currentUser.label || senderName === currentUser.name;
+                const userColor = stringToColor(senderName);
+                const initials = senderName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
                 
                 return `
                     <div class="chat-row ${isMe ? 'sent' : 'received'}">
                         ${!isMe ? `<div class="avatar" style="width:24px; height:24px; font-size:10px; background:${userColor}; flex-shrink:0;">${initials}</div>` : ''}
                         <div class="chat-msg ${isMe ? 'sent' : 'received'}">
-                            ${!isMe ? `<span style="color:${userColor}; font-weight:700; display:block; font-size:0.7rem; margin-bottom:4px;">${esc(m.sender)}</span>` : ''}
+                            ${!isMe ? `<span style="color:${userColor}; font-weight:700; display:block; font-size:0.7rem; margin-bottom:4px;">${esc(senderName)}</span>` : ''}
                             <div class="chat-msg-text">${esc(m.text)}</div>
                             <div class="chat-msg-meta" style="text-align:${isMe ? 'right' : 'left'};">
                                 ${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

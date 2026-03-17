@@ -144,7 +144,12 @@ const SCHEMAS = {
 };
 
 // Allowed top-level keys in a HYDRATE_STORE payload
-const ALLOWED_KEYS = new Set(Object.keys(SCHEMAS));
+const METADATA_KEYS = new Set([
+    'version', 'snapshotSeq', 'updatedAt', 'metadata',
+    'settings', 'workspaceSalt', 'pbkdf2Iterations', 'e2ee'
+]);
+
+const ALLOWED_KEYS = new Set([...Object.keys(SCHEMAS), ...METADATA_KEYS]);
 
 // ── Public Validator ─────────────────────────────────────────────────────────
 
@@ -173,7 +178,14 @@ export function validateSyncPayload(payload) {
             continue;
         }
 
+        // Handle metadata keys (pass through)
+        if (METADATA_KEYS.has(key)) {
+            valid[key] = records;
+            continue;
+        }
+
         if (!Array.isArray(records)) continue;
+
 
         const schema = SCHEMAS[key];
         const cleanRecords = [];
