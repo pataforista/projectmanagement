@@ -1205,17 +1205,17 @@ const syncManager = (() => {
         const metadata = { name, mimeType: 'application/json' };
         if (parentId) metadata.parents = [parentId];
 
-        // BUG 27 FIX: accept a pre-serialized string to avoid double JSON.stringify.
-        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([contentStr], { type: 'application/json' }));
-
-        const resp = await fetchWithTimeout('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+        // BUG 38 FIX: The Google Drive API's multipart fallback logic drops the `parents`
+        // array when parsing browser-generated `multipart/form-data` (FormData). This
+        // caused the workspace JSON file to end up at the root of "My Drive" instead of
+        // inside `Nexus_Workspace`.
+        // Fix: Use a bulletproof two-step process. First POST the JSON metadata to create
+        // the file in the exact folder, then PATCH the media content.
+        const resp = await fetchWithTimeout('https://www.googleapis.com/drive/v3/files?supportsAllDrives=true', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}` },
-            body: form,
-            timeout: 15000
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata),
+            timeout: 10000
         });
         const result = await resp.json();
 
@@ -1226,6 +1226,10 @@ const syncManager = (() => {
         }
 
         if (!result.id) throw new Error(`[Sync] createFile failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
+        
+        // Step 2: Upload the actual content string to the newly created file using existing updateFile
+        await updateFile(result.id, content);
+        
         return result.id;
     }
 
