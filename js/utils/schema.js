@@ -150,8 +150,9 @@ const SCHEMAS = {
         read: isBool, projectId: isStr, timestamp: isNum,
     },
     interconsultations: {
-        id: isStr, patientId: isStr, specialty: isStr, status: isStr,
-        projectId: isStr, assigneeId: isStr, notes: isStr,
+        id: isStr, patientId: isStr, patientName: isStr, specialty: isStr,
+        status: isStr, date: isStr, agenda: isStr, acceptedBy: isStr,
+        reason: isStr, projectId: isStr, assigneeId: isStr, notes: isStr,
         createdAt: isNum, updatedAt: isNum, obsidianUri: isStr,
     },
 };

@@ -60,8 +60,8 @@
 
 <body class="theme-dark">
   <!-- ── Auth Overlay (Lock Screen) ─────────────────────────────────────────── -->
-  <div id="auth-overlay" class="auth-overlay">
-    <div class="auth-box">
+  <div id="auth-overlay" class="auth-overlay" data-autofill-ignore="true">
+    <div class="auth-box" data-autofill-ignore="true">
       <div style="margin-bottom:20px; color:var(--accent-primary);">
         <i data-feather="lock" style="width:48px;height:48px;"></i>
       </div>
@@ -86,7 +86,7 @@
           <div id="auth-client-id-container" style="display:none; flex-direction:column; gap:4px; margin-top:4px;">
             <input type="text" id="auth-setup-client-id" name="client_id" class="form-input"
               placeholder="xxxx.apps.googleusercontent.com" style="font-size:0.8rem; padding:8px;"
-              autocomplete="username">
+              autocomplete="off" data-autofill-ignore="true" data-lpignore="true">
           </div>
           <button type="button" id="auth-show-client-id"
             style="background:none; border:none; color:var(--text-muted); font-size:0.75rem; cursor:pointer; text-align:left; padding:0; text-decoration:underline;">Mostrar
@@ -116,7 +116,7 @@
               grupo)</label>
             <input type="text" id="auth-setup-shared-id" name="shared_folder_id" class="form-input"
               placeholder="Pega el ID de la Carpeta compartida aquí" style="font-size:0.8rem; padding:8px;"
-              autocomplete="off">
+              autocomplete="off" data-autofill-ignore="true" data-lpignore="true">
           </div>
           <button type="button" id="auth-google-drive-link" class="btn btn-primary"
             style="justify-content:center; gap:8px;">
