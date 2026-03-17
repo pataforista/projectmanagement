@@ -98,13 +98,20 @@ function bufferToBase64(buf) {
 }
 
 function base64ToBuffer(b64) {
-    const binaryStr = atob(b64);
-    const length = binaryStr.length;
-    const bytes = new Uint8Array(length);
-    for (let i = 0; i < length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
+    if (!b64 || typeof b64 !== 'string') {
+        throw new Error('[Fortress] Invalid base64 input: expected non-empty string');
     }
-    return bytes;
+    try {
+        const binaryStr = atob(b64);
+        const length = binaryStr.length;
+        const bytes = new Uint8Array(length);
+        for (let i = 0; i < length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+        return bytes;
+    } catch (e) {
+        throw new Error('[Fortress] Invalid base64 input: ' + e.message);
+    }
 }
 
 /**
@@ -118,16 +125,29 @@ export async function computeChecksum(data, sortKeys = true) {
     if (typeof data === 'string') {
         json = data;
     } else if (sortKeys) {
-        // Deterministic stringify: sort keys so {a:1, b:2} and {b:2, a:1} produce the same hash.
-        json = JSON.stringify(data, (key, value) => {
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
-                return Object.keys(value).sort().reduce((acc, k) => {
-                    acc[k] = value[k];
+        // Deterministic stringify: recursively sort keys so {a:1, b:2} and {b:2, a:1} produce the same hash.
+        // SECURITY FIX: Sort keys recursively, including objects inside arrays
+        const deepSort = (obj) => {
+            if (obj === null || typeof obj !== 'object') return obj;
+            if (Array.isArray(obj)) {
+                // Sort array items if they're objects, but preserve array order
+                return obj.map(deepSort);
+            }
+            // Sort object keys recursively
+            return Object.keys(obj)
+                .sort()
+                .reduce((acc, k) => {
+                    acc[k] = deepSort(obj[k]);
                     return acc;
                 }, {});
-            }
-            return value;
-        });
+        };
+        try {
+            json = JSON.stringify(deepSort(data));
+        } catch (e) {
+            // Handle circular references or non-serializable values
+            console.warn('[Fortress] Checksum serialization failed:', e);
+            throw new Error('[Fortress] Cannot compute checksum of non-serializable data');
+        }
     } else {
         json = JSON.stringify(data);
     }
@@ -200,29 +220,41 @@ async function getOrCreateSalt() {
 
     const email = localStorage.getItem('workspace_user_email') || '';
     if (email) {
-        const scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
-        let saltB64 = localStorage.getItem(scopedKey);
-        if (!saltB64) {
-            // Migrate: adopt the existing global salt so in-place encrypted data
-            // remains accessible after we introduce account scoping.
-            saltB64 = localStorage.getItem('nexus_salt');
-            if (saltB64) {
-                localStorage.setItem(scopedKey, saltB64);
-                // Existing data: leave iterations as-is (backward compat).
-            } else {
-                // Brand-new install: generate salt AND stamp the target iterations.
-                const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-                saltB64 = bufferToBase64(saltBytes);
-                localStorage.setItem(scopedKey, saltB64);
-                // Only set iterations if they haven't been set before, so a
-                // reinstall or account-switch doesn't reset the count unexpectedly.
-                if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
-                    localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+        // SECURITY FIX: Validate email before encoding
+        let scopedKey;
+        try {
+            scopedKey = `nexus_salt_${btoa(email).replace(/=/g, '')}`;
+        } catch (e) {
+            console.error('[Fortress] Email encoding failed, falling back to global salt:', e);
+            // Fallthrough to global salt
+            email = '';
+        }
+
+        if (scopedKey) {
+            let saltB64 = localStorage.getItem(scopedKey);
+            if (!saltB64) {
+                // Migrate: adopt the existing global salt so in-place encrypted data
+                // remains accessible after we introduce account scoping.
+                saltB64 = localStorage.getItem('nexus_salt');
+                if (saltB64) {
+                    localStorage.setItem(scopedKey, saltB64);
+                    // Existing data: leave iterations as-is (backward compat).
+                    // NOTE: Global salt is NOT deleted to avoid conflicts if email is cleared.
+                } else {
+                    // Brand-new install: generate salt AND stamp the target iterations.
+                    const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+                    saltB64 = bufferToBase64(saltBytes);
+                    localStorage.setItem(scopedKey, saltB64);
+                    // Only set iterations if they haven't been set before, so a
+                    // reinstall or account-switch doesn't reset the count unexpectedly.
+                    if (!localStorage.getItem(PBKDF2_ITERATIONS_KEY)) {
+                        localStorage.setItem(PBKDF2_ITERATIONS_KEY, String(TARGET_PBKDF2_ITERATIONS));
+                    }
                 }
             }
+            _activeSalt = base64ToBuffer(saltB64);
+            return _activeSalt;
         }
-        _activeSalt = base64ToBuffer(saltB64);
-        return _activeSalt;
     }
 
     // Local-only mode: use (or create) the legacy global salt.
@@ -391,6 +423,8 @@ export async function deriveKey(password) {
     if (typeof Worker !== 'undefined') {
         return new Promise((resolve, reject) => {
             let worker;
+            let isSettled = false; // SECURITY FIX: Guard against race condition
+
             try {
                 worker = new Worker(new URL('../workers/pbkdf2.worker.js', import.meta.url));
             } catch (e) {
@@ -400,7 +434,21 @@ export async function deriveKey(password) {
                 return;
             }
 
+            // SECURITY FIX: Add timeout to prevent infinite hang if worker doesn't respond
+            const timeoutId = setTimeout(() => {
+                if (!isSettled) {
+                    isSettled = true;
+                    worker.terminate();
+                    console.warn('[Fortress] Worker PBKDF2 timeout, falling back to main-thread');
+                    const fallbackPwd = enc.encode(password);
+                    _deriveKeyMainThread(fallbackPwd, saltCopy, iterations).then(resolve, reject);
+                }
+            }, 30000); // 30 second timeout
+
             worker.onmessage = ({ data: { key, error } }) => {
+                if (isSettled) return; // Guard against race condition
+                isSettled = true;
+                clearTimeout(timeoutId);
                 worker.terminate();
                 if (error) {
                     reject(new Error('[Fortress] Worker PBKDF2 failed: ' + error));
@@ -410,6 +458,9 @@ export async function deriveKey(password) {
             };
 
             worker.onerror = (e) => {
+                if (isSettled) return; // Guard against race condition
+                isSettled = true;
+                clearTimeout(timeoutId);
                 worker.terminate();
                 console.warn('[Fortress] Worker error, falling back to main-thread PBKDF2:', e);
                 // pwdBytes was transferred — create a fresh encoding for fallback.
@@ -500,10 +551,19 @@ export function hasKey() { return _cryptoKey !== null; }
  */
 export async function encryptRecord(record) {
     if (!_cryptoKey) throw new Error('[Fortress] App is locked — cannot encrypt.');
+    if (!record || typeof record !== 'object') {
+        throw new Error('[Fortress] Invalid record: must be a non-null object');
+    }
 
     const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for AES-GCM
     const enc = new TextEncoder();
-    const plaintext = enc.encode(JSON.stringify(record));
+
+    let plaintext;
+    try {
+        plaintext = enc.encode(JSON.stringify(record));
+    } catch (e) {
+        throw new Error('[Fortress] Failed to serialize record for encryption: ' + e.message);
+    }
 
     const cipherBuf = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
@@ -525,9 +585,18 @@ export async function encryptRecord(record) {
  */
 export async function decryptRecord(envelope) {
     if (!_cryptoKey) throw new Error('[Fortress] App is locked — cannot decrypt.');
-    if (!envelope?.__encrypted) return envelope; // Already plaintext (legacy or non-encrypted store)
+
+    // Not encrypted: return as-is (legacy or non-encrypted store)
+    if (!envelope || typeof envelope !== 'object' || !envelope.__encrypted) {
+        return envelope;
+    }
 
     try {
+        // SECURITY FIX: Validate envelope structure before accessing fields
+        if (typeof envelope.iv !== 'string' || typeof envelope.data !== 'string') {
+            throw new Error('Encrypted envelope must have iv and data as strings');
+        }
+
         // atob() calls are inside the try/catch: a malformed iv or data field
         // (e.g. a record encrypted by a different account and stored as-is) would
         // throw InvalidCharacterError here, which must be treated the same as an
