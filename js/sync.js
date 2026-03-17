@@ -1387,7 +1387,15 @@ const syncManager = (() => {
             const remoteTime = remote._timestamps?.[key] || remote.updatedAt || remote.updated_at || 0;
 
             // CONFLICT DETECTION: Equal timestamps + different values = real conflict
-            if (localTime === remoteTime && localTime > 0 && local[key] !== remote[key]) {
+            const isEqual = (a, b) => {
+                if (a === b) return true;
+                if (a && b && typeof a === 'object' && typeof b === 'object') {
+                    return JSON.stringify(a) === JSON.stringify(b); // Good enough for these record fields
+                }
+                return false;
+            };
+
+            if (localTime === remoteTime && localTime > 0 && !isEqual(local[key], remote[key])) {
                 recordConflict(local.id, key, local[key], remote[key], localTime);
                 // For now: keep local (user has priority in their own device)
                 merged[key] = local[key];

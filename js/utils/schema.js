@@ -56,6 +56,14 @@ function validateRecord(record, shape) {
         if (validator(val)) out[field] = sanitizeDeep(val);
         // Invalid-typed fields are silently dropped
     }
+
+    // SYNC INTEGRITY FIX: Always preserve _deleted and _timestamps metadata
+    // These are managed by the store/sync engine and are crucial for LWW merging.
+    if (record._deleted !== undefined) out._deleted = !!record._deleted;
+    if (record._timestamps && typeof record._timestamps === 'object') {
+        out._timestamps = sanitizeDeep(record._timestamps);
+    }
+
     return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -140,6 +148,11 @@ const SCHEMAS = {
     notifications: {
         id: isStr, type: isStr, title: isStr, text: isStr,
         read: isBool, projectId: isStr, timestamp: isNum,
+    },
+    interconsultations: {
+        id: isStr, patientId: isStr, specialty: isStr, status: isStr,
+        projectId: isStr, assigneeId: isStr, notes: isStr,
+        createdAt: isNum, updatedAt: isNum, obsidianUri: isStr,
     },
 };
 
