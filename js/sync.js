@@ -1319,6 +1319,15 @@ const syncManager = (() => {
             timestamp,
             decision: null // Will be set by user via UI
         });
+
+        // BUG FIX #2: Show toast warning when conflict detected
+        console.warn(`[Merge] Conflicto detectado en ${recordId}.${field} (mismo timestamp)`);
+        if (window.showToast) {
+            window.showToast(
+                `⚠️ Cambio conflictivo detectado en ${field}. Se mantuvo versión local.`,
+                'warning'
+            );
+        }
     }
 
     function fieldLevelMerge(local, remote) {
@@ -2046,10 +2055,20 @@ const syncManager = (() => {
 
         localStorage.setItem(CHAT_OUTBOX_KEY, JSON.stringify(trimmed));
 
+        // BUG FIX #5: Data loss logging and improved warning
         // Data loss warning: explicitly inform user if messages were dropped
         if (dropped > 0) {
-            const msg = `⚠️ Cola de chat llena (${CHAT_OUTBOX_MAX} límite). Se perdieron ${dropped} mensaje(s) antiguo(s) sin enviar. Conecta a internet pronto.`;
-            console.error(`[ChatSync] ${msg}`);
+            // Log to audit trail
+            const auditEntry = {
+                type: 'CHAT_OUTBOX_OVERFLOW',
+                dropped: dropped,
+                kept: trimmed.length,
+                timestamp: new Date().toISOString(),
+                reason: 'Chat outbox exceeded maximum capacity'
+            };
+            console.error(`[ChatSync] CHAT OVERFLOW:`, auditEntry);
+
+            const msg = `🚨 Cola de chat llena (${CHAT_OUTBOX_MAX} límite). Se perdieron ${dropped} mensaje(s) sin enviar. ¡CONECTA AHORA para guardar los cambios!`;
             if (window.showToast) {
                 showToast(msg, 'error', true); // persistent=true: don't auto-dismiss
             }
@@ -2057,7 +2076,12 @@ const syncManager = (() => {
         // Capacity warning: user should sync soon
         else if (trimmed.length >= CHAT_OUTBOX_WARN_AT && window.showToast) {
             const remaining = CHAT_OUTBOX_MAX - trimmed.length;
-            showToast(`Cola de chat al ${Math.round(trimmed.length / CHAT_OUTBOX_MAX * 100)}% (${remaining} espacios). Conecta para sincronizar.`, 'warning');
+            const percentFull = Math.round(trimmed.length / CHAT_OUTBOX_MAX * 100);
+            const timeLeft = remaining > 200 ? '~30 min' : '~10 min'; // Rough estimate at typical 10 msgs/min
+            showToast(
+                `⚠️ Cola de chat ${percentFull}% llena (${remaining} espacios restantes - ${timeLeft} offline). Conecta para sincronizar.`,
+                'warning'
+            );
         }
 
         return trimmed.length;
@@ -2205,6 +2229,8 @@ const syncManager = (() => {
                 // file that failed to download was permanently skipped on the next poll.
                 let allProcessed = true;
                 let latestProcessedModifiedTime = lastPoll;
+                let decryptFailures = 0; // BUG FIX #4: Track decryption failures
+
                 for (const file of newFiles) {
                     try {
                         let msgData = await getFileContent(file.id);
@@ -2223,6 +2249,7 @@ const syncManager = (() => {
                             msgData = await decryptRecord(msgData);
                             if (!msgData) {
                                 allProcessed = false;
+                                decryptFailures++; // Track failure
                                 console.warn('[ChatSync] Encrypted chat message could not be decrypted.');
                                 continue;
                             }
@@ -2247,6 +2274,18 @@ const syncManager = (() => {
                         console.warn('[ChatSync] Failed DL msg', e);
                     }
                 }
+
+                // BUG FIX #4: Show warning if decryption failures detected
+                if (decryptFailures > 0) {
+                    console.warn(`[ChatSync] ${decryptFailures} message(s) could not be decrypted`);
+                    if (window.showToast && decryptFailures >= 5) {
+                        showToast(
+                            `⚠️ ${decryptFailures} mensajes no pudieron descifrarse. Puede que la contraseña haya cambiado.`,
+                            'warning'
+                        );
+                    }
+                }
+
                 // Only advance the poll cursor when every file was processed successfully.
                 // If any file failed, keep the old timestamp so it gets retried next poll.
                 if (allProcessed) localStorage.setItem('gdrive_chat_last_poll', String(latestProcessedModifiedTime || Date.now()));
@@ -2262,6 +2301,12 @@ const syncManager = (() => {
     let isChatPollingActive = false; // Lock para la red
     function startChatSync() {
         if (chatSyncTimer) clearTimeout(chatSyncTimer);
+
+        // BUG FIX #3: Adaptive polling interval (10s active, 60s background)
+        const getPollInterval = () => {
+            return document.hidden ? 60000 : 10000; // 60s background, 10s active
+        };
+
         const loop = async () => {
             if (!isChatPollingActive) {
                 isChatPollingActive = true;
@@ -2274,8 +2319,17 @@ const syncManager = (() => {
                     isChatPollingActive = false;
                 }
             }
-            chatSyncTimer = setTimeout(loop, 30000); // 30s Latencia para evitar cuotas de Google
+            // Adaptive interval based on page visibility
+            const interval = getPollInterval();
+            chatSyncTimer = setTimeout(loop, interval);
         };
+
+        // Listen for visibility changes to adjust polling rate
+        const handleVisibilityChange = () => {
+            console.log('[ChatSync] Visibility changed, poll interval adjusted');
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
         loop();
     }
 
