@@ -125,521 +125,102 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let savedHash = localStorage.getItem('workspace_lock_hash');
 
-
-
+    // With the Invisible Team Key (Option 2), there is no manual lock screen.
+    // cryptoLayer auto-unlocks on load. We only show the setup panel if there is NO
+    // Google Client ID configured at all (absolute first run).
     await new Promise(resolve => {
         if (!authOverlay) return resolve();
 
-        const authForgotContainer = document.getElementById('auth-forgot-container');
-        const authForgotLink = document.getElementById('auth-forgot-link');
-        const authRecoveryPanel = document.getElementById('auth-recovery-panel');
-        const authRecoveryCode = document.getElementById('auth-recovery-code');
-        const authRecoveryBack = document.getElementById('auth-recovery-back');
-        const authRecoverySubmit = document.getElementById('auth-recovery-submit');
-        const authNewpwdPanel = document.getElementById('auth-newpwd-panel');
-        const authNewpwdInput = document.getElementById('auth-newpwd-input');
-        const authNewpwdSubmit = document.getElementById('auth-newpwd-submit');
-        const authCodeDisplay = document.getElementById('auth-code-display');
-        const authCodeValue = document.getElementById('auth-code-value');
-        const authCodeCopy = document.getElementById('auth-code-copy');
-        const authCodeDone = document.getElementById('auth-code-done');
+        const setupPanel = document.getElementById('auth-setup-panel');
+        const googleBtn = document.getElementById('auth-google-link');
+        const setupClientIdInput = document.getElementById('auth-setup-client-id');
+        const clientIdContainer = document.getElementById('auth-client-id-container');
+        const showClientIdBtn = document.getElementById('auth-show-client-id');
+        const driveStep = document.getElementById('auth-drive-connect-step');
+        const driveBtn = document.getElementById('auth-google-drive-link');
+        const userNameEl = document.getElementById('auth-user-name');
 
-        const showCodeDisplay = (code, onDone) => {
-            authCodeValue.textContent = code;
-            authCodeDisplay.style.display = 'flex';
-            authCodeCopy.onclick = () => {
-                navigator.clipboard.writeText(code).catch(() => { });
-                authCodeCopy.textContent = '¡Copiado!';
-                setTimeout(() => authCodeCopy.textContent = 'Copiar codigo', 2000);
-            };
-            authCodeDone.onclick = onDone;
-        };
+        const existingClientId = syncManager.getConfig().clientId;
 
-        /**
-         * PBKDF2 UX FIX: 600k iterations takes ~800ms–1.2s on mid-range mobile.
-         * With the BUG 33 Web Worker fix, PBKDF2 runs off the main thread, so
-         * any spinner/animation shown here will remain fluid. Show a loading
-         * message and disable the form before awaiting unlock(), then restore.
-         * The setTimeout(0) yield gives the browser one repaint to render the
-         * loading state before the worker is spawned.
-         */
-        async function unlockWithFeedback(pwd, submitEl) {
-            const prevText = authSubtitle.textContent;
-            authSubtitle.textContent = 'Verificando contraseña…';
-            authPassword.disabled = true;
-            if (submitEl) submitEl.disabled = true;
-            // Yield one repaint so the loading message renders before worker spawn.
-            await new Promise(r => setTimeout(r, 0));
-            try {
-                if (cryptoLayer) await cryptoLayer.unlock(pwd);
-            } finally {
-                authPassword.disabled = false;
-                if (submitEl) submitEl.disabled = false;
-                authSubtitle.textContent = prevText;
-            }
+        // If a Client ID exists, we are already "set up". We bypass the overlay
+        // and let sync.js handle the silent token refresh in the background.
+        if (existingClientId || !setupPanel) {
+            authOverlay.classList.remove('open');
+            return resolve();
         }
 
-        if (!savedHash) {
-            authOverlay.classList.add('open');
-            const setupPanel = document.getElementById('auth-setup-panel');
-            const googleBtn = document.getElementById('auth-google-link');
-            const manualLink = document.getElementById('auth-manual-setup');
+        // --- First Run Setup (No Client ID yet) ---
+        authOverlay.classList.add('open');
+        authForm.style.display = 'none'; // Hide manual password form forever
+        setupPanel.style.display = 'flex';
 
-            if (setupPanel && googleBtn && manualLink) {
-                setupPanel.style.display = 'flex';
-                authForm.style.display = 'none';
-                authSubtitle.textContent = "Inicia sesión con Google para vincular este workspace desde el inicio.";
+        if (showClientIdBtn && clientIdContainer) {
+            clientIdContainer.style.display = 'flex';
+            showClientIdBtn.style.display = 'none';
+        }
 
-                const clientIdContainer = document.getElementById('auth-client-id-container');
-                const showClientIdBtn = document.getElementById('auth-show-client-id');
-                const setupClientIdInput = document.getElementById('auth-setup-client-id');
-                const setupSharedIdInput = document.getElementById('auth-setup-shared-id');
-
-                const localWarningPanel = document.getElementById('auth-local-warning');
-                const localWarningBackBtn = document.getElementById('auth-local-warning-back');
-                const localWarningProceedBtn = document.getElementById('auth-local-warning-proceed');
-
-                // FIX: Si no hay clientId guardado, mostrar el campo directamente
-                // sin obligar al usuario a hacer click en el enlace auxiliar.
-                const existingClientId = syncManager.getConfig().clientId;
-                if (!existingClientId) {
-                    clientIdContainer.style.display = 'flex';
-                    if (showClientIdBtn) showClientIdBtn.style.display = 'none';
-                } else if (showClientIdBtn) {
-                    showClientIdBtn.onclick = () => {
-                        clientIdContainer.style.display = 'flex';
-                        showClientIdBtn.style.display = 'none';
-                        setupClientIdInput.focus();
-                    };
-                    // Pre-rellenar el campo si ya hay un clientId guardado
-                    setupClientIdInput.value = existingClientId;
-                }
-
-                googleBtn.onclick = async () => {
-                    const providedClientId = setupClientIdInput?.value.trim();
-
-                    const currentClientId = providedClientId || existingClientId;
-
-                    if (!currentClientId) {
-                        if (window.showToast) showToast('Ingresa tu Google Client ID para continuar.', 'warning');
-                        clientIdContainer.style.display = 'flex';
-                        if (showClientIdBtn) showClientIdBtn.style.display = 'none';
-                        setupClientIdInput.focus();
-                        return;
-                    }
-
-                    googleBtn.disabled = true;
-                    googleBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Conectando...';
-                    if (window.feather) feather.replace();
-
-                    try {
-                        // CAPA A: Autenticación (Identity via OIDC / One-Tap)
-                        const user = await syncManager.signIn(currentClientId);
-
-                        // Guardar el Client ID si se proporcionó uno nuevo
-                        if (providedClientId && providedClientId !== existingClientId) {
-                            syncManager.saveConfig({ ...syncManager.getConfig(), clientId: providedClientId });
-                        }
-
-                        // FIX: Actualizar el perfil de usuario en la sidebar INMEDIATAMENTE
-                        // después del signIn para evitar la race condition visual.
-                        if (window.updateUserProfileUI) window.updateUserProfileUI();
-
-                        // Mostrar Paso 2: Conectar Drive
-                        const driveStep = document.getElementById('auth-drive-connect-step');
-                        const driveBtn = document.getElementById('auth-google-drive-link');
-                        const userNameEl = document.getElementById('auth-user-name');
-
-                        if (driveStep && userNameEl) {
-                            userNameEl.textContent = user.name || user.email;
-                            driveStep.style.display = 'flex';
-                            googleBtn.style.display = 'none';
-
-                            driveBtn.onclick = async () => {
-                                driveBtn.disabled = true;
-                                driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando Drive...';
-                                if (window.feather) feather.replace();
-
-                                try {
-                                    // CAPTURAR: Shared Folder ID opcional para nuevos grupos
-                                    const providedSharedId = setupSharedIdInput?.value.trim();
-                                    if (providedSharedId) {
-                                        syncManager.saveConfig({ ...syncManager.getConfig(), sharedFolderId: providedSharedId });
-                                    }
-
-                                    // CAPA B: Autorización OAuth para Drive (no repite signIn)
-                                    await syncManager.authorize(currentClientId);
-                                    // Buscar workspace remoto con el accessToken recién obtenido
-                                    const remoteData = await syncManager.checkRemote();
-                                    handleRemoteWorkspace(remoteData);
-                                } catch (err) {
-                                    console.error('[Auth] Drive authorization failed:', err);
-                                    if (window.showToast) showToast('Error al conectar con Drive. Intenta de nuevo.', 'error');
-                                    driveBtn.disabled = false;
-                                    driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive';
-                                    if (window.feather) feather.replace();
-                                }
-                            };
-                        }
-
-                        authSubtitle.textContent = `¡Hola, ${user.name || user.email}! Ahora autoriza Drive para activar la sincronización.`;
-
-                        // FIX: Actualizar texto y comportamiento del link manual
-                        // SOLO DESPUÉS de que el usuario esté autenticado, para coherencia.
-                        manualLink.textContent = 'Continuar solo en local (sin sincronización)';
-                        manualLink.onclick = () => {
-                            // En lugar de ir directo, mostramos la advertencia local
-                            setupPanel.style.display = 'none';
-                            localWarningPanel.style.display = 'flex';
-                        };
-
-                    } catch (err) {
-                        console.error('[Auth] Google sign-in failed:', err);
-                        googleBtn.disabled = false;
-                        googleBtn.innerHTML = '<img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="18" height="18" alt="Google"> Entrar con Google';
-                        if (window.feather) feather.replace();
-                        if (window.showToast) showToast('Error al autenticar con Google. Verifica tu Client ID.', 'error');
-                    }
-                };
-
-                function handleRemoteWorkspace(remoteData) {
-                    let isRemotePresent = false;
-                    if (remoteData && remoteData.updatedAt) {
-                        isRemotePresent = true;
-                        if (window.showToast) showToast('Workspace detectado en Google Drive', 'success');
-                        // SECURITY FIX: workspace_lock_hash and workspace_recovery_hash are
-                        // personal per-device credentials and must NEVER be imported from the
-                        // shared Drive file. Each user must set their own master password.
-                        // Importing a remote hash would allow any team member with Drive access
-                        // to take over another user's workspace by replacing the hash.
-                    }
-                    // Proceed to local password setup regardless of remote state
-                    setupPanel.style.display = 'none';
-                    authForm.style.display = 'flex';
-                    authSubtitle.textContent = "Conexión exitosa. Crea tu contraseña maestra personal para proteger tus datos.";
-                    setupPasswordCreation(isRemotePresent);
-                }
-
-                // Configurar Botones del Warning de Modo Local
-                if (localWarningBackBtn && localWarningProceedBtn) {
-                    localWarningBackBtn.onclick = () => {
-                        localWarningPanel.style.display = 'none';
-                        setupPanel.style.display = 'flex';
-                    };
-                    localWarningProceedBtn.onclick = () => {
-                        localWarningPanel.style.display = 'none';
-                        authForm.style.display = 'flex';
-                        authSubtitle.textContent = 'Crea una contraseña maestra para proteger tus datos locales.';
-                        setupPasswordCreation(false);
-                    };
-                }
-
-                // FIX: El link manual en el estado inicial (antes del signIn)
-                // permite continuar en modo local sin bloquear al usuario, pero previa advertencia.
-                manualLink.textContent = 'Configuración manual (Solo local)';
-                manualLink.onclick = () => {
-                    setupPanel.style.display = 'none';
-                    localWarningPanel.style.display = 'flex';
-                };
-            } else {
-                // Fallback si por alguna razón no están los elementos nuevos
-                authSubtitle.textContent = "Crea una contraseña maestra para bloquear tu Workspace.";
-                setupPasswordCreation(false);
-            }
-
-            function setupPasswordCreation(isRemotePresent = false) {
-                authForm.onsubmit = async (e) => {
-                    e.preventDefault();
-                    const pwd = authPassword.value.trim();
-                    if (pwd.length < 8) {
-                        authPassword.style.border = '1px solid var(--accent-warning)';
-                        authSubtitle.textContent = 'La contraseña maestra debe tener al menos 8 caracteres.';
-                        setTimeout(() => authPassword.style.border = '', 1500);
-                        return;
-                    }
-                    const hash = await hashStr(pwd);
-                    const recoveryCode = generateRecoveryCode();
-                    const recoveryHash = await hashStr(normalizeCode(recoveryCode));
-                    localStorage.setItem('workspace_lock_hash', hash);
-                    localStorage.setItem('workspace_recovery_hash', recoveryHash);
-                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
-                    authForm.style.display = 'none';
-                    authSubtitle.textContent = "Guarda tu codigo de recuperacion.";
-                    showCodeDisplay(recoveryCode, () => {
-                        authOverlay.classList.remove('open');
-                        // Forzar una sincronización inicial si estamos conectados
-                        if (syncManager.getAccessToken()) {
-                            if (isRemotePresent) {
-                                syncManager.pull().then(() => {
-                                    if (window.showToast) showToast('Workspace descargado desde Drive', 'success');
-                                    resolve();
-                                });
-                            } else {
-                                syncManager.push().then(() => {
-                                    if (window.showToast) showToast('Workspace inicializado en Drive', 'success');
-                                    resolve();
-                                });
-                            }
-                        } else {
-                            resolve();
-                        }
-                    });
-                };
-            }
-        } else {
-            authOverlay.classList.add('open');
-            authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
-
-            if (localStorage.getItem('workspace_recovery_hash') && authForgotContainer) {
-                authForgotContainer.style.display = 'block';
-            }
-
-            authForm.onsubmit = async (e) => {
-                e.preventDefault();
-
-                if (isLockedOut()) {
-                    const secs = getRemainingLockout();
-                    authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
-                    authPassword.value = '';
+        if (googleBtn) {
+            googleBtn.onclick = async () => {
+                const providedClientId = setupClientIdInput?.value.trim();
+                if (!providedClientId) {
+                    if (window.showToast) showToast('Ingresa tu Google Client ID para continuar.', 'warning');
+                    setupClientIdInput?.focus();
                     return;
                 }
 
-                const pwd = authPassword.value.trim();
-                const inputHash = await hashStr(pwd);
-                let isMatch = (inputHash === savedHash);
+                googleBtn.disabled = true;
+                googleBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Conectando...';
+                if (window.feather) feather.replace();
 
-                // ── Legacy Migration Check ──
-                if (!isMatch && savedHash.length < 60) {
-                    const legHash = legacyHash(pwd);
-                    if (legHash === savedHash) {
-                        console.log('[Fortress] Legacy hash matched. Upgrading to Nexus Fortress (SHA-256)...');
-                        const newHash = await hashStr(pwd);
-                        const recoveryCode = generateRecoveryCode();
-                        const recoveryHash = await hashStr(normalizeCode(recoveryCode));
-                        localStorage.setItem('workspace_lock_hash', newHash);
-                        localStorage.setItem('workspace_recovery_hash', recoveryHash);
-                        isMatch = true;
-                        // Show recovery code because we just generated it
-                        authForm.style.display = 'none';
-                        authSubtitle.textContent = "Seguridad actualizada. Guarda tu nuevo codigo.";
-                        showCodeDisplay(recoveryCode, () => {
-                            authOverlay.classList.remove('open');
-                            resolve();
-                        });
-                        await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
-                        return; // Exit here as showCodeDisplay will resolve
-                    }
-                }
+                try {
+                    const user = await syncManager.signIn(providedClientId);
+                    syncManager.saveConfig({ ...syncManager.getConfig(), clientId: providedClientId });
+                    if (window.updateUserProfileUI) window.updateUserProfileUI();
 
-                if (isMatch) {
-                    clearAttempts();
-                    await unlockWithFeedback(pwd, authForm.querySelector('button[type="submit"]'));
-                    authOverlay.classList.remove('open');
-                    resolve();
-                } else {
-                    const attempts = recordFailedAttempt();
-                    authPassword.style.border = '1px solid var(--accent-danger)';
-                    authPassword.value = '';
-                    if (isLockedOut()) {
-                        authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
-                    } else {
-                        authSubtitle.textContent = "Contraseña incorrecta.";
-                    }
-                    setTimeout(() => authPassword.style.border = '', 1000);
-                }
-            };
+                    if (driveStep && userNameEl) {
+                        userNameEl.textContent = user.name || user.email;
+                        driveStep.style.display = 'flex';
+                        googleBtn.style.display = 'none';
 
-            if (authForgotLink) {
-                authForgotLink.onclick = () => {
-                    authForm.style.display = 'none';
-                    if (authForgotContainer) authForgotContainer.style.display = 'none';
-                    authSubtitle.textContent = "Ingresa tu código de recuperación.";
-                    authRecoveryPanel.style.display = 'flex';
-                    authRecoveryCode.focus();
+                        driveBtn.onclick = async () => {
+                            driveBtn.disabled = true;
+                            driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando Drive...';
+                            if (window.feather) feather.replace();
 
-                    // Show Google recovery button only if there is a linked Google account.
-                    // This avoids confusion for local-only workspaces.
-                    const googleRecoveryContainer = document.getElementById('auth-google-recovery-container');
-                    if (googleRecoveryContainer) {
-                        const linkedEmail = localStorage.getItem('workspace_user_email');
-                        if (linkedEmail) {
-                            googleRecoveryContainer.style.display = 'flex';
-                            const hint = document.getElementById('auth-google-recovery-hint');
-                            if (hint) hint.textContent = `Verifica con la cuenta: ${linkedEmail}`;
-                        }
-                    }
-                };
-            }
+                            try {
+                                const setupSharedIdInput = document.getElementById('auth-setup-shared-id');
+                                const providedSharedId = setupSharedIdInput?.value.trim();
+                                if (providedSharedId) {
+                                    syncManager.saveConfig({ ...syncManager.getConfig(), sharedFolderId: providedSharedId });
+                                }
 
-            if (authRecoveryBack) {
-                authRecoveryBack.onclick = () => {
-                    authRecoveryPanel.style.display = 'none';
-                    authNewpwdPanel.style.display = 'none';
-                    authRecoveryCode.value = '';
-                    authRecoveryCode.style.border = '';
-
-                    // Reset Google recovery panel to its initial state
-                    const googleRecoveryContainer = document.getElementById('auth-google-recovery-container');
-                    const googleRecoveryBtn = document.getElementById('auth-google-recovery-btn');
-                    const googleRecoveryLoading = document.getElementById('auth-google-recovery-loading');
-                    if (googleRecoveryContainer) googleRecoveryContainer.style.display = 'none';
-                    if (googleRecoveryBtn) googleRecoveryBtn.style.display = 'flex';
-                    if (googleRecoveryLoading) googleRecoveryLoading.style.display = 'none';
-
-                    authForm.style.display = 'flex';
-                    if (authForgotContainer) authForgotContainer.style.display = 'block';
-                    authSubtitle.textContent = "Ingresa tu contraseña para acceder.";
-                };
-            }
-
-            if (authRecoverySubmit) {
-                authRecoverySubmit.onclick = async () => {
-                    // SECURITY FIX: Apply brute-force protection to recovery code attempts.
-                    if (isRecoveryLockedOut()) {
-                        const secs = getRecoveryRemainingLockout();
-                        authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
-                        authRecoveryCode.value = '';
-                        return;
-                    }
-
-                    const savedRecoveryHash = localStorage.getItem('workspace_recovery_hash');
-                    const entered = normalizeCode(authRecoveryCode.value.trim());
-                    const inputHash = await hashStr(entered);
-                    if (savedRecoveryHash && inputHash === savedRecoveryHash) {
-                        clearRecoveryAttempts();
-                        authRecoveryPanel.style.display = 'none';
-                        authSubtitle.textContent = "Crea una nueva contraseña.";
-                        authNewpwdPanel.style.display = 'flex';
-                        authNewpwdInput.focus();
-                    } else {
-                        const attempts = recordFailedRecoveryAttempt();
-                        authRecoveryCode.style.border = '1px solid var(--accent-danger)';
-                        authRecoveryCode.value = '';
-                        if (isRecoveryLockedOut()) {
-                            authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
-                        } else {
-                            authSubtitle.textContent = `Código incorrecto. Intentos restantes: ${MAX_ATTEMPTS - attempts}.`;
-                        }
-                        setTimeout(() => authRecoveryCode.style.border = '', 1000);
-                    }
-                };
-            }
-
-            // ── Google-based Recovery ────────────────────────────────────────
-            const authGoogleRecoveryBtn = document.getElementById('auth-google-recovery-btn');
-            const authGoogleRecoveryLoading = document.getElementById('auth-google-recovery-loading');
-
-            if (authGoogleRecoveryBtn) {
-                authGoogleRecoveryBtn.onclick = async () => {
-                    // Apply the same brute-force protection to Google recovery.
-                    // Without this, an attacker could spam Google logins as a bypass.
-                    if (isRecoveryLockedOut()) {
-                        const secs = getRecoveryRemainingLockout();
-                        authSubtitle.textContent = `⚠️ Demasiados intentos. Espera ${secs}s.`;
-                        return;
-                    }
-
-                    const clientId = syncManager.getConfig?.()?.clientId;
-                    if (!clientId) {
-                        authSubtitle.textContent = 'No se encontró un Google Client ID configurado.';
-                        return;
-                    }
-
-                    const linkedEmail = localStorage.getItem('workspace_user_email');
-                    if (!linkedEmail) {
-                        authSubtitle.textContent = 'No hay una cuenta de Google vinculada a este workspace.';
-                        return;
-                    }
-
-                    // Show loading state
-                    authGoogleRecoveryBtn.style.display = 'none';
-                    if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'flex';
-                    authSubtitle.textContent = 'Esperando autenticación de Google…';
-
-                    try {
-                        const user = await syncManager.signIn(clientId);
-
-                        // Normalize both emails to lowercase before comparing
-                        // to prevent case-sensitivity bypass.
-                        const googleEmail = (user?.email || '').toLowerCase().trim();
-                        const workspaceEmail = linkedEmail.toLowerCase().trim();
-
-                        if (googleEmail !== workspaceEmail) {
-                            // Wrong Google account — count as a failed recovery attempt.
-                            const attempts = recordFailedRecoveryAttempt();
-                            authGoogleRecoveryBtn.style.display = 'flex';
-                            if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'none';
-                            if (isRecoveryLockedOut()) {
-                                authSubtitle.textContent = `⚠️ Bloqueado por 30s tras ${MAX_ATTEMPTS} intentos fallidos.`;
-                            } else {
-                                authSubtitle.textContent = `⚠️ La cuenta de Google (${googleEmail}) no coincide con el workspace. Intentos restantes: ${MAX_ATTEMPTS - attempts}.`;
+                                await syncManager.authorize(providedClientId);
+                                
+                                authOverlay.classList.remove('open');
+                                if (window.showToast) showToast('¡Workspace conectado!', 'success');
+                                resolve();
+                            } catch (err) {
+                                console.error('[Auth] Drive auth failed:', err);
+                                driveBtn.disabled = false;
+                                driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive';
+                                if (window.feather) feather.replace();
                             }
-                            return;
-                        }
-
-                        // ✅ Identity verified — skip directly to new password panel.
-                        clearRecoveryAttempts();
-                        authRecoveryPanel.style.display = 'none';
-                        authSubtitle.textContent = '✅ Identidad verificada con Google. Crea una nueva contraseña.';
-                        authNewpwdPanel.style.display = 'flex';
-                        authNewpwdInput.focus();
-
-                    } catch (err) {
-                        console.warn('[Auth] Google recovery sign-in failed:', err);
-                        authGoogleRecoveryBtn.style.display = 'flex';
-                        if (authGoogleRecoveryLoading) authGoogleRecoveryLoading.style.display = 'none';
-                        authSubtitle.textContent = 'No se pudo autenticar con Google. Intenta de nuevo o usa el código de recuperación.';
-                    }
-                };
-            }
-
-            if (authNewpwdSubmit) {
-                authNewpwdSubmit.onclick = async () => {
-                    const newPwd = authNewpwdInput.value.trim();
-                    if (newPwd.length < 8) {
-                        authNewpwdInput.style.border = '1px solid var(--accent-warning)';
-                        authSubtitle.textContent = 'La nueva contraseña debe tener al menos 8 caracteres.';
-                        setTimeout(() => authNewpwdInput.style.border = '', 1500);
-                        return;
-                    }
-                    const newRecoveryCode = generateRecoveryCode();
-                    // SECURITY FIX: if the install was using legacy PBKDF2 iterations
-                    // (310k), upgrade to the current target (600k) now that the user
-                    // is actively setting a new password. upgradeIterations() persists
-                    // the new count and locks the vault so the next unlock re-derives
-                    // the key with the higher iteration count.
-                    if (cryptoLayer?.isLegacyIterations?.()) {
-                        cryptoLayer.upgradeIterations();
-                    }
-                    const newLockHash = await hashStr(newPwd);
-                    const newRecHash = await hashStr(normalizeCode(newRecoveryCode));
-                    localStorage.setItem('workspace_lock_hash', newLockHash);
-                    localStorage.setItem('workspace_recovery_hash', newRecHash);
-                    authNewpwdPanel.style.display = 'none';
-                    authSubtitle.textContent = "¡Contraseña restablecida! Guarda tu nuevo codigo.";
-                    showCodeDisplay(newRecoveryCode, () => {
+                        };
+                    } else {
+                        // Fallback if UI elements are missing
                         authOverlay.classList.remove('open');
                         resolve();
-                    });
-                    await unlockWithFeedback(newPwd, authNewpwdSubmit);
-
-                    // RE-ENCRYPTION SAFETY FIX: Drive still holds data encrypted with
-                    // the old key. If pull() runs before we push the new-key snapshot,
-                    // it will try to decrypt old-key records with the new key, fail
-                    // silently (AES-GCM authentication mismatch), hydrate with empty
-                    // arrays, then push() will wipe Drive. The nexus_key_rotating flag:
-                    //  1. Blocks seedFromRemote() from hydrating until rotation is done.
-                    //  2. Allows push() to bypass the _remoteChecked ghost-wipe guard.
-                    //  3. Is cleared by push() after first successful commit.
-                    //  4. Survives crashes — on next startup the guard is still active.
-                    localStorage.setItem('nexus_key_rotating', 'true');
-                    if (window.syncManager?.push) {
-                        syncManager.push().catch(e =>
-                            console.warn('[Security] Key rotation push failed — will retry on next sync cycle.', e)
-                        );
                     }
-                };
-            }
+                } catch (err) {
+                    console.error('[Auth] Google sign-in failed:', err);
+                    googleBtn.disabled = false;
+                    googleBtn.innerHTML = '<img src="https://www.gstatic.com/images/branding/product/1x/gsa_512dp.png" width="18" height="18" alt="Google"> Entrar con Google';
+                    if (window.feather) feather.replace();
+                }
+            };
+        } else {
+            authOverlay.classList.remove('open');
+            resolve();
         }
     });
 

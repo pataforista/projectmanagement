@@ -285,6 +285,8 @@ function showToast(message, type = 'info', force = false) {
     const el = document.createElement('div');
     el.className = `toast toast-${type}`;
     el.textContent = message;
+    el.setAttribute('data-autofill-ignore', 'true');
+    el.setAttribute('data-lpignore', 'true');
     container.appendChild(el);
     setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; el.style.transition = 'all 0.3s'; }, 2800);
     setTimeout(() => el.remove(), 3200);

@@ -81,6 +81,10 @@ let _cryptoKey = null; // CryptoKey object — lives only in RAM
 let _isLocked = true;
 let _activeSalt = null; // Stores currently used Salt (for syncing)
 
+// 🔥 HARDCODED TEAM KEY (Option 2: Invisible Frictionless Encryption) 🔥
+// This phrase is automatically used to derive the AES key. No UI prompt is shown.
+const INVISIBLE_TEAM_PASS = 'milpa-med-2024-secure';
+
 // ── Utilities ───────────────────────────────────────────────────────────────
 
 function bufferToBase64(buf) {
@@ -443,7 +447,7 @@ export async function hashPassword(password) {
 // ── Session Management ───────────────────────────────────────────────────────
 
 /** Called on successful unlock — stores derived key in module RAM */
-export async function unlock(password) {
+export async function unlock(password = INVISIBLE_TEAM_PASS) {
     _cryptoKey = await deriveKey(password);
     _isLocked = false;
 }
@@ -451,39 +455,25 @@ export async function unlock(password) {
 /**
  * Upgrades the PBKDF2 iteration count to TARGET_PBKDF2_ITERATIONS and
  * re-derives the in-memory key with the new count.
- *
- * Call this after a successful password change (app.js profile flow) when
- * isLegacyIterations() returns true. The existing encrypted data remains
- * readable because the AES-256-GCM key material does NOT change —
- * only future key derivations (next unlock) will use the higher count.
- *
- * After calling this, the user must re-enter their password on next unlock
- * so the key is re-derived with 600k iterations.
  */
 export function upgradeIterations() {
-    // BUG 26 FIX: Write to the PENDING key, not the live key.
-    // The live key is only updated after the first successful rotation push
-    // (via commitIterationUpgrade). This way, if the app crashes between
-    // upgradeIterations() and the push, localStorage still reflects the old
-    // iteration count for any non-rotation unlock attempt, preventing a
-    // permanent "wrong password" lockout.
     localStorage.setItem(PBKDF2_ITERATIONS_PENDING_KEY, String(TARGET_PBKDF2_ITERATIONS));
-    // Lock so the next unlock re-derives the key with the pending (new) count.
-    lock();
+    // Re-unlock immediately with the hardcoded key to apply new iterations
+    unlock();
 }
 
 /** Wipes the key from RAM — all IDB data becomes inaccessible */
 export function lock() {
     _cryptoKey = null;
     _isLocked = true;
-    // BUG FIX: clear the cached salt so that a subsequent getOrCreateSalt()
-    // re-reads from localStorage. Without this, unlocking as a different account
-    // (different scoped key) would derive the key with the previous user's salt.
     _activeSalt = null;
 }
 
 export function isLocked() { return _isLocked; }
 export function hasKey() { return _cryptoKey !== null; }
+
+// Auto-unlock on load using the invisible team pass
+unlock().catch(e => console.error('[Fortress] Auto-unlock failed:', e));
 
 // ── Encrypt / Decrypt ────────────────────────────────────────────────────────
 
