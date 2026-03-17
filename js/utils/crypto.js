@@ -81,9 +81,9 @@ let _cryptoKey = null; // CryptoKey object — lives only in RAM
 let _isLocked = true;
 let _activeSalt = null; // Stores currently used Salt (for syncing)
 
-// 🔥 HARDCODED TEAM KEY (Option 2: Invisible Frictionless Encryption) 🔥
-// This phrase is automatically used to derive the AES key. No UI prompt is shown.
-const INVISIBLE_TEAM_PASS = 'milpa-med-2024-secure';
+// ⚠️ SECURITY: Team key must be provided by the application, not hardcoded.
+// The unlock() function requires an explicit password from user input or secure storage.
+// DEPRECATED: Do not use invisible/hardcoded passwords — they break encryption security.
 
 // ── Utilities ───────────────────────────────────────────────────────────────
 
@@ -330,20 +330,12 @@ export async function injectWorkspaceSalt(saltB64, saltChecksum = null) {
         }
         _activeSalt = base64ToBuffer(saltB64);
         lock();
-        
-        // BUG FIX: In Frictionless mode, automatically try to re-unlock with the team key.
-        // This ensures that if another device updated the salt (e.g. during a sync or 
-        // starting from scratch), this device seamlessly adapts without forcing
-        // a manual reload or password prompt.
-        try {
-            console.log('[Fortress] Frictionless: attempting auto-unlock with new salt...');
-            await unlock(INVISIBLE_TEAM_PASS);
-            console.log('[Fortress] Frictionless: auto-unlock success.');
-            return { locked: false, rejected: false };
-        } catch (e) {
-            console.error('[Fortress] Frictionless: auto-unlock failed after salt change.', e);
-            return { locked: true, rejected: false }; // User needs to re-auth if team key failed
-        }
+
+        // SECURITY FIX: When salt changes, the app must be locked.
+        // User must re-authenticate with their password to continue.
+        // Automatic unlock is not allowed — it breaks authentication.
+        console.warn('[Fortress] Salt changed — vault locked. User must re-authenticate.');
+        return { locked: true, rejected: false };
     }
     return { locked: false, rejected: false };
 }
@@ -459,8 +451,15 @@ export async function hashPassword(password) {
 
 // ── Session Management ───────────────────────────────────────────────────────
 
-/** Called on successful unlock — stores derived key in module RAM */
-export async function unlock(password = INVISIBLE_TEAM_PASS) {
+/**
+ * Called on successful unlock — stores derived key in module RAM
+ * SECURITY: Password is required and must be provided explicitly.
+ * No default fallback to allow user authentication.
+ */
+export async function unlock(password) {
+    if (!password) {
+        throw new Error('[Fortress] Password required for unlock — no default password allowed.');
+    }
     _cryptoKey = await deriveKey(password);
     _isLocked = false;
 }
@@ -468,11 +467,15 @@ export async function unlock(password = INVISIBLE_TEAM_PASS) {
 /**
  * Upgrades the PBKDF2 iteration count to TARGET_PBKDF2_ITERATIONS and
  * re-derives the in-memory key with the new count.
+ * SECURITY: Requires the current password for re-derivation.
  */
-export function upgradeIterations() {
+export async function upgradeIterations(password) {
+    if (!password) {
+        throw new Error('[Fortress] Password required to upgrade iterations.');
+    }
     localStorage.setItem(PBKDF2_ITERATIONS_PENDING_KEY, String(TARGET_PBKDF2_ITERATIONS));
-    // Re-unlock immediately with the hardcoded key to apply new iterations
-    unlock();
+    // Re-unlock with provided password to apply new iterations
+    await unlock(password);
 }
 
 /** Wipes the key from RAM — all IDB data becomes inaccessible */
@@ -485,8 +488,8 @@ export function lock() {
 export function isLocked() { return _isLocked; }
 export function hasKey() { return _cryptoKey !== null; }
 
-// Auto-unlock on load using the invisible team pass
-unlock().catch(e => console.error('[Fortress] Auto-unlock failed:', e));
+// ⚠️ SECURITY: Auto-unlock removed. User must explicitly provide password.
+// No default passwords or invisible unlocks are allowed.
 
 // ── Encrypt / Decrypt ────────────────────────────────────────────────────────
 
