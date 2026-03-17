@@ -846,15 +846,46 @@ const syncManager = (() => {
             // INTEGRITY FIX: Verify remote checksum if present
             if (remoteData?.metadata?.checksum) {
                 const receivedChecksum = remoteData.metadata.checksum;
-                delete remoteData.metadata.checksum; // Must remove to match how it was computed
-                const computed = await computeChecksum(remoteData);
+                const receivedSaltChecksum = remoteData.metadata.saltChecksum;
+
+                // Must remove metadata that was added AFTER the checksum was computed.
+                // In getSnapshot(), checksum is computed, THEN saltChecksum is added.
+                delete remoteData.metadata.checksum;
+                delete remoteData.metadata.saltChecksum;
+
+                // Try deterministic (sorted) checksum first.
+                let computed = await computeChecksum(remoteData, true);
+
                 if (computed !== receivedChecksum) {
-                    console.error('[Sync] Data Corruption detected! Checksums mismatch.');
+                    // Fallback: the remote file might have been produced by an older version of
+                    // the code using the unstable non-sorted JSON.stringify. Try matching that.
+                    computed = await computeChecksum(remoteData, false);
+                }
+
+                if (computed !== receivedChecksum) {
+                    console.error('[Sync] Data Corruption detected! Checksums mismatch.', {
+                        received: receivedChecksum,
+                        computedSorted: await computeChecksum(remoteData, true),
+                        computedLegacy: await computeChecksum(remoteData, false)
+                    });
+                    
+                    // Detailed debugging: Log the string differences if mismatch persists
+                    console.log('[Sync Integrity Debug] Received Data (Sorted JSON):', JSON.stringify(remoteData, (k, v) => {
+                         if (v && typeof v === 'object' && !Array.isArray(v)) {
+                             return Object.keys(v).sort().reduce((acc, k2) => { acc[k2] = v[k2]; return acc; }, {});
+                         }
+                         return v;
+                    }, 2));
+
                     if (window.showToast) showToast('Error de integridad: El archivo remoto está corrupto. Abortando.', 'error', true);
                     return;
                 }
-                remoteData.metadata.checksum = receivedChecksum; // Restore for consistency
+
+                // Restore for consistency and downstream verification (e.g. validateSaltChecksum)
+                remoteData.metadata.checksum = receivedChecksum;
+                if (receivedSaltChecksum) remoteData.metadata.saltChecksum = receivedSaltChecksum;
             }
+
 
             const localUpdate = Number(localStorage.getItem('last_sync_local') || 0);
 
@@ -1090,7 +1121,12 @@ const syncManager = (() => {
         const cfg = getConfig();
         const validId = v => {
             if (!v || v === 'undefined' || v === 'null') return null;
-            if (typeof v === 'string' && v.includes('http')) return null;
+            if (typeof v === 'string' && v.includes('http')) {
+                // Try to extract ID from URL (folders/xxxx or d/xxxx or id=xxxx)
+                const m = v.match(/folders\/([a-zA-Z0-9-_]+)/) || v.match(/\/d\/([a-zA-Z0-9-_]+)/) || v.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+                if (m) return m[1];
+                return null; // Known URL but not a recognizable ID pattern
+            }
             return v;
         };
 
@@ -1925,8 +1961,14 @@ const syncManager = (() => {
         if (!accessToken) return [];
         try {
             let q = 'trashed=false';
-            if (parentId) {
-                q += ` and '${parentId}' in parents`;
+            let effectiveParentId = parentId;
+            if (effectiveParentId && effectiveParentId.includes('http')) {
+                const m = effectiveParentId.match(/folders\/([a-zA-Z0-9-_]+)/) || effectiveParentId.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+                if (m) effectiveParentId = m[1];
+            }
+
+            if (effectiveParentId) {
+                q += ` and '${effectiveParentId}' in parents`;
             } else {
                 // If no parentId, we can either show root or all. 
                 // Let's default to all files to maintain compatibility,

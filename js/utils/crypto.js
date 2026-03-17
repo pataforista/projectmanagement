@@ -106,26 +106,34 @@ function base64ToBuffer(b64) {
 /**
  * Computes a SHA-256 checksum of the input data (string or object).
  * Returns a hex string.
- * Uses a deterministic stringify (key sorting) to prevent mismatches
- * caused by unstable property ordering.
+ * @param {object|string} data - Data to hash
+ * @param {boolean} [sortKeys=true] - Whether to sort object keys deterministically
  */
-export async function computeChecksum(data) {
-    // Deterministic stringify: sort keys so {a:1, b:2} and {b:2, a:1} produce the same hash.
-    const json = typeof data === 'string' ? data : JSON.stringify(data, (key, value) => {
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-            return Object.keys(value).sort().reduce((acc, k) => {
-                acc[k] = value[k];
-                return acc;
-            }, {});
-        }
-        return value;
-    });
+export async function computeChecksum(data, sortKeys = true) {
+    let json;
+    if (typeof data === 'string') {
+        json = data;
+    } else if (sortKeys) {
+        // Deterministic stringify: sort keys so {a:1, b:2} and {b:2, a:1} produce the same hash.
+        json = JSON.stringify(data, (key, value) => {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                return Object.keys(value).sort().reduce((acc, k) => {
+                    acc[k] = value[k];
+                    return acc;
+                }, {});
+            }
+            return value;
+        });
+    } else {
+        json = JSON.stringify(data);
+    }
 
     const enc = new TextEncoder();
     const buf = enc.encode(json);
     const hashBuf = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
 
 
 /**
