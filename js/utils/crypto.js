@@ -330,7 +330,20 @@ export async function injectWorkspaceSalt(saltB64, saltChecksum = null) {
         }
         _activeSalt = base64ToBuffer(saltB64);
         lock();
-        return { locked: true, rejected: false }; // User needs to re-auth
+        
+        // BUG FIX: In Frictionless mode, automatically try to re-unlock with the team key.
+        // This ensures that if another device updated the salt (e.g. during a sync or 
+        // starting from scratch), this device seamlessly adapts without forcing
+        // a manual reload or password prompt.
+        try {
+            console.log('[Fortress] Frictionless: attempting auto-unlock with new salt...');
+            await unlock(INVISIBLE_TEAM_PASS);
+            console.log('[Fortress] Frictionless: auto-unlock success.');
+            return { locked: false, rejected: false };
+        } catch (e) {
+            console.error('[Fortress] Frictionless: auto-unlock failed after salt change.', e);
+            return { locked: true, rejected: false }; // User needs to re-auth if team key failed
+        }
     }
     return { locked: false, rejected: false };
 }

@@ -790,6 +790,7 @@ const syncManager = (() => {
             localStorage.setItem('last_sync_local', String(data.updatedAt));
             // Persist the snapshot counter so future pulls can detect rollbacks.
             localStorage.setItem('nexus_snapshot_seq', String(data.snapshotSeq));
+            console.log(`[Sync] push() success: ${cfg.fileName} updated to snapshotSeq ${data.snapshotSeq}.`);
             // DIRTY FLAG: Drive confirmed the write (200 OK) — clear both the in-memory
             // flag and the persistent localStorage marker written by the pagehide handler.
             _dirtyLocalChanges = false;
@@ -1465,9 +1466,11 @@ const syncManager = (() => {
 
         const localSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0);
         if (data.snapshotSeq !== undefined && data.snapshotSeq < localSeq) {
-            console.warn(`[Sync] Rollback rejected: remote snapshotSeq (${data.snapshotSeq}) < local (${localSeq}).`);
-            if (window.showToast) showToast('Snapshot remoto descartado: es más antiguo que el local.', 'warning');
-            return;
+            // BUG FIX: Removed 'return' to allow field-level merge even if sequence is lower.
+            // This is essential for cross-device sync when one device starts fresh or 
+            // the sequence history was reset (Split Brain). LWW timestamps handle the
+            // data integrity; snapshotSeq is now just a warning.
+            console.warn(`[Sync] Snapshot Seq mismatch: remote (${data.snapshotSeq}) < local (${localSeq}). Proceeding with field-level merge to unify histories.`);
         }
 
         if (data.settings) {
