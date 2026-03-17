@@ -1395,10 +1395,15 @@ const syncManager = (() => {
                 return false;
             };
 
-            if (localTime === remoteTime && localTime > 0 && !isEqual(local[key], remote[key])) {
-                recordConflict(local.id, key, local[key], remote[key], localTime);
-                // For now: keep local (user has priority in their own device)
-                merged[key] = local[key];
+            if (localTime === remoteTime && localTime > 0) {
+                if (isEqual(local[key], remote[key])) {
+                    // No real change, just same timestamp. Remote wins (redundant).
+                    merged[key] = remote[key];
+                } else {
+                    recordConflict(local.id, key, local[key], remote[key], localTime);
+                    // For now: keep local (user has priority in their own device)
+                    merged[key] = local[key];
+                }
             } else {
                 // LWW: last-write-wins by timestamp
                 merged[key] = localTime > remoteTime ? local[key] : remote[key];
@@ -1753,25 +1758,25 @@ const syncManager = (() => {
           <p style="margin:0;color:var(--text-muted);font-size:0.9rem;">Enfocado para equipos pequeños: un archivo compartido en Drive + importación rápida de tareas desde Notion (CSV) u Obsidian (Markdown checklist).<br><b>Para asegurar cambios importantes, usa los botones "Subir" o "Bajar" que están al fondo.</b></p>
           <div class="form-group">
             <label class="form-label">Google OAuth Client ID</label>
-            <input class="form-input" id="sync-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${esc(cfg.clientId)}">
+            <input class="form-input" id="sync-client-id" placeholder="xxxx.apps.googleusercontent.com" value="${esc(cfg.clientId)}" data-autofill-ignore data-lpignore="true" autocomplete="off">
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
               <label class="form-label">Nombre del archivo</label>
-              <input class="form-input" id="sync-file-name" value="${esc(cfg.fileName)}">
+              <input class="form-input" id="sync-file-name" value="${esc(cfg.fileName)}" data-autofill-ignore data-lpignore="true" autocomplete="off">
             </div>
             <div class="form-group">
               <label class="form-label">Shared Folder ID (Opcional)</label>
-              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID de la Carpeta compartida" value="${esc(cfg.sharedFolderId)}">
+              <input class="form-input" id="sync-shared-id" placeholder="Pegar ID de la Carpeta compartida" value="${esc(cfg.sharedFolderId)}" data-autofill-ignore data-lpignore="true" autocomplete="off">
             </div>
           </div>
           <div class="form-group">
             <label class="form-label">Auto-sync (minutos)</label>
-            <input class="form-input" type="number" min="1" max="120" id="sync-auto-min" value="${cfg.autoSyncMinutes}">
+            <input class="form-input" type="number" min="1" max="120" id="sync-auto-min" value="${cfg.autoSyncMinutes}" data-autofill-ignore data-lpignore="true" autocomplete="off">
           </div>
           <div class="form-group">
             <label class="form-label">Miembros actuales</label>
-            <input class="form-input" id="sync-members" placeholder="Ana, Luis, Marta" value="${memberNames === 'Sin miembros' ? '' : memberNames}">
+            <input class="form-input" id="sync-members" placeholder="Ana, Luis, Marta" value="${memberNames === 'Sin miembros' ? '' : memberNames}" data-autofill-ignore data-lpignore="true" autocomplete="off">
           </div>
           <div style="display:flex;gap:12px;flex-wrap:wrap; margin-top:16px;">
             <label class="btn btn-secondary btn-sm" style="cursor:pointer;" title="Importar cards y checklists de Trello">
@@ -2236,6 +2241,12 @@ const syncManager = (() => {
         }
     }
 
+    // Session-level blacklist: file IDs that failed decryption.
+    // These messages cannot be decrypted (wrong key / different passphrase) and
+    // should NOT be retried on every poll — that would generate an infinite
+    // error loop. Blacklisted IDs are held in memory for the current session only.
+    const _chatDecryptBlacklist = new Set();
+
     async function pollChat() {
         if (!accessToken || !networkOnline || isSyncing) return;
         try {
@@ -2282,6 +2293,15 @@ const syncManager = (() => {
                 let decryptFailures = 0; // BUG FIX #4: Track decryption failures
 
                 for (const file of newFiles) {
+                    // Skip files that permanently failed decryption this session.
+                    if (_chatDecryptBlacklist.has(file.id)) {
+                        // Still advance the cursor past this file.
+                        latestProcessedModifiedTime = Math.max(
+                            latestProcessedModifiedTime,
+                            new Date(file.modifiedTime).getTime() || 0
+                        );
+                        continue;
+                    }
                     try {
                         let msgData = await getFileContent(file.id);
                         if (!msgData) { allProcessed = false; continue; }
@@ -2298,9 +2318,20 @@ const syncManager = (() => {
                             }
                             msgData = await decryptRecord(msgData);
                             if (!msgData) {
-                                allProcessed = false;
-                                decryptFailures++; // Track failure
-                                console.warn('[ChatSync] Encrypted chat message could not be decrypted.');
+                                // Permanent failure: add to blacklist so we don't retry this message.
+                                // Also advance the cursor so the poll timestamp moves forward.
+                                _chatDecryptBlacklist.add(file.id);
+                                decryptFailures++;
+                                console.error(
+                                    `[ChatSync] Decryption failed for message ${file.name} (${file.id}). ` +
+                                    `Message blacklisted for this session to prevent retry loops.`
+                                );
+                                // Advance cursor past this message (we cannot read it, but we shouldn't
+                                // be stuck retrying it forever).
+                                latestProcessedModifiedTime = Math.max(
+                                    latestProcessedModifiedTime,
+                                    new Date(file.modifiedTime).getTime() || 0
+                                );
                                 continue;
                             }
                         }
@@ -2336,9 +2367,16 @@ const syncManager = (() => {
                     }
                 }
 
-                // Only advance the poll cursor when every file was processed successfully.
-                // If any file failed, keep the old timestamp so it gets retried next poll.
-                if (allProcessed) localStorage.setItem('gdrive_chat_last_poll', String(latestProcessedModifiedTime || Date.now()));
+                // Only block the poll cursor from advancing for NETWORK failures (allProcessed=false).
+                // Decryption failures are handled above (cursor still advances past those files).
+                if (allProcessed) {
+                    localStorage.setItem('gdrive_chat_last_poll', String(latestProcessedModifiedTime || Date.now()));
+                } else if (latestProcessedModifiedTime > lastPoll) {
+                    // Some files succeeded, some had network errors. Advance to the last
+                    // successful point so we don't reprocess already-handled messages.
+                    localStorage.setItem('gdrive_chat_last_poll', String(latestProcessedModifiedTime));
+                }
+                // If latestProcessedModifiedTime === lastPoll, all new files had network errors - don't advance.
             } else {
                 // Update poll timestamp even if no new files to prevent re-checking all files next time
                 if (lastPoll === 0) localStorage.setItem('gdrive_chat_last_poll', Date.now());
