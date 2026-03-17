@@ -339,6 +339,13 @@ export function initGlobalEffects() {
         const ripple = document.createElement('span');
         ripple.className = 'ripple';
         ripple.style.cssText = `width:${size}px;height:${size}px;left:${x - rect.left - size / 2}px;top:${y - rect.top - size / 2}px;`;
+        
+        // MITIGATION: Browser extensions like Bitwarden/LastPass sometimes crash when 
+        // they see rapid DOM mutations like our ripple effect. We tag it to be ignored.
+        ripple.setAttribute('data-autofill-ignore', 'true');
+        ripple.setAttribute('data-lpignore', 'true');
+        ripple.setAttribute('data-form-type', 'other');
+        
         btn.appendChild(ripple);
         setTimeout(() => ripple.remove(), 600);
     });

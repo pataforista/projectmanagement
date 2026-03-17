@@ -89,6 +89,7 @@ async function renderCollaboration(root) {
           <h1>Colaboración de Equipo</h1>
           <p class="view-subtitle">Claridad operativa sobre asignaciones, protocolos y usuarios activos.</p>
         </div>
+        <button class="btn btn-primary" id="btn-add-member"><i data-feather="user-plus"></i> Nuevo Miembro</button>
       </div>
 
       <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
@@ -272,6 +273,16 @@ async function renderCollaboration(root) {
       }
     };
   }
+
+  // Setup add member button
+  root.querySelector('#btn-add-member').onclick = async () => {
+    const name = prompt('Nombre del nuevo miembro:');
+    if (name && name.trim()) {
+      await store.dispatch('ADD_MEMBER', { name: name.trim(), role: 'Colaborador' });
+      showToast(`Miembro ${name.trim()} añadido`, 'success');
+      renderCollaboration(root);
+    }
+  };
 
   feather.replace();
 }
