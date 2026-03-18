@@ -276,9 +276,29 @@ const STATUS_BADGE_CLASSES = {
     'cerrado': 'badge-neutral',
 };
 
+// Map status → dot color for better visual contrast
+const STATUS_DOT_COLORS = {
+    'Capturado':       'var(--text-muted)',
+    'Definido':        'var(--accent-info)',
+    'En preparación':  'var(--accent-purple)',
+    'En elaboración':  'var(--accent-warning)',
+    'En revisión':     'var(--accent-teal)',
+    'En espera':       'var(--accent-danger)',
+    'Terminado':       'var(--accent-success)',
+    'Archivado':       'var(--text-muted)',
+    'activo':          'var(--accent-success)',
+    'planificado':     'var(--accent-info)',
+    'pausado':         'var(--accent-warning)',
+    'archivado':       'var(--text-muted)',
+    'cerrado':         'var(--text-muted)',
+};
+
 function statusBadge(status) {
     const cls = STATUS_BADGE_CLASSES[status] || 'badge-neutral';
-    return `<span class="badge ${cls}">${esc(status)}</span>`;
+    const dotColor = STATUS_DOT_COLORS[status] || 'var(--text-muted)';
+    return `<span class="badge ${cls}" style="gap:5px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block;"></span>${esc(status)}
+    </span>`;
 }
 
 // ── Empty state helper ────────────────────────────────────────────────────────

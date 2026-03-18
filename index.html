@@ -388,6 +388,10 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <div id="sync-status-widget" title="Estado de sincronización" onclick="syncManager.openPanel && syncManager.openPanel()">
+            <span class="sync-status-dot offline" id="sync-widget-dot"></span>
+            <span id="sync-widget-label" style="font-size:0.73rem;">Sin conexión</span>
+          </div>
           <button class="btn btn-icon" id="btn-search" title="Buscar (Ctrl+K)">
             <i data-feather="search"></i>
           </button>

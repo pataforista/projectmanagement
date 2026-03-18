@@ -126,11 +126,15 @@ export function refreshSidebarProjects() {
 
         return children.map(p => {
             const taskCount = store.get.tasksByProject(p.id).filter(t => t.status !== 'Terminado' && t.status !== 'Archivado').length;
+            const hasChildren = allProjects.some(c => c.parentId === p.id);
             return `
-                <div class="nested-project-wrapper" data-id="${p.id}">
-                    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true" style="padding-left: ${16 + (depth * 14)}px;">
+                <div class="nested-project-wrapper" data-id="${p.id}" data-depth="${depth}">
+                    <a href="#/project/${p.id}" class="nav-item sidebar-project-item" data-view="project-${p.id}" data-id="${p.id}" draggable="true"
+                       style="padding-left: ${16 + (depth * 14)}px; --depth-offset: ${16 + depth * 14}px;"
+                       title="${esc(p.name)}${depth > 0 ? ' (subproyecto)' : ''}">
                         <span class="project-dot" style="color:${p.color || 'var(--accent-primary)'}"></span>
                         <span class="nav-item-text">${esc(p.name)}</span>
+                        ${hasChildren ? `<span style="font-size:0.65rem;color:var(--text-muted);margin-left:2px;opacity:0.7;">▾</span>` : ''}
                         ${taskCount > 0 ? `<span class="nav-count">${taskCount}</span>` : ''}
                     </a>
                     <div class="project-children">
@@ -393,6 +397,41 @@ export async function exportData() {
         if (window.showToast) window.showToast('Datos exportados con éxito');
     } catch (err) {
         if (window.showToast) window.showToast('Error al exportar datos', 'error');
+    }
+}
+
+/**
+ * Updates the topbar sync status widget dot + label.
+ * Called by syncManager events and on boot.
+ */
+export function updateTopbarSyncWidget() {
+    const dot = document.getElementById('sync-widget-dot');
+    const label = document.getElementById('sync-widget-label');
+    if (!dot || !label) return;
+
+    const isOnline = navigator.onLine;
+    const status = window.syncManager?.getChatSyncStatus
+        ? window.syncManager.getChatSyncStatus()
+        : { linked: false, online: isOnline, pending: 0 };
+
+    // Also try the main sync indicator if getChatSyncStatus is not specific enough
+    const syncState = document.getElementById('sync-state-label')?.textContent?.toLowerCase() || '';
+
+    if (!isOnline) {
+        dot.className = 'sync-status-dot offline';
+        label.textContent = 'Sin conexión';
+    } else if (!status.linked) {
+        dot.className = 'sync-status-dot offline';
+        label.textContent = 'Local';
+    } else if ((status.pending || 0) > 0 || syncState.includes('sincronizando')) {
+        dot.className = 'sync-status-dot pending';
+        label.textContent = 'Sincronizando…';
+    } else if (syncState.includes('error') || syncState.includes('fallo')) {
+        dot.className = 'sync-status-dot error';
+        label.textContent = 'Error sync';
+    } else {
+        dot.className = 'sync-status-dot synced';
+        label.textContent = 'Sincronizado';
     }
 }
 

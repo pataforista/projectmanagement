@@ -787,6 +787,26 @@ const store = (() => {
                 }
                 return record;
             }
+            case 'DELETE_MESSAGE': {
+                storeName = 'messages';
+                const msgIdx = _state.messages.findIndex(m => m.id === payload.id);
+                if (msgIdx !== -1) {
+                    await dbAPI.delete(storeName, payload.id);
+                    _state.messages.splice(msgIdx, 1);
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'CLEAR_MESSAGES': {
+                storeName = 'messages';
+                const toDelete = _state.messages.filter(m => !m.visibility || m.visibility !== 'protected');
+                for (const m of toDelete) {
+                    await dbAPI.delete(storeName, m.id);
+                }
+                _state.messages = _state.messages.filter(m => m.visibility === 'protected');
+                _notify(storeName);
+                break;
+            }
             case 'ADD_NOTIFICATION': {
                 storeName = 'notifications';
                 const record = { id: _uid, timestamp: monotonicNow(), ...payload };
