@@ -1641,9 +1641,17 @@ body[data-workspace-mode="solo"] .nav-item[data-scope="team"] {
 /* Section label switching */
 body[data-workspace-mode="solo"] .nav-label-default { display: none; }
 body[data-workspace-mode="solo"] .nav-label-solo-only { display: block !important; }
+body[data-workspace-mode="solo"] .nav-label-team-only { display: none !important; }
 
 body[data-workspace-mode="team"] .nav-label-default { display: none; }
 body[data-workspace-mode="team"] .nav-label-team-only { display: block !important; }
+body[data-workspace-mode="team"] .nav-label-solo-only { display: none !important; }
+
+/* Hide nav-sections that become entirely empty in team mode
+   (those that only contain solo-scoped items, e.g. Escritura + Médico) */
+body[data-workspace-mode="team"] .nav-section:not(:has(.nav-item:not([data-scope="solo"]))) {
+    display: none;
+}
 
 /* ── Team mode: teal accent override ────────────────────────────────────── */
 body[data-workspace-mode="team"] {

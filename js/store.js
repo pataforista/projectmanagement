@@ -1,6 +1,7 @@
 import { dbAPI } from './db.js';
 import { createDelta, applyDelta } from './utils/versioning.js';
 import { generateUID as uid, esc, getCurrentWorkspaceActor } from './utils.js';
+import { RoleManager } from '../scripts/roles.js';
 
 const store = (() => {
     // ──────────────────────────────────────────────────────────────────────────
@@ -298,6 +299,14 @@ const store = (() => {
                 const actor = getCurrentWorkspaceActor();
                 const idx = _state.tasks.findIndex(t => t.id === payload.id);
                 if (idx !== -1) {
+                    const task = _state.tasks[idx];
+                    // Permission check: only Lead or Author can edit content
+                    if (!RoleManager.canEditContent(task, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to edit task ${task.id}`);
+                        if (window.showToast) showToast('No tienes permiso para editar esta tarea.', 'error');
+                        return;
+                    }
+
                     const _now = monotonicNow();
                     const updated = {
                         ..._state.tasks[idx],
@@ -434,7 +443,18 @@ const store = (() => {
             // ── Documents ──
             case 'SAVE_DOCUMENT': {
                 storeName = 'documents';
+                const actor = getCurrentWorkspaceActor();
                 const existing = _state.documents.find(d => d.projectId === payload.projectId);
+                
+                // Permission check for documents (associated with projects)
+                // If the document doesn't exist yet, we check the project permissions
+                const project = _state.projects.find(p => p.id === payload.projectId);
+                if (project && !RoleManager.canEditContent(project, actor.label)) {
+                    console.warn(`[Permissions] User ${actor.label} unauthorized to save document for project ${project.id}`);
+                    if (window.showToast) showToast('No tienes permiso para editar este documento.', 'error');
+                    return;
+                }
+
                 const record = { id: `doc-${payload.projectId}`, updatedAt: monotonicNow(), ...existing, ...payload };
                 await dbAPI.put(storeName, record);
                 const idx = _state.documents.findIndex(d => d.projectId === payload.projectId);

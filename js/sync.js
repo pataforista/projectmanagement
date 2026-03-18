@@ -2283,6 +2283,50 @@ const syncManager = (() => {
     // error loop. Blacklisted IDs are held in memory for the current session only.
     const _chatDecryptBlacklist = new Set();
 
+    async function cleanupOldChatMessages() {
+        if (!accessToken || !networkOnline || isSyncing) return;
+        const lastCleanup = Number(localStorage.getItem('gdrive_chat_last_cleanup') || 0);
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+        
+        // Solo ejecutar una vez al día
+        if (Date.now() - lastCleanup < ONE_DAY) return;
+        
+        try {
+            const fId = await getChatFolder();
+            if (!fId) return;
+
+            // Buscar archivos msg_* más viejos de 30 días
+            const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000)).toISOString();
+            const query = encodeURIComponent(`'${fId}' in parents and name contains 'msg_' and modifiedTime < '${thirtyDaysAgo}' and trashed = false`);
+            
+            const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=100&supportsAllDrives=true`;
+            const res = await fetchWithTimeout(url, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+                timeout: 15000
+            });
+            
+            if (!res.ok) return;
+            const data = await res.json();
+            const filesToDelete = data.files || [];
+            
+            if (filesToDelete.length > 0) {
+                console.log(`[ChatSync] Cleaning up ${filesToDelete.length} messages older than 30 days...`);
+                // Eliminar en paralelo (con límite de concurrencia implícito por el navegador)
+                await Promise.all(filesToDelete.map(file => {
+                    return fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?supportsAllDrives=true`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                        timeout: 10000
+                    }).catch(e => console.warn(`[ChatSync] Failed to delete old message ${file.id}:`, e));
+                }));
+            }
+            
+            localStorage.setItem('gdrive_chat_last_cleanup', String(Date.now()));
+        } catch (e) {
+            console.error('[ChatSync] Cleanup error:', e);
+        }
+    }
+
     async function pollChat() {
         if (!accessToken || !networkOnline || isSyncing) return;
         try {
@@ -2437,6 +2481,7 @@ const syncManager = (() => {
                 try {
                     await flushChatOutbox();
                     await pollChat();
+                    await cleanupOldChatMessages();
                 } catch (e) {
                     // Silenciar errores de red offline
                 } finally {

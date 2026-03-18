@@ -230,7 +230,7 @@ function renderIntegrations(root) {
             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">Protege el acceso local al Workspace usando un código PIN o contraseña.</p>
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Nueva Contraseña</label>
-              <input type="password" class="form-input" id="int-new-pwd" placeholder="Mínimo 4 caracteres">
+              <input type="password" class="form-input" id="int-new-pwd" placeholder="Mínimo 8 caracteres">
             </div>
             <label class="checkbox-item" style="margin-top:8px;">
               <input type="checkbox" id="int-autolock" ${localStorage.getItem('autolock_enabled') === 'true' ? 'checked' : ''}>
@@ -311,12 +311,12 @@ function renderIntegrations(root) {
     const pwd = root.querySelector('#int-new-pwd').value;
     const autolock = root.querySelector('#int-autolock').checked;
 
-    if (pwd.length > 0 && pwd.length < 4) {
-      showToast('La contraseña debe tener al menos 4 caracteres.', 'error');
+    if (pwd.length > 0 && pwd.length < 8) {
+      showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
       return;
     }
 
-    if (pwd.length >= 4) {
+    if (pwd.length >= 8) {
       // SHA-256 hash — compatible con el sistema de auth principal (app.js)
       const cryptoLayer = await import('../utils/crypto.js').catch(() => null);
       const hashPwd = async (str) => {

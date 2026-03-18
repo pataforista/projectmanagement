@@ -103,7 +103,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
         <div class="form-group">
           <label class="form-label">Estado</label>
           <select class="form-select" id="task-status">
@@ -114,6 +114,13 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
           <label class="form-label">Tipo</label>
           <select class="form-select" id="task-type">
             ${TASK_TYPES.map(t => `<option value="${t}" ${isEdit && task.type === t ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Visibilidad</label>
+          <select class="form-select" id="task-visibility" style="border-color: var(--accent-primary);">
+            <option value="shared" ${(!isEdit || task?.visibility !== 'local') ? 'selected' : ''}>☁️ Equipo</option>
+            <option value="local" ${isEdit && task?.visibility === 'local' ? 'selected' : ''}>🔒 Privada</option>
           </select>
         </div>
       </div>
@@ -252,15 +259,17 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
     projectId: modal.querySelector('#task-project').value || null,
     cycleId: modal.querySelector('#task-cycle').value || null,
     status: modal.querySelector('#task-status').value,
-    priority: modal.querySelector('#task-priority').value,
     type: modal.querySelector('#task-type').value,
-    dueDate: modal.querySelector('#task-due').value || null,
-    description: modal.querySelector('#task-desc').value,
+    priority: modal.querySelector('#task-priority').value,
     assigneeId: modal.querySelector('#task-assignee').value || null,
-    tags,
+    dueDate: modal.querySelector('#task-due').value || null,
+    description: modal.querySelector('#task-desc').value.trim(),
     subtasks: subTasks,
-    referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value)
+    tags,
+    referenceIds: Array.from(modal.querySelector('#task-refs').selectedOptions).map(o => o.value),
+    visibility: modal.querySelector('#task-visibility').value
   };
+
 
   if (isEdit) {
     payload.id = task.id;

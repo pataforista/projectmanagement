@@ -260,16 +260,13 @@
 
         <div class="nav-section">
           <span class="nav-label nav-label-default">Inicio</span>
-          <span class="nav-label nav-label-solo-only" style="display:none;">Mi Trabajo</span>
-          <span class="nav-label nav-label-team-only" style="display:none;">Inicio del Equipo</span>
+          <span class="nav-label nav-label-solo-only" style="display:none;">Mi Espacio</span>
+          <span class="nav-label nav-label-team-only" style="display:none;">Equipo</span>
           <a class="nav-item" data-view="dashboard" href="#/dashboard">
             <i data-feather="home"></i> <span>Dashboard</span>
           </a>
           <a class="nav-item" data-view="board" href="#/board">
             <i data-feather="layout"></i> <span>Tablero</span>
-          </a>
-          <a class="nav-item" data-view="graph" href="#/graph">
-            <i data-feather="share-2"></i> <span>Grafo</span>
           </a>
           <a class="nav-item" data-view="backlog" href="#/backlog">
             <i data-feather="inbox"></i> <span>Backlog</span>
@@ -277,11 +274,8 @@
           <a class="nav-item" data-view="calendar" href="#/calendar">
             <i data-feather="calendar"></i> <span>Calendario</span>
           </a>
-          <a class="nav-item" data-scope="solo" data-view="matrix" href="#/matrix">
-            <i data-feather="grid"></i> <span>Matriz</span>
-          </a>
-          <a class="nav-item" data-view="library" href="#/library">
-            <i data-feather="book-open"></i> <span>Biblioteca</span>
+          <a class="nav-item" data-view="graph" href="#/graph">
+            <i data-feather="share-2"></i> <span>Grafo</span>
           </a>
           <a class="nav-item" data-view="canvas" href="#/canvas">
             <i data-feather="edit-3"></i> <span>Canvas</span>
@@ -289,20 +283,17 @@
           <a class="nav-item" data-view="notes-wiki" href="#/notes-wiki">
             <i data-feather="book"></i> <span>Wiki</span>
           </a>
+          <a class="nav-item" data-scope="solo" data-view="matrix" href="#/matrix" title="Solo disponible en modo Individual">
+            <i data-feather="grid"></i> <span>Matriz</span>
+          </a>
         </div>
 
         <div class="nav-section">
           <span class="nav-label nav-label-default">Producción</span>
-          <span class="nav-label nav-label-solo-only" style="display:none;">Producción Personal</span>
-          <span class="nav-label nav-label-team-only" style="display:none;">Producción del Equipo</span>
+          <span class="nav-label nav-label-solo-only" style="display:none;">Trabajo Personal</span>
+          <span class="nav-label nav-label-team-only" style="display:none;">Proyectos del Equipo</span>
           <a class="nav-item" data-view="projects" href="#/projects">
             <i data-feather="briefcase"></i> <span>Proyectos</span>
-          </a>
-          <a class="nav-item" data-scope="solo" data-view="writing" href="#/writing">
-            <i data-feather="type"></i> <span>Escritura</span>
-          </a>
-          <a class="nav-item" data-view="medical" href="#/medical">
-            <i data-feather="heart"></i> <span>Médico</span>
           </a>
           <a class="nav-item" data-view="cycles" href="#/cycles">
             <i data-feather="refresh-cw"></i> <span>Ciclos</span>
@@ -310,11 +301,25 @@
           <a class="nav-item" data-view="decisions" href="#/decisions">
             <i data-feather="zap"></i> <span>Decisiones</span>
           </a>
+          <a class="nav-item" data-view="library" href="#/library">
+            <i data-feather="book-open"></i> <span>Biblioteca</span>
+          </a>
           <a class="nav-item" data-view="logs" href="#/logs">
             <i data-feather="activity"></i> <span>Actividad</span>
           </a>
-          <a class="nav-item" data-scope="team" data-view="collaboration" href="#/collaboration">
+          <a class="nav-item" data-scope="team" data-view="collaboration" href="#/collaboration" title="Solo disponible en modo Equipo">
             <i data-feather="users"></i> <span>Colaboración</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <span class="nav-label nav-label-default" style="display:none;"></span>
+          <span class="nav-label nav-label-solo-only" style="display:none;">Personal</span>
+          <a class="nav-item" data-scope="solo" data-view="writing" href="#/writing" title="Solo disponible en modo Individual">
+            <i data-feather="type"></i> <span>Escritura</span>
+          </a>
+          <a class="nav-item" data-scope="solo" data-view="medical" href="#/medical" title="Solo disponible en modo Individual">
+            <i data-feather="heart"></i> <span>Médico</span>
           </a>
         </div>
 
