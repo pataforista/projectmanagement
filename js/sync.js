@@ -1,5 +1,8 @@
 import { encryptRecord, decryptRecord, decryptAll, isLocked, hasKey, lock, getWorkspaceSaltBase64, injectWorkspaceSalt, computeChecksum, computeSaltChecksum, getStoredIterations, commitIterationUpgrade } from './utils/crypto.js';
 import { getCurrentWorkspaceActor, SYNCABLE_SETTINGS_KEYS, syncSettingsToLocalStorage } from './utils.js';
+import { AccountChangeDetector } from './utils/account-detector.js';
+import { StorageManager } from './utils/storage-manager.js';
+import { SessionManager } from './utils/session-manager.js';
 
 const syncManager = (() => {
     // drive.file only allows access to files created by THIS app instance for THIS user,
@@ -224,7 +227,8 @@ const syncManager = (() => {
                         return;
                     }
 
-                    localStorage.setItem(ID_TOKEN_KEY, response.credential);
+                    // OPCIÓN 2: Store ID token in sessionStorage (per-tab)
+                    StorageManager.set(ID_TOKEN_KEY, response.credential, 'session');
                     currentUser = decodeIdToken(response.credential);
 
                     if (!currentUser || isExpiredIdToken(currentUser)) {
@@ -234,6 +238,26 @@ const syncManager = (() => {
                     }
 
                     await syncIdentityToWorkspaceProfile(currentUser);
+
+                    // OPCIÓN 3: Create session in SessionManager
+                    if (window.SessionManager) {
+                        try {
+                            const sessionId = await SessionManager.createSession(
+                                currentUser.email,
+                                response.credential,
+                                {
+                                    name: currentUser.name || currentUser.email,
+                                    avatar: currentUser.name?.charAt(0).toUpperCase() || 'U',
+                                }
+                            );
+                            if (sessionId) {
+                                localStorage.setItem('nexus_current_session_id', sessionId);
+                            }
+                        } catch (e) {
+                            console.warn('[Sync] Session creation failed:', e);
+                        }
+                    }
+
                     // SECURITY FIX: Do not log email to console in production — leaks PII to DevTools.
                     console.log('[Sync] Identity confirmed for user.');
                     if (window.updateUserProfileUI) window.updateUserProfileUI();
@@ -276,11 +300,72 @@ const syncManager = (() => {
         // are recorded as 'Usuario' instead of the real person).
         // If re-authentication is needed, a toast will inform the user.
         currentUser = null;
-        localStorage.removeItem(ID_TOKEN_KEY);
+        StorageManager.remove(ID_TOKEN_KEY, 'session');
         if (window.showToast) {
             showToast('Tu sesión de Google ha expirado. Vuelve a iniciar sesión para sincronizar.', 'warning', true);
         }
         if (window.updateUserProfileUI) window.updateUserProfileUI();
+    }
+
+    /**
+     * OPCIÓN 1 & 3: Handle account switch from different Google session or session manager
+     * Triggered when AccountChangeDetector or SessionManager detects a change
+     */
+    async function handleAccountSwitch(oldEmail, newEmail) {
+        console.log(`[Sync] Account switch detected: ${oldEmail || 'unknown'} → ${newEmail}`);
+
+        // 1. Pause sync temporarily
+        const wasSyncing = isSyncing;
+        isSyncing = true;
+
+        // 2. Record account switch
+        const idToken = StorageManager.get(ID_TOKEN_KEY, 'session');
+        if (idToken && AccountChangeDetector) {
+            AccountChangeDetector.recordAccountSwitch(newEmail, idToken);
+        }
+
+        // 3. Update account scope in IDB if needed
+        if (window.IDBScopedStorage && window.IDBScopedStorage.switchAccount) {
+            try {
+                await window.IDBScopedStorage.switchAccount(newEmail);
+            } catch (e) {
+                console.warn('[Sync] IDB account scope switch failed:', e);
+            }
+        }
+
+        // 4. Emit event for UI to react
+        window.dispatchEvent(new CustomEvent('account:switched', {
+            detail: { oldEmail, newEmail }
+        }));
+
+        // 5. Reset sync state for new account
+        _remoteChecked = false;
+        _dirtyLocalChanges = false;
+        accessToken = null;
+        pushPending = false;
+
+        // 6. Try to resume if it was syncing
+        if (wasSyncing) {
+            isSyncing = false;
+            // Give UI time to refresh
+            setTimeout(async () => {
+                try {
+                    await pull();
+                    if (!isSyncing) {
+                        await push();
+                    }
+                } catch (e) {
+                    console.warn('[Sync] Auto-sync after account switch failed:', e);
+                }
+            }, 500);
+        } else {
+            isSyncing = false;
+        }
+
+        // 7. Show toast
+        if (window.showToast) {
+            showToast(`Sesión cambiada a: ${newEmail}`, 'info');
+        }
     }
 
     async function syncIdentityToWorkspaceProfile(user) {
@@ -289,18 +374,19 @@ const syncManager = (() => {
         const email = String(user.email || '').trim().toLowerCase();
         const avatar = name.charAt(0).toUpperCase() || 'U';
 
-        localStorage.setItem('workspace_user_name', name);
-        localStorage.setItem('workspace_user_email', email);
-        localStorage.setItem('workspace_user_avatar', avatar);
+        // OPCIÓN 2: Use StorageManager for per-session storage
+        StorageManager.set('workspace_user_name', name, 'session');
+        StorageManager.set('workspace_user_email', email, 'session');
+        StorageManager.set('workspace_user_avatar', avatar, 'session');
 
         // PERSISTENT IDENTITY FIX: Store a non-reversible hash of the email
         // to allow matching the local user to a member in the shared Drive snapshot
         // even when emails are stripped for privacy (plaintext path).
         const emailHash = (await computeChecksum(email, false)).slice(0, 16);
-        localStorage.setItem('workspace_user_email_hash', emailHash);
+        StorageManager.set('workspace_user_email_hash', emailHash, 'session');
 
-        if (!localStorage.getItem('workspace_user_role')) {
-            localStorage.setItem('workspace_user_role', 'Miembro');
+        if (!StorageManager.get('workspace_user_role', 'session')) {
+            StorageManager.set('workspace_user_role', 'Miembro', 'session');
         }
     }
 
@@ -329,7 +415,8 @@ const syncManager = (() => {
                     }
                     accessToken = resp.access_token;
                     tokenTimestamp = Date.now();
-                    localStorage.setItem(STATUS_KEY, 'true');
+                    // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
+                    StorageManager.set(STATUS_KEY, 'true', 'session');
                     updateSyncUI('online');
                     resolve(accessToken);
                 },
@@ -393,7 +480,8 @@ const syncManager = (() => {
                     return;
                 }
                 accessToken = resp.access_token;
-                localStorage.setItem(STATUS_KEY, 'true');
+                // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
+                StorageManager.set(STATUS_KEY, 'true', 'session');
                 updateSyncUI('online');
                 await pull();
                 if (!isSyncing) await push();
@@ -408,9 +496,10 @@ const syncManager = (() => {
      */
     async function init() {
         bindNetworkListeners();
-        updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
+        // OPCIÓN 2: Check connected status from sessionStorage (per-tab)
+        updateSyncUI(StorageManager.get(STATUS_KEY, 'session') === 'true' ? 'online' : 'offline');
 
-        const storedIdToken = localStorage.getItem(ID_TOKEN_KEY);
+        const storedIdToken = StorageManager.get(ID_TOKEN_KEY, 'session');
         if (storedIdToken) {
             const decodedUser = decodeIdToken(storedIdToken);
             if (!decodedUser || isExpiredIdToken(decodedUser)) {

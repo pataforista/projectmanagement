@@ -4,6 +4,7 @@
  */
 
 import { syncManager } from './sync.js';
+import { showSessionSwitcher } from './ui/session-switcher.js';
 
 export function initUIToggles() {
     const container = document.querySelector('.app-container');
@@ -57,6 +58,36 @@ export function initUIToggles() {
     document.getElementById('btn-user-profile')?.addEventListener('click', () => {
         if (window.openProfileModal) window.openProfileModal();
     });
+}
+
+/**
+ * OPCIÓN 3: Initialize Session Switcher in topbar
+ * Allows users to quickly switch between multiple Google accounts
+ */
+export function initSessionSwitcher() {
+    const btn = document.getElementById('btn-session-switcher');
+    if (!btn) return;
+
+    // Show button if SessionManager is available
+    if (window.SessionManager) {
+        btn.style.display = 'flex';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showSessionSwitcher();
+        });
+
+        // Show button tooltip with keyboard shortcut
+        btn.title = 'Cambiar sesión o cuenta (Alt+S)';
+
+        // Keyboard shortcut: Alt+S to open session switcher
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey && e.key === 's') {
+                e.preventDefault();
+                showSessionSwitcher();
+            }
+        });
+    }
 }
 
 /**

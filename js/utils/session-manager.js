@@ -1,0 +1,374 @@
+/**
+ * session-manager.js — Multi-Session Management
+ * Opción 3: Fast logout/login and session switching (like Gmail)
+ *
+ * Manages multiple user sessions and allows quick switching without page reload.
+ * Sessions are stored in IndexedDB and can be switched atomically.
+ */
+
+import { StorageManager } from './storage-manager.js';
+
+export const SessionManager = (() => {
+    const SESSIONS_STORE = 'sessions';
+    const CURRENT_SESSION_KEY = 'nexus_current_session_id';
+    const SESSION_ID_PREFIX = 'session_';
+
+    let db = null;
+    let currentSessionId = null;
+
+    /**
+     * Initialize SessionManager with IndexedDB connection
+     */
+    async function init(indexedDB) {
+        db = indexedDB;
+
+        // Restore current session ID from localStorage
+        currentSessionId = localStorage.getItem(CURRENT_SESSION_KEY);
+
+        console.log('[SessionManager] Initialized');
+        return true;
+    }
+
+    /**
+     * Generate unique session ID
+     */
+    function generateSessionId(email) {
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 8);
+        return `${SESSION_ID_PREFIX}${email.split('@')[0]}_${timestamp}_${random}`;
+    }
+
+    /**
+     * Create a new session for a user
+     */
+    async function createSession(email, idToken, metadata = {}) {
+        if (!db || !db.sessions) {
+            console.warn('[SessionManager] IndexedDB not available, session creation deferred');
+            return null;
+        }
+
+        const sessionId = generateSessionId(email);
+
+        const session = {
+            id: sessionId,
+            email,
+            createdAt: Date.now(),
+            lastActive: Date.now(),
+            idToken,              // Store encrypted in IDB
+            metadata: {
+                name: metadata.name || email,
+                avatar: metadata.avatar || email.charAt(0).toUpperCase(),
+                memberId: metadata.memberId || '',
+                role: metadata.role || 'member',
+            },
+            status: 'active',
+        };
+
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+            const store = tx.objectStore(SESSIONS_STORE);
+            await store.add(session);
+
+            console.log(`[SessionManager] Session created: ${sessionId}`);
+            return sessionId;
+        } catch (e) {
+            console.error('[SessionManager] Failed to create session:', e);
+            return null;
+        }
+    }
+
+    /**
+     * List all active sessions
+     */
+    async function listSessions() {
+        if (!db || !db.sessions) {
+            console.warn('[SessionManager] IndexedDB not available, no sessions');
+            return [];
+        }
+
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readonly');
+            const store = tx.objectStore(SESSIONS_STORE);
+            const sessions = await store.getAll();
+
+            return sessions
+                .filter(s => s.status === 'active')
+                .sort((a, b) => b.lastActive - a.lastActive);
+        } catch (e) {
+            console.error('[SessionManager] Failed to list sessions:', e);
+            return [];
+        }
+    }
+
+    /**
+     * Get a specific session by ID
+     */
+    async function getSession(sessionId) {
+        if (!db || !db.sessions) return null;
+
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readonly');
+            const store = tx.objectStore(SESSIONS_STORE);
+            return await store.get(sessionId);
+        } catch (e) {
+            console.error('[SessionManager] Failed to get session:', e);
+            return null;
+        }
+    }
+
+    /**
+     * Switch to a different session
+     * This is atomic: saves current state and loads new state
+     */
+    async function switchSession(sessionId) {
+        const targetSession = await getSession(sessionId);
+        if (!targetSession || targetSession.status !== 'active') {
+            console.warn(`[SessionManager] Session ${sessionId} not found or inactive`);
+            return false;
+        }
+
+        // Save current session's last activity
+        const currentEmail = StorageManager.get('workspace_user_email');
+        if (currentEmail && currentSessionId) {
+            try {
+                const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+                const store = tx.objectStore(SESSIONS_STORE);
+                const current = await store.get(currentSessionId);
+
+                if (current) {
+                    current.lastActive = Date.now();
+                    await store.put(current);
+                }
+            } catch (e) {
+                console.warn('[SessionManager] Failed to update current session:', e);
+            }
+        }
+
+        // Load target session
+        StorageManager.set('google_id_token', targetSession.idToken, 'session');
+        StorageManager.set('workspace_user_email', targetSession.email, 'session');
+        StorageManager.set('workspace_user_name', targetSession.metadata.name, 'session');
+        StorageManager.set('workspace_user_avatar', targetSession.metadata.avatar, 'session');
+        StorageManager.set('workspace_user_member_id', targetSession.metadata.memberId || '', 'session');
+        StorageManager.set('workspace_user_role', targetSession.metadata.role || 'member', 'session');
+
+        // Update current session pointer
+        localStorage.setItem(CURRENT_SESSION_KEY, sessionId);
+        currentSessionId = sessionId;
+
+        // Update last active
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+            const store = tx.objectStore(SESSIONS_STORE);
+            targetSession.lastActive = Date.now();
+            await store.put(targetSession);
+        } catch (e) {
+            console.warn('[SessionManager] Failed to update session timestamp:', e);
+        }
+
+        console.log(`[SessionManager] Switched to session: ${sessionId}`);
+
+        // Dispatch event for UI to react
+        window.dispatchEvent(new CustomEvent('session:switched', {
+            detail: { sessionId, email: targetSession.email }
+        }));
+
+        return true;
+    }
+
+    /**
+     * End a session (soft delete — mark as inactive)
+     */
+    async function endSession(sessionId) {
+        if (!db || !db.sessions) return false;
+
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+            const store = tx.objectStore(SESSIONS_STORE);
+            const session = await store.get(sessionId);
+
+            if (!session) {
+                console.warn(`[SessionManager] Session ${sessionId} not found`);
+                return false;
+            }
+
+            session.status = 'inactive';
+            session.endedAt = Date.now();
+            await store.put(session);
+
+            console.log(`[SessionManager] Session ended: ${sessionId}`);
+
+            // If this was the current session, switch to another one
+            if (currentSessionId === sessionId) {
+                const others = await listSessions();
+                if (others.length > 0) {
+                    await switchSession(others[0].id);
+                } else {
+                    // No other sessions — logout completely
+                    await logout();
+                }
+            }
+
+            return true;
+        } catch (e) {
+            console.error('[SessionManager] Failed to end session:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Complete logout — clear current session
+     */
+    async function logout() {
+        console.log('[SessionManager] Performing logout');
+
+        // Clear session storage
+        StorageManager.clearSessionData();
+
+        // Clear current session pointer
+        localStorage.removeItem(CURRENT_SESSION_KEY);
+        currentSessionId = null;
+
+        // Preserve:
+        // - GLOBAL_KEYS (config, settings, etc.)
+        // - workspace_lock_hash (password protection)
+        // - nexus_salt (encryption key)
+
+        // Dispatch event
+        window.dispatchEvent(new CustomEvent('session:logout'));
+
+        return true;
+    }
+
+    /**
+     * Fast logout (no page reload, no Google revocation wait)
+     */
+    async function logoutFast() {
+        console.log('[SessionManager] Fast logout initiated');
+
+        // 1. Clear local session immediately
+        await logout();
+
+        // 2. Attempt Google token revocation in background (fire-and-forget)
+        const token = localStorage.getItem('google_id_token');
+        if (token && window.google?.accounts?.oauth2) {
+            try {
+                google.accounts.oauth2.revoke(token)
+                    .catch(e => console.warn('[SessionManager] Google revocation failed:', e));
+            } catch (e) {
+                console.warn('[SessionManager] Could not revoke token:', e);
+            }
+        }
+
+        // 3. Show feedback to user
+        if (window.showToast) {
+            showToast('Sesión cerrada', 'success');
+        }
+
+        // 4. Reload page after brief delay (allow toast to show)
+        setTimeout(() => {
+            location.reload();
+        }, 300);
+    }
+
+    /**
+     * Get current session
+     */
+    async function getCurrentSession() {
+        if (!currentSessionId) return null;
+        return getSession(currentSessionId);
+    }
+
+    /**
+     * Check if a user (email) has an active session
+     */
+    async function hasSession(email) {
+        const sessions = await listSessions();
+        return sessions.some(s => s.email === email);
+    }
+
+    /**
+     * Find session by email
+     */
+    async function findSessionByEmail(email) {
+        const sessions = await listSessions();
+        return sessions.find(s => s.email === email) || null;
+    }
+
+    /**
+     * Permanently delete a session (hard delete)
+     */
+    async function deleteSession(sessionId) {
+        if (!db || !db.sessions) return false;
+
+        try {
+            const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+            const store = tx.objectStore(SESSIONS_STORE);
+            await store.delete(sessionId);
+
+            console.log(`[SessionManager] Session deleted: ${sessionId}`);
+
+            // If this was current session, switch or logout
+            if (currentSessionId === sessionId) {
+                const others = await listSessions();
+                if (others.length > 0) {
+                    await switchSession(others[0].id);
+                } else {
+                    await logout();
+                }
+            }
+
+            return true;
+        } catch (e) {
+            console.error('[SessionManager] Failed to delete session:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Get session statistics
+     */
+    async function getStats() {
+        const sessions = await listSessions();
+        return {
+            totalActive: sessions.length,
+            currentSessionId,
+            sessions: sessions.map(s => ({
+                id: s.id,
+                email: s.email,
+                name: s.metadata.name,
+                createdAt: s.createdAt,
+                lastActive: s.lastActive,
+            })),
+        };
+    }
+
+    /**
+     * PUBLIC API
+     */
+    return {
+        init,
+        createSession,
+        listSessions,
+        getSession,
+        switchSession,
+        endSession,
+        logout,
+        logoutFast,
+        getCurrentSession,
+        hasSession,
+        findSessionByEmail,
+        deleteSession,
+        getStats,
+
+        // Helpers
+        generateSessionId,
+
+        // Properties
+        get currentSessionId() {
+            return currentSessionId;
+        },
+    };
+})();
+
+export default SessionManager;

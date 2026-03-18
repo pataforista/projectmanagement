@@ -1,5 +1,6 @@
 import {
     initUIToggles,
+    initSessionSwitcher,
     initWorkspaceMode,
     refreshSidebarProjects,
     openSearch,
@@ -10,9 +11,53 @@ import {
     initGlobalEffects,
     updateTopbarSyncWidget
 } from './ui.js';
+import { StorageManager } from './utils/storage-manager.js';
+import { AccountChangeDetector } from './utils/account-detector.js';
+import { SessionManager } from './utils/session-manager.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     initGlobalEffects();
+
+    // ── OPCIÓN 2: Initialize Storage Manager ──────────────────────────────────
+    // Migrate session keys from localStorage to sessionStorage for per-tab isolation
+    try {
+        StorageManager.migrateSessionKeys();
+        StorageManager.validateSecurityBoundaries();
+        console.log('[Boot] Storage Manager initialized');
+    } catch (e) {
+        console.warn('[Boot] Storage migration failed:', e);
+    }
+
+    // ── OPCIÓN 3: Initialize Session Manager with IndexedDB ─────────────────
+    // Make SessionManager globally available
+    window.SessionManager = SessionManager;
+    try {
+        if (window.db) {
+            await SessionManager.init(window.db);
+            console.log('[Boot] Session Manager initialized');
+        }
+    } catch (e) {
+        console.warn('[Boot] Session Manager init failed:', e);
+    }
+
+    // ── OPCIÓN 1: Initialize Account Change Detector ────────────────────────
+    // Monitor for Google account switches
+    window.AccountChangeDetector = AccountChangeDetector;
+    try {
+        AccountChangeDetector.init(async (changeEvent) => {
+            if (changeEvent.type === 'account_switched') {
+                console.log(`[Boot] Account switch detected: ${changeEvent.oldEmail} → ${changeEvent.newEmail}`);
+                if (window.syncManager && window.syncManager.handleAccountSwitch) {
+                    await syncManager.handleAccountSwitch(changeEvent.oldEmail, changeEvent.newEmail);
+                }
+            } else if (changeEvent.type === 'token_expired') {
+                console.log('[Boot] Google token expired');
+            }
+        });
+        console.log('[Boot] Account Change Detector initialized');
+    } catch (e) {
+        console.warn('[Boot] Account detector init failed:', e);
+    }
 
     // ── 0. Pre-init syncManager (needed before auth block to read config) ──────
     // FIX: syncManager.init() se mueve aquí para que getConfig() funcione
@@ -22,6 +67,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
         console.warn('[Boot] syncManager pre-init failed:', e);
     }
+
+    // ── Listen for account switch events from SessionManager or AccountDetector
+    window.addEventListener('account:switched', (e) => {
+        console.log(`[Boot] Account switched event received: ${e.detail.newEmail}`);
+        if (window.updateUserProfileUI) updateUserProfileUI();
+        if (window.refreshSidebarProjects) refreshSidebarProjects();
+    });
+
+    window.addEventListener('session:switched', (e) => {
+        console.log(`[Boot] Session switched event received: ${e.detail.email}`);
+        if (window.updateUserProfileUI) updateUserProfileUI();
+    });
+
+    window.addEventListener('session:logout', () => {
+        console.log('[Boot] Logout event received');
+        location.reload();
+    });
 
     // ── 0. App Lock (Auth) — Nexus Fortress ───────────────────────────────────
     const authOverlay = document.getElementById('auth-overlay');
@@ -370,6 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
+    initSessionSwitcher();  // OPCIÓN 3: Initialize session switcher in topbar
     initWorkspaceMode();
 
     // ── 8.1. Sync status widget ─────────────────────────────────────────────────
