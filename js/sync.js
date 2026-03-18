@@ -2508,14 +2508,13 @@ const syncManager = (() => {
                             }
                             msgData = await decryptRecord(msgData);
                             if (!msgData) {
-                                // Permanent failure: add to blacklist so we don't retry this message.
-                                // Also advance the cursor so the poll timestamp moves forward.
+                                // Permanent failure: ignore for this session and DELETE UNREADABLE file from Drive.
+                                // If we can't read it, it's garbage from a previous workspace life (before reset).
                                 _chatDecryptBlacklist.add(file.id);
                                 decryptFailures++;
-                                console.error(
-                                    `[ChatSync] Decryption failed for message ${file.name} (${file.id}). ` +
-                                    `Message blacklisted for this session to prevent retry loops.`
-                                );
+                                console.error(`[ChatSync] Decryption failed for message ${file.name} (${file.id}). DELETING from Drive for cleanup.`);
+                                deleteChatMessage(file.id).catch(() => {});
+                                
                                 // Advance cursor past this message (we cannot read it, but we shouldn't
                                 // be stuck retrying it forever).
                                 latestProcessedModifiedTime = Math.max(
