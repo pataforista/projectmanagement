@@ -169,6 +169,7 @@ const store = (() => {
         // randomUUID() the probability is effectively zero for any realistic team size.
         const _uid = crypto.randomUUID();
         let storeName;
+        let result = null;
 
         switch (action) {
             // ── Projects ──
@@ -188,7 +189,8 @@ const store = (() => {
                 _state.projects.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Proyecto "${record.name}" creado.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_PROJECT': {
                 storeName = 'projects';
@@ -292,7 +294,8 @@ const store = (() => {
                 _state.tasks.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Tarea "${record.title}" creada.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_TASK': {
                 storeName = 'tasks';
@@ -357,7 +360,8 @@ const store = (() => {
                 _state.cycles.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Ciclo "${record.name}" creado.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_CYCLE': {
                 storeName = 'cycles';
@@ -404,7 +408,8 @@ const store = (() => {
                 _state.decisions.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Decisión "${record.title}" registrada.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_DECISION': {
                 storeName = 'decisions';
@@ -472,7 +477,8 @@ const store = (() => {
                 await dbAPI.put(storeName, record);
                 _state.logs.push(record);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
 
 
@@ -484,7 +490,8 @@ const store = (() => {
                 await dbAPI.put(storeName, record);
                 _state.members.push(record);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
 
             case 'UPDATE_MEMBER': {
@@ -495,7 +502,8 @@ const store = (() => {
                 await dbAPI.put(storeName, updated);
                 Object.assign(existing, updated);
                 _notify(storeName);
-                return updated;
+                result = updated;
+                break;
             }
 
             case 'DELETE_MEMBER': {
@@ -506,7 +514,8 @@ const store = (() => {
                 await dbAPI.delete(storeName, payload.id);
                 _state.members.splice(index, 1);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
 
             // ── Library / Zotero ──
@@ -573,7 +582,8 @@ const store = (() => {
                 _state.interconsultations.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Interconsulta creada.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_INTERCONSULTATION': {
                 storeName = 'interconsultations';
@@ -624,7 +634,8 @@ const store = (() => {
                 _state.sessions.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`${payload.type} registrada.`, 'success');
-                return record;
+                result = record;
+                break;
             }
             case 'UPDATE_SESSION': {
                 storeName = 'sessions';
@@ -666,7 +677,8 @@ const store = (() => {
                 await dbAPI.put(storeName, record);
                 _state.timeLogs.push(record);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
             case 'DELETE_TIME_LOG': {
                 storeName = 'timeLogs';
@@ -717,7 +729,8 @@ const store = (() => {
                 _state.snapshots.push(snapshotRecord);
                 _notify(storeName);
                 if (window.showToast) showToast('Versión guardada (delta).', 'success');
-                return snapshotRecord;
+                result = snapshotRecord;
+                break;
             }
             case 'DELETE_SNAPSHOT': {
                 storeName = 'snapshots';
@@ -742,7 +755,8 @@ const store = (() => {
                 await dbAPI.put(storeName, record);
                 _state.annotations.push(record);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
             case 'DELETE_ANNOTATION': {
                 storeName = 'annotations';
@@ -785,7 +799,8 @@ const store = (() => {
                         }
                     }
                 }
-                return record;
+                result = record;
+                break;
             }
             case 'DELETE_MESSAGE': {
                 storeName = 'messages';
@@ -813,7 +828,8 @@ const store = (() => {
                 await dbAPI.put(storeName, record);
                 _state.notifications.push(record);
                 _notify(storeName);
-                return record;
+                result = record;
+                break;
             }
 
             // ── Sync ──
@@ -947,6 +963,8 @@ const store = (() => {
         if (action !== 'HYDRATE_STORE') {
             _schedulePush();
         }
+
+        return result;
     }
 
     // ── Selectors ──

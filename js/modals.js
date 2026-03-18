@@ -333,7 +333,7 @@ function openProjectModal(p = null) {
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <label class="form-label" style="margin:0;">Objetivo</label>
           <button class="btn btn-ghost btn-xs" id="btn-ai-goal" title="Generar descripción con IA" style="gap:4px; display:flex; align-items:center;">
-            <i data-feather="sparkles" style="width:12px;"></i> IA
+            <i data-feather="zap" style="width:12px;"></i> IA
           </button>
         </div>
         <textarea class="form-textarea" id="proj-goal" placeholder="¿Qué resultado específico buscas?" rows="2">${isEdit ? esc(p?.goal || '') : ''}</textarea>
@@ -458,7 +458,7 @@ Genera un objetivo claro y conciso (2-3 oraciones) para este proyecto:`;
 
     closeModal();
     refreshCurrentView();
-    refreshSidebarProjects();
+    window.refreshSidebarProjects?.();
   });
 }
 

@@ -23,6 +23,7 @@ function renderCalendar(root) {
             <span id="cal-title" style="font-weight:700;font-size:1rem;min-width:160px;text-align:center;">${MONTH_NAMES[month]} ${year}</span>
             <button class="btn btn-secondary" id="cal-next"><i data-feather="chevron-right"></i></button>
             <button class="btn btn-ghost btn-sm" id="cal-today">Hoy</button>
+            <button class="btn btn-ghost btn-sm" id="cal-export" title="Exportar a Google Calendar / Outlook"><i data-feather="download"></i> .ics</button>
             <button class="btn btn-primary btn-sm" id="cal-new-session"><i data-feather="plus"></i> Sesión</button>
           </div>
         </div>
@@ -47,6 +48,9 @@ function renderCalendar(root) {
     });
     root.querySelector('#cal-new-session').addEventListener('click', () => {
       openSessionModal();
+    });
+    root.querySelector('#cal-export')?.addEventListener('click', () => {
+      exportWorkspaceToICS();
     });
 
     root.querySelectorAll('.calendar-day[data-date]').forEach(cell => {
@@ -148,6 +152,53 @@ function showDayTasks(root, dateStr) {
 
   feather.replace();
   bindTaskCheckboxes(panel);
+}
+
+function exportWorkspaceToICS() {
+  const tasks = store.get.allTasks();
+  const sessions = store.get.sessions();
+  
+  const events = [];
+
+  // Map Tasks
+  tasks.forEach(t => {
+    if (!t.dueDate) return;
+    events.push({
+      id: t.id,
+      title: `Tarea: ${t.title}`,
+      start: t.dueDate,
+      isAllDay: true,
+      description: `Estado: ${t.status}\nProyecto: ${store.get.projectById(t.projectId)?.title || 'General'}`
+    });
+  });
+
+  // Map Sessions
+  sessions.forEach(s => {
+    if (!s.date) return;
+    events.push({
+      id: s.id,
+      title: `${s.type}: ${s.title}`,
+      start: s.date,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      description: `Tipo: ${s.type}`
+    });
+  });
+
+  if (events.length === 0) {
+    if (window.showToast) showToast('No hay eventos para exportar', 'warning');
+    return;
+  }
+
+  try {
+    const icsContent = generateICS(events);
+    const fileName = `workspace-calendar-${new Date().toISOString().split('T')[0]}.ics`;
+    downloadFile(fileName, icsContent, 'text/calendar');
+    if (window.showToast) showToast('Calendario exportado (.ics)', 'success');
+  } catch (e) {
+    console.error('[Calendar] Export failed:', e);
+    if (window.showToast) showToast('Error al exportar calendario', 'error');
+  }
 }
 
 window.renderCalendar = renderCalendar;

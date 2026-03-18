@@ -24,7 +24,7 @@ export const AccountChangeDetector = (() => {
      * Decode JWT without verification (we trust Google's signature from their domain)
      */
     function decodeIdToken(token) {
-        if (!token) return null;
+        if (!token || typeof token !== 'string' || token === 'null' || token === 'undefined') return null;
         try {
             const parts = token.split('.');
             if (parts.length !== 3) return null;

@@ -42,7 +42,7 @@ export const SessionManager = (() => {
      * Create a new session for a user
      */
     async function createSession(email, idToken, metadata = {}) {
-        if (!db || !db.sessions) {
+        if (!db || !db.objectStoreNames.contains(SESSIONS_STORE)) {
             console.warn('[SessionManager] IndexedDB not available, session creation deferred');
             return null;
         }
@@ -81,8 +81,8 @@ export const SessionManager = (() => {
      * List all active sessions
      */
     async function listSessions() {
-        if (!db || !db.sessions) {
-            console.warn('[SessionManager] IndexedDB not available, no sessions');
+        if (!db || !db.objectStoreNames.contains(SESSIONS_STORE)) {
+            console.warn('[SessionManager] IndexedDB not available or missing sessions store');
             return [];
         }
 

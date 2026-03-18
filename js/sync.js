@@ -749,12 +749,9 @@ const syncManager = (() => {
                 // receiver can verify integrity on the encrypted payload.
                 encryptedData.metadata.checksum = await computeChecksum(encryptedData);
 
-                // SECURITY FIX: Compute HMAC checksum of the workspace salt
-                // so remote recipients can detect if salt was poisoned by a collaborator.
-                const email = localStorage.getItem('workspace_user_email') || '';
-                if (data.workspaceSalt) {
-                    encryptedData.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
-                }
+                // BUG FIX: saltChecksum generation was removed because binding to local email
+                // breaks E2EE pull verification for other team members. Integrity is already
+                // protected by metadata.checksum.
 
                 return encryptedData;
             } catch (e) {
@@ -775,11 +772,7 @@ const syncManager = (() => {
         // Plaintext path: compute checksum on unencrypted snapshot.
         data.metadata.checksum = await computeChecksum(data);
 
-        // SECURITY FIX: Compute HMAC checksum of the workspace salt (plaintext path too)
-        const email = localStorage.getItem('workspace_user_email') || '';
-        if (data.workspaceSalt) {
-            data.metadata.saltChecksum = await computeSaltChecksum(data.workspaceSalt, email);
-        }
+        // BUG FIX: saltChecksum generation was removed for the plaintext path as well.
 
         return data;
     }
@@ -1103,7 +1096,18 @@ const syncManager = (() => {
             console.log('[Sync] Token near expiration. Performing proactive refresh...');
             // BUG 36 FIX: Use the shared refresh lock so that push() and pull() running
             // concurrently don't both trigger a proactive refresh at the same moment.
-            await _refreshTokenWithLock();
+            try {
+                await _refreshTokenWithLock();
+            } catch (e) {
+                console.error('[Sync] Proactive refresh failed (likely COOP/popup blocker):', e);
+                accessToken = null;
+                StorageManager.set('gdrive_connected', 'false', 'session'); // STATUS_KEY
+                updateSyncUI('offline');
+                if (window.showToast) {
+                    showToast('Tu sesión de sincronización expiró o fue bloqueada. Reconecta para continuar.', 'warning', true);
+                }
+                throw new Error('AUTH_EXPIRED');
+            }
         }
     }
 
@@ -1168,7 +1172,16 @@ const syncManager = (() => {
                     };
                     return await fetchWithTimeout(resource, retriedOptions, retryCount + 1);
                 } catch (e) {
-                    console.error('[Sync] Silent refresh failed:', e);
+                    console.error('[Sync] Silent refresh failed (likely COOP/popup blocker):', e);
+                    // BUG FIX: Explicitly clear the token and status so the polling loops
+                    // stop hitting 401s and popping invisible blocked iframes.
+                    accessToken = null;
+                    StorageManager.set(STATUS_KEY, 'false', 'session');
+                    updateSyncUI('offline');
+                    if (window.showToast) {
+                        showToast('Tu sesión de sincronización expiró o fue bloqueada. Reconecta para continuar.', 'warning', true);
+                    }
+                    throw new Error('AUTH_EXPIRED');
                 }
             }
 

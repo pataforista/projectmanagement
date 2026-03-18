@@ -409,11 +409,11 @@ function showProjectTab(root, p, tab) {
         <div class="reports-view" style="display:flex; flex-direction:column; gap:20px;">
           <div class="card glass-panel" style="padding:20px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-surface-2);">
             <h3 style="font-size:1rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-              <i data-feather="sparkles" style="width:18px;"></i> Reportes con IA
+              <i data-feather="zap" style="width:18px;"></i> Reportes con IA
             </h3>
             <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
               <button class="btn btn-secondary btn-sm" id="btn-summarize-project" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="zap" style="width:14px;"></i> Resumir proyecto</button>
-              <button class="btn btn-secondary btn-sm" id="btn-suggest-tasks" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="lightbulb" style="width:14px;"></i> Sugerir tareas</button>
+              <button class="btn btn-secondary btn-sm" id="btn-suggest-tasks" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="help-circle" style="width:14px;"></i> Sugerir tareas</button>
               <button class="btn btn-secondary btn-sm" id="btn-generate-report" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="file-text" style="width:14px;"></i> Generar reporte</button>
             </div>
             <div id="ai-results" style="min-height:80px; padding:12px; background:var(--bg-card); border-radius:8px; border:1px solid var(--border-color); font-size:0.85rem; line-height:1.5;"></div>

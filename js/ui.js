@@ -394,7 +394,7 @@ export async function handleSearch(q) {
     // ── Semantic search results (AI-powered) ────────────────────────────────────
     if (semanticResults.length > 0) {
         sections.push(`<div class="search-section-label" style="margin-top:12px; display:flex; align-items:center; gap:6px;">
-            <i data-feather="sparkles" style="width:14px; height:14px; color:var(--accent-warning);"></i> Búsqueda Semántica
+            <i data-feather="zap" style="width:14px; height:14px; color:var(--accent-warning);"></i> Búsqueda Semántica
         </div>`);
         sections.push(...semanticResults.map(r => {
             const item = r.item;

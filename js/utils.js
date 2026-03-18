@@ -70,14 +70,14 @@ String.prototype.slugify = function () {
     return this.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 };
 
-function downloadFile(name, content) {
-    const blob = new Blob([content], { type: 'text/markdown' });
+function downloadFile(name, content, type = 'text/plain') {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = name;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
 function normalizeWorkspaceName(name) {
@@ -506,6 +506,77 @@ export function generateUID() {
     return crypto.randomUUID();
 }
 
+/**
+ * Genera una cadena en formato iCalendar (.ics) a partir de una lista de eventos.
+ * Soporta eventos de todo el día (Tasks) y con hora específica (Sessions).
+ */
+export function generateICS(events) {
+    const foldLine = (line) => {
+        const parts = [];
+        while (line.length > 75) {
+            parts.push(line.slice(0, 75));
+            line = ' ' + line.slice(75);
+        }
+        parts.push(line);
+        return parts.join('\r\n');
+    };
+
+    const escapeICS = (str) => {
+        if (!str) return '';
+        return str.replace(/[\\,;]/g, (match) => '\\' + match).replace(/\n/g, '\\n');
+    };
+
+    const formatDate = (dateStr, timeStr) => {
+        if (!dateStr) return '';
+        const cleanDate = dateStr.replace(/-/g, '');
+        if (!timeStr) return `${cleanDate}`; // All-day format: YYYYMMDD
+        const cleanTime = timeStr.replace(/:/g, '');
+        return `${cleanDate}T${cleanTime.padEnd(4, '0')}00`; // Timed format: YYYYMMDDTHHMMSS
+    };
+
+    let ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Nexus//ProjectManagement//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH'
+    ];
+
+    events.forEach(event => {
+        const uid = event.id || generateUID();
+        const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        
+        ics.push('BEGIN:VEVENT');
+        ics.push(`UID:${uid}`);
+        ics.push(`DTSTAMP:${dtstamp}`);
+        
+        if (event.start && event.isAllDay) {
+            // All-day uses VALUE=DATE
+            ics.push(`DTSTART;VALUE=DATE:${formatDate(event.start)}`);
+            // ICS ends are exclusive for all-day, add 1 day if we had an end date, 
+            // but for simplicity (one-day tasks), we just use one date.
+        } else if (event.start) {
+            ics.push(`DTSTART:${formatDate(event.start, event.startTime)}`);
+            if (event.end || event.endTime) {
+                ics.push(`DTEND:${formatDate(event.end || event.start, event.endTime)}`);
+            }
+        }
+
+        ics.push(foldLine(`SUMMARY:${escapeICS(event.title)}`));
+        if (event.description) {
+            ics.push(foldLine(`DESCRIPTION:${escapeICS(event.description)}`));
+        }
+        if (event.location) {
+            ics.push(foldLine(`LOCATION:${escapeICS(event.location)}`));
+        }
+        
+        ics.push('END:VEVENT');
+    });
+
+    ics.push('END:VCALENDAR');
+    return ics.join('\r\n');
+}
+
 // Attach to window
 window.esc = esc;
 window.parseCsv = parseCsv;
@@ -518,6 +589,7 @@ window.getObsidianFileName = getObsidianFileName;
 window.downloadFile = downloadFile;
 window.PROJECT_TYPES = PROJECT_TYPES;
 window.generateUID = generateUID;
+window.generateICS = generateICS;
 window.getCurrentWorkspaceUser = getCurrentWorkspaceUser;
 window.getCurrentWorkspaceMember = getCurrentWorkspaceMember;
 window.isTaskAssignedToCurrentUser = isTaskAssignedToCurrentUser;
@@ -528,4 +600,4 @@ window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 window.fetchWithTimeout = fetchWithTimeout;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId, generateICS };
