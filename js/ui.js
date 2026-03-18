@@ -59,6 +59,62 @@ export function initUIToggles() {
     });
 }
 
+/**
+ * Initializes the workspace mode toggle (Individual ↔ Equipo).
+ * Persists choice in localStorage and applies data-workspace-mode on <body>.
+ */
+export function initWorkspaceMode() {
+    const saved = localStorage.getItem('workspace-mode') || 'solo';
+    _applyMode(saved);
+
+    document.getElementById('mode-btn-solo')?.addEventListener('click', () => _applyMode('solo'));
+    document.getElementById('mode-btn-team')?.addEventListener('click', () => _applyMode('team'));
+}
+
+function _applyMode(mode) {
+    document.body.setAttribute('data-workspace-mode', mode);
+    localStorage.setItem('workspace-mode', mode);
+
+    // Toggle pill active state
+    document.getElementById('mode-btn-solo')?.classList.toggle('active', mode === 'solo');
+    document.getElementById('mode-btn-team')?.classList.toggle('active', mode === 'team');
+
+    // Update or insert the mode badge in the topbar breadcrumb
+    const breadcrumbs = document.querySelector('.breadcrumbs');
+    let badge = document.getElementById('mode-topbar-badge');
+    if (breadcrumbs) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'mode-topbar-badge';
+            badge.className = 'mode-badge';
+            breadcrumbs.appendChild(badge);
+        }
+        if (mode === 'solo') {
+            badge.innerHTML = '<i data-feather="user"></i> Individual';
+        } else {
+            badge.innerHTML = '<i data-feather="users"></i> Equipo';
+        }
+        if (window.feather) feather.replace();
+    }
+
+    // If current view is now hidden by mode filter, navigate to dashboard
+    const currentView = window.router?.current?.viewName;
+    if (currentView) {
+        const activeNavItem = document.querySelector(`.nav-item[data-view="${currentView}"][data-scope]`);
+        if (activeNavItem) {
+            const scope = activeNavItem.dataset.scope;
+            if ((scope === 'solo' && mode === 'team') || (scope === 'team' && mode === 'solo')) {
+                window.router.navigate('/dashboard');
+            }
+        }
+    }
+
+    if (window.showToast) {
+        const label = mode === 'solo' ? 'Individual' : 'Equipo';
+        window.showToast(`Modo ${label} activado`, 'info');
+    }
+}
+
 export function refreshSidebarProjects() {
     const container = document.getElementById('sidebar-projects');
     if (!container) return;
