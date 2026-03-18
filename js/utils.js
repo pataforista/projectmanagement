@@ -108,12 +108,20 @@ function computeIdentityKey({ email, memberId, name }) {
 }
 
 function getCurrentWorkspaceUser() {
-    const name = localStorage.getItem('workspace_user_name') || 'Usuario';
-    const role = localStorage.getItem('workspace_user_role') || 'Miembro';
-    const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
-    const memberId = localStorage.getItem('workspace_user_member_id') || '';
-    const email = normalizeEmail(localStorage.getItem('workspace_user_email') || '');
-    const emailHash = localStorage.getItem('workspace_user_email_hash') || '';
+    // OPCIÓN 2: Try sessionStorage first (per-tab), fallback to localStorage
+    const getWithFallback = (key) => {
+        if (window.StorageManager && window.StorageManager.get) {
+            return window.StorageManager.get(key, 'session') || localStorage.getItem(key);
+        }
+        return sessionStorage.getItem(key) || localStorage.getItem(key);
+    };
+
+    const name = getWithFallback('workspace_user_name') || 'Usuario';
+    const role = getWithFallback('workspace_user_role') || 'Miembro';
+    const avatar = getWithFallback('workspace_user_avatar') || name.charAt(0).toUpperCase();
+    const memberId = getWithFallback('workspace_user_member_id') || '';
+    const email = normalizeEmail(getWithFallback('workspace_user_email') || '');
+    const emailHash = getWithFallback('workspace_user_email_hash') || '';
     const team = localStorage.getItem('workspace_team_label') || 'General';
     const identityKey = computeIdentityKey({ email, memberId, name });
     return { name, role, avatar, memberId, email, emailHash, team, identityKey };
@@ -162,7 +170,13 @@ function renderCompatibilityNotice({
  * @returns {boolean} true if memberId is set
  */
 function hasMemberId() {
-    return !!localStorage.getItem('workspace_user_member_id');
+    // OPCIÓN 2: Check sessionStorage first, fallback to localStorage
+    if (window.StorageManager && window.StorageManager.get) {
+        return !!window.StorageManager.get('workspace_user_member_id', 'session') ||
+               !!localStorage.getItem('workspace_user_member_id');
+    }
+    return !!sessionStorage.getItem('workspace_user_member_id') ||
+           !!localStorage.getItem('workspace_user_member_id');
 }
 
 /**
@@ -177,7 +191,12 @@ function setCurrentMemberId(memberId) {
         console.warn('[Utils] Attempted to set empty memberId');
         return false;
     }
-    localStorage.setItem('workspace_user_member_id', memberId);
+    // OPCIÓN 2: Store in sessionStorage if available, else localStorage
+    if (window.StorageManager && window.StorageManager.set) {
+        window.StorageManager.set('workspace_user_member_id', memberId, 'session');
+    } else {
+        sessionStorage.setItem('workspace_user_member_id', memberId);
+    }
     console.log(`[Utils] Configured memberId: ${memberId}`);
     return true;
 }
