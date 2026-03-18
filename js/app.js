@@ -159,6 +159,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             showClientIdBtn.style.display = 'none';
         }
 
+        const manualBtn = document.getElementById('auth-manual-setup');
+        if (manualBtn) {
+            manualBtn.onclick = () => {
+                authOverlay.classList.remove('open');
+                if (window.showToast) showToast('Modo local activado', 'info');
+                resolve();
+            };
+        }
+
         if (googleBtn) {
             googleBtn.onclick = async () => {
                 const providedClientId = setupClientIdInput?.value.trim();
@@ -369,6 +378,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('[Sync] Could not pull on boot:', e);
     }
 
+    // ── 9.1. Identity & First-Run Setup ─────────────────────────────────────
+    // If the workspace is empty (no members), prompt the first user to initialize it.
+    const allMembers = store.get.members();
+    if (allMembers.length === 0) {
+        console.log('[Auth] Empty workspace detected. Launching Admin Setup...');
+        if (window.openInitialSetupModal) {
+            openInitialSetupModal();
+        }
+    } else if (localStorage.getItem('workspace_user_email') && !localStorage.getItem('workspace_user_member_id')) {
+        // Existing logic for auto-linking
+        const member = getCurrentWorkspaceMember();
+        if (member && member.id) {
+            console.log(`[Auth] Auto-linking local identity to workspace member: ${member.id}`);
+            setCurrentMemberId(member.id);
+            if (window.updateUserProfileUI) updateUserProfileUI();
+        }
+    }
+
     // ── 10. Global Action Listeners ────────────────────────────────────────────
     document.getElementById('btn-integrations')?.addEventListener('click', () => router.navigate('/integrations'));
     document.getElementById('btn-search')?.addEventListener('click', openSearch);
@@ -390,6 +417,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+        // Notion-like quick task: Alt+T
+        if (e.altKey && e.key === 't') { e.preventDefault(); openQuickAdd(); }
     });
 
     // ── 11. Remove page shimmer once app is ready ──────────────────────────────
@@ -420,7 +449,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const view = location.hash.replace('#/', '').split('/')[0] || 'dashboard';
             breadcrumbEl.textContent = viewLabels[view] || view;
         };
-        window.addEventListener('hashchange', updateBreadcrumb);
+        window.addEventListener('hashchange', () => {
+            updateBreadcrumb();
+            // Close details panel on navigation for better fluidity
+            if (window.closeDetailsPanel) closeDetailsPanel();
+        });
         updateBreadcrumb();
     }
 

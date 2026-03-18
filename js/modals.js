@@ -1121,4 +1121,239 @@ function openSessionModal(id = null) {
   });
 }
 
+/**
+ * Abre el panel lateral derecho con los detalles de una tarea para su edicion 'fluida'.
+ * @param {Object} task - El objeto Tarea a mostrar.
+ */
+async function openTaskDetail(task) {
+  const panel = document.getElementById('details-panel');
+  const container = document.querySelector('.app-container');
+  if (!panel || !container) return;
+
+  const projects = store.get.projects();
+  const members = store.get.members();
+
+  panel.innerHTML = `
+    <div class="details-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <i data-feather="check-square" style="color:var(--accent-primary); width:18px; height:18px;"></i>
+        <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Detalles de Tarea</span>
+      </div>
+      <button class="btn btn-icon" id="details-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="details-body">
+      <input type="text" class="details-title-input" id="detail-task-title" value="${esc(task.title)}" placeholder="Título de la tarea...">
+      
+      <div class="details-field-group">
+        <label class="details-field-label">Proyecto</label>
+        <select class="form-select" id="detail-task-project">
+          <option value="">Sin proyecto</option>
+          ${projects.map(p => `<option value="${p.id}" ${p.id === task.projectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div class="details-field-group">
+          <label class="details-field-label">Estado</label>
+          <select class="form-select" id="detail-task-status">
+            ${STATUSES.map(s => `<option value="${s}" ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div class="details-field-group">
+          <label class="details-field-label">Prioridad</label>
+          <select class="form-select" id="detail-task-priority">
+            <option value="alta" ${task.priority === 'alta' ? 'selected' : ''}>Alta</option>
+            <option value="media" ${task.priority === 'media' ? 'selected' : ''}>Media</option>
+            <option value="baja" ${task.priority === 'baja' ? 'selected' : ''}>Baja</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div class="details-field-group">
+          <label class="details-field-label">Asignado a</label>
+          <select class="form-select" id="detail-task-assignee">
+            <option value="">Sin asignar</option>
+            ${members.map(m => `<option value="${m.id}" ${task.assigneeId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="details-field-group">
+          <label class="details-field-label">Fecha límite</label>
+          <input type="date" class="form-input" id="detail-task-due" value="${task.dueDate || ''}">
+        </div>
+      </div>
+
+      <div class="details-field-group">
+        <label class="details-field-label">Descripción</label>
+        <textarea class="form-textarea" id="detail-task-desc" placeholder="Notas, contexto..." rows="4">${esc(task.description || '')}</textarea>
+      </div>
+
+      <div class="details-field-group">
+        <label class="details-field-label">Subtareas</label>
+        <div id="detail-subtasks-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+        <div style="display:flex; gap:8px;">
+          <input class="form-input" id="detail-new-subtask" placeholder="Nueva subtarea...">
+          <button class="btn btn-secondary" id="detail-add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
+        </div>
+      </div>
+    </div>
+    <div class="details-footer">
+      <button class="btn btn-ghost" id="detail-task-delete" style="color:var(--accent-danger);">Eliminar</button>
+      <button class="btn btn-primary" id="detail-task-save"><i data-feather="check"></i> Guardar</button>
+    </div>
+  `;
+
+  feather.replace();
+  container.classList.add('show-details');
+
+  let subTasks = task.subtasks ? JSON.parse(JSON.stringify(task.subtasks)) : [];
+  const renderSubtasks = () => {
+    const list = panel.querySelector('#detail-subtasks-list');
+    list.innerHTML = subTasks.map(st => `
+      <div style="display:flex; align-items:center; gap:8px; background:var(--bg-surface-2); padding:6px 10px; border-radius:4px;">
+        <input type="checkbox" ${st.done ? 'checked' : ''} data-id="${st.id}">
+        <span style="flex:1; font-size:0.84rem;">${esc(st.title)}</span>
+        <button class="btn btn-icon btn-del-sub" style="padding:2px;" data-id="${st.id}"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
+      </div>
+    `).join('');
+    feather.replace();
+  };
+  renderSubtasks();
+
+  panel.querySelector('#detail-add-subtask').addEventListener('click', () => {
+    const input = panel.querySelector('#detail-new-subtask');
+    const text = input.value.trim();
+    if (!text) return;
+    subTasks.push({ id: Date.now(), title: text, done: false });
+    input.value = '';
+    renderSubtasks();
+  });
+
+  panel.querySelector('#detail-subtasks-list').addEventListener('change', e => {
+    if (e.target.type === 'checkbox') {
+      const sid = parseInt(e.target.dataset.id, 10);
+      const st = subTasks.find(x => x.id === sid);
+      if (st) st.done = e.target.checked;
+    }
+  });
+
+  const saveAction = async () => {
+    const title = panel.querySelector('#detail-task-title').value.trim();
+    if (!title) { showToast('El título es obligatorio.', 'error'); return; }
+
+    const payload = {
+      title,
+      projectId: panel.querySelector('#detail-task-project').value || null,
+      status: panel.querySelector('#detail-task-status').value,
+      priority: panel.querySelector('#detail-task-priority').value,
+      dueDate: panel.querySelector('#detail-task-due').value || null,
+      description: panel.querySelector('#detail-task-desc').value,
+      assigneeId: panel.querySelector('#detail-task-assignee').value || null,
+      subtasks: subTasks
+    };
+
+    if (task.id) {
+      await store.dispatch('UPDATE_TASK', { id: task.id, ...payload });
+      showToast('Tarea actualizada');
+    } else {
+      await store.dispatch('ADD_TASK', payload);
+      showToast('Tarea creada');
+      closeDetailsPanel();
+    }
+    refreshCurrentView();
+  };
+
+
+  panel.querySelector('#detail-task-save').addEventListener('click', saveAction);
+  panel.querySelector('#details-close').addEventListener('click', closeDetailsPanel);
+  
+  panel.querySelector('#detail-task-delete').addEventListener('click', async () => {
+    if (confirm(`¿Eliminar la tarea "${task.title}"?`)) {
+      await store.dispatch('DELETE_TASK', { id: task.id });
+      closeDetailsPanel();
+      refreshCurrentView();
+    }
+  });
+}
+
+function closeDetailsPanel() {
+  const container = document.querySelector('.app-container');
+  if (container) container.classList.remove('show-details');
+}
+
+/**
+ * Modal de bienvenida y configuración inicial para el primer usuario (Admin) del workspace.
+ */
+function openInitialSetupModal() {
+  const user = getCurrentWorkspaceUser();
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="box"></i> ¡Bienvenido al Workspace!</h2>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-secondary); margin-bottom:20px;">Parece que eres la primera persona en este entorno. Vamos a configurarlo para que tú y tu equipo puedan trabajar cómodamente.</p>
+      
+      <div class="form-group">
+        <label class="form-label">Nombre del Workspace</label>
+        <input class="form-input" id="setup-ws-name" placeholder="ej. Laboratorio de Investigación" value="Mi Workspace">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Tu Nombre Público</label>
+        <input class="form-input" id="setup-admin-name" placeholder="Tu nombre o alias" value="${esc(user.name || 'Admin')}">
+        <small style="color:var(--text-muted);">Este nombre aparecerá en las tareas que crees.</small>
+      </div>
+
+      <div class="form-group" style="padding:12px; background:var(--accent-primary)10; border-radius:8px; border:1px solid var(--accent-primary)30;">
+        <span style="font-size:0.8rem; font-weight:700; color:var(--accent-primary); display:block; margin-bottom:4px;">🔑 Eres el Administrador</span>
+        <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">Como primer usuario, tendrás el rol de Administrador para gestionar el workspace.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="setup-start-btn" style="width:100%; justify-content:center;">Empezar a trabajar <i data-feather="arrow-right"></i></button>
+    </div>
+  `, { closeOnOutsideClick: false, showCloseBtn: false });
+
+  modal.querySelector('#setup-start-btn').addEventListener('click', async () => {
+    const wsName = modal.querySelector('#setup-ws-name').value.trim() || 'Mi Workspace';
+    const adminName = modal.querySelector('#setup-admin-name').value.trim() || 'Admin';
+
+    // 1. Save Workspace Metadata in sync config (since store doesn't have SETTINGS action)
+    syncManager.saveConfig({ 
+      ...syncManager.getConfig(),
+      workspace_name: wsName,
+      admin_setup_completed: true,
+      created_at: new Date().toISOString()
+    });
+
+    // 2. Create the Admin Member record
+    const adminPayload = {
+      name: adminName,
+      email: user.email || 'local-admin',
+      emailHash: user.emailHash || null,
+      role: 'admin',
+      avatar: adminName.charAt(0).toUpperCase(),
+      joinedAt: new Date().toISOString()
+    };
+
+    const newMember = await store.dispatch('ADD_MEMBER', adminPayload);
+    
+    // 3. Link local identity to this new member
+    if (newMember && newMember.id) {
+      setCurrentMemberId(newMember.id);
+    }
+
+    closeModal();
+    showToast(`¡Workspace "${wsName}" listo!`, 'success');
+    refreshCurrentView();
+    if (window.updateUserProfileUI) updateUserProfileUI();
+  });
+
+  feather.replace();
+}
+
+window.openInitialSetupModal = openInitialSetupModal;
+window.openTaskDetail = openTaskDetail;
+window.closeDetailsPanel = closeDetailsPanel;
 window.openSessionModal = openSessionModal;
+

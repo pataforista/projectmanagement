@@ -24,7 +24,7 @@ export function initUIToggles() {
 
     themeBtn?.addEventListener('click', () => {
         let currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-        const themes = ['dark', 'light', 'rosel', 'celada', 'zen'];
+        const themes = ['dark', 'light', 'rosel', 'celada', 'zen', 'analog-horror', 'moomins', 'pokemon', 'zelda', 'ukiyo-e'];
         const currentIdx = themes.indexOf(currentTheme);
         const newTheme = themes[(currentIdx + 1) % themes.length];
         document.documentElement.setAttribute('data-theme', newTheme);
@@ -293,15 +293,27 @@ export function openQuickAdd() {
     overlay.className = 'modal-overlay';
     overlay.id = 'quick-overlay';
     overlay.innerHTML = `
-        <div class="modal" style="max-width:340px;">
-            <div class="modal-header"><h2>Nuevo…</h2><button class="btn btn-icon" id="qa-close"><i data-feather="x"></i></button></div>
-            <div class="modal-body" style="gap:8px;">
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openTaskModal();"><i data-feather="check-square"></i> Tarea</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openProjectModal();"><i data-feather="briefcase"></i> Proyecto</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openCycleModal();"><i data-feather="refresh-cw"></i> Ciclo</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('quick-overlay').remove(); openDecisionModal();"><i data-feather="zap"></i> Decisión</button>
+        <div class="modal" style="max-width:340px; border-radius:12px; overflow:hidden;">
+            <div class="modal-header" style="padding:16px 20px; border-bottom:1px solid var(--border-color);">
+                <h2 style="font-size:1.1rem; font-weight:700;">Captura Rápida</h2>
+                <button class="btn btn-icon" id="qa-close"><i data-feather="x"></i></button>
+            </div>
+            <div class="modal-body" style="padding:16px; gap:8px;">
+                <button class="btn btn-secondary btn-sm" style="width:100%; justify-content:flex-start;" onclick="document.getElementById('quick-overlay').remove(); openTaskDetail({title: '', status: 'Capturado', priority: 'media'});">
+                    <i data-feather="check-square" style="width:16px; height:16px;"></i> Nueva Tarea
+                </button>
+                <button class="btn btn-secondary btn-sm" style="width:100%; justify-content:flex-start;" onclick="document.getElementById('quick-overlay').remove(); openProjectModal();">
+                    <i data-feather="briefcase" style="width:16px; height:16px;"></i> Nuevo Proyecto
+                </button>
+                <button class="btn btn-secondary btn-sm" style="width:100%; justify-content:flex-start;" onclick="document.getElementById('quick-overlay').remove(); openCycleModal();">
+                    <i data-feather="refresh-cw" style="width:16px; height:16px;"></i> Nuevo Ciclo
+                </button>
+                <button class="btn btn-secondary btn-sm" style="width:100%; justify-content:flex-start;" onclick="document.getElementById('quick-overlay').remove(); openDecisionModal();">
+                    <i data-feather="zap" style="width:16px; height:16px;"></i> Nueva Decisión
+                </button>
             </div>
         </div>`;
+
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
     if (window.feather) feather.replace();

@@ -113,9 +113,10 @@ function getCurrentWorkspaceUser() {
     const avatar = localStorage.getItem('workspace_user_avatar') || name.charAt(0).toUpperCase();
     const memberId = localStorage.getItem('workspace_user_member_id') || '';
     const email = normalizeEmail(localStorage.getItem('workspace_user_email') || '');
+    const emailHash = localStorage.getItem('workspace_user_email_hash') || '';
     const team = localStorage.getItem('workspace_team_label') || 'General';
     const identityKey = computeIdentityKey({ email, memberId, name });
-    return { name, role, avatar, memberId, email, team, identityKey };
+    return { name, role, avatar, memberId, email, emailHash, team, identityKey };
 }
 
 function getCurrentWorkspaceActor() {
@@ -187,18 +188,35 @@ function getCurrentWorkspaceMember() {
     const user = getCurrentWorkspaceUser();
     if (!members.length) return null;
 
+    // 1. Exact Match by Member ID (Strongest)
     if (user.memberId) {
         const byId = members.find(m => m.id === user.memberId);
         if (byId) return byId;
     }
 
+    // 2. Exact Match by Email (Strong)
     if (user.email) {
         const byEmail = members.find(m => normalizeEmail(m.email) === user.email);
         if (byEmail) return byEmail;
     }
 
-    const normalizedUserName = normalizeWorkspaceName(user.name);
-    return members.find(m => normalizeWorkspaceName(m.name) === normalizedUserName)
+    // 3. Match by Email Hash (Strong - used for privacy/plaintext snapshots)
+    if (user.emailHash) {
+        const byHash = members.find(m => m.emailHash === user.emailHash);
+        if (byHash) return byHash;
+    }
+
+    // 4. Fallback to Name (Fragile - only if name is specific enough)
+    const genericNames = new Set(['usuario', 'admin', 'administrator', 'miembro', 'guest']);
+    const normalizedLocalName = normalizeWorkspaceName(user.name || '');
+    
+    if (genericNames.has(normalizedLocalName)) {
+        // DO NOT fallback by name if it is a generic default; this is the 
+        // root cause of the "everyone is the first user" overwrite bug.
+        return null; 
+    }
+
+    return members.find(m => normalizeWorkspaceName(m.name) === normalizedLocalName)
         || null;
 }
 

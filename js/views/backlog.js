@@ -81,7 +81,6 @@ function refreshBacklog(root) {
 }
 
 function renderBacklogTable(tasks) {
-  if (!tasks.length) return emptyState('inbox', 'El backlog está vacío.');
   return `
     <table class="list-table">
       <thead>
@@ -97,10 +96,26 @@ function renderBacklogTable(tasks) {
           <th style="width:32px;"></th>
         </tr>
       </thead>
-      <tbody class="animate-cascade">
+      <tbody>
         ${tasks.map(t => backlogRow(t)).join('')}
+        <tr class="quick-add-row" style="background:var(--bg-surface-2)40;">
+          <td></td>
+          <td colspan="7">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <i data-feather="plus" style="width:14px; height:14px; color:var(--accent-primary);"></i>
+              <input type="text" id="quick-add-input" placeholder="Añadir tarea rápidamente..." style="background:transparent; border:none; color:var(--text-primary); outline:none; font-size:0.85rem; width:100%; padding:8px 0;">
+            </div>
+          </td>
+          <td></td>
+        </tr>
       </tbody>
-    </table>`;
+    </table>
+    ${tasks.length === 0 ? `
+      <div class="backlog-empty" style="text-align:center; padding:40px; color:var(--text-muted); opacity:0.5;">
+        <p>No hay tareas que coincidan con los filtros. ¡Añade una arriba!</p>
+      </div>
+    ` : ''}
+  `;
 }
 
 function backlogRow(t) {
@@ -181,14 +196,33 @@ function bindInlineStatus(root) {
     });
   });
 
+  // Quick add task
+  const quickInput = root.querySelector('#quick-add-input');
+  if (quickInput) {
+    quickInput.addEventListener('keydown', async e => {
+      if (e.key === 'Enter') {
+        const title = quickInput.value.trim();
+        if (!title) return;
+        const currentProjectId = root.querySelector('#bl-proj')?.value || null;
+        await store.dispatch('ADD_TASK', { title, projectId: currentProjectId });
+        // After add, refresh and refocus? Or just refresh? 
+        // For now, refresh and focus back to the new input row (since it will be re-rendered)
+        refreshBacklog(root);
+        setTimeout(() => root.querySelector('#quick-add-input')?.focus(), 100);
+      }
+    });
+  }
+
   // Open modal on row click (excluding the status dropdown, checkbox and delete button)
   root.querySelectorAll('table.list-table tbody tr').forEach(row => {
+    if (row.classList.contains('quick-add-row')) return;
     row.addEventListener('click', e => {
       if (e.target.closest('.task-checkbox') || e.target.closest('.inline-status-select') || e.target.closest('.task-quick-delete')) return;
 
       const taskId = row.dataset.taskId;
       const task = store.get.allTasks().find(t => t.id === taskId);
-      if (task) openTaskModal(task);
+      if (task) openTaskDetail(task);
+
     });
   });
 }

@@ -169,8 +169,9 @@ function bindDragDrop(container) {
         return;
       }
 
-      // 3. Open full task modal
-      openTaskModal(task);
+      // 3. Open full task modal (now detail sidebar)
+      openTaskDetail(task);
+
     });
 
     // Drag support

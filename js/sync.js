@@ -218,7 +218,7 @@ const syncManager = (() => {
             google.accounts.id.initialize({
                 client_id: client_id,
                 use_fedcm_for_prompt: true,
-                callback: (response) => {
+                callback: async (response) => {
                     if (!response.credential) {
                         settleOnce(reject, 'No credential returned');
                         return;
@@ -233,7 +233,7 @@ const syncManager = (() => {
                         return;
                     }
 
-                    syncIdentityToWorkspaceProfile(currentUser);
+                    await syncIdentityToWorkspaceProfile(currentUser);
                     // SECURITY FIX: Do not log email to console in production — leaks PII to DevTools.
                     console.log('[Sync] Identity confirmed for user.');
                     if (window.updateUserProfileUI) window.updateUserProfileUI();
@@ -283,7 +283,7 @@ const syncManager = (() => {
         if (window.updateUserProfileUI) window.updateUserProfileUI();
     }
 
-    function syncIdentityToWorkspaceProfile(user) {
+    async function syncIdentityToWorkspaceProfile(user) {
         if (!user) return;
         const name = user.name || user.given_name || user.email || 'Usuario';
         const email = String(user.email || '').trim().toLowerCase();
@@ -292,6 +292,12 @@ const syncManager = (() => {
         localStorage.setItem('workspace_user_name', name);
         localStorage.setItem('workspace_user_email', email);
         localStorage.setItem('workspace_user_avatar', avatar);
+
+        // PERSISTENT IDENTITY FIX: Store a non-reversible hash of the email
+        // to allow matching the local user to a member in the shared Drive snapshot
+        // even when emails are stripped for privacy (plaintext path).
+        const emailHash = (await computeChecksum(email, false)).slice(0, 16);
+        localStorage.setItem('workspace_user_email_hash', emailHash);
 
         if (!localStorage.getItem('workspace_user_role')) {
             localStorage.setItem('workspace_user_role', 'Miembro');
@@ -411,7 +417,7 @@ const syncManager = (() => {
                 clearStoredIdentity();
             } else {
                 currentUser = decodedUser;
-                syncIdentityToWorkspaceProfile(currentUser);
+                await syncIdentityToWorkspaceProfile(currentUser);
             }
         }
 
@@ -584,10 +590,9 @@ const syncManager = (() => {
             cycles: getRaw('cycles').filter(isShared),
             decisions: getRaw('decisions').filter(isShared),
             documents: getRaw('documents').filter(isShared),
-            // PRIVACY FIX: Strip email from member records in the shared snapshot.
-            // Member emails are personal data and must not be stored in plaintext
-            // in the shared Drive file (even when E2EE is active for other stores).
-            members: getRaw('members').map(({ email: _email, ...rest }) => rest),
+            // Member emails are personal data and are handled during the final
+            // serialization (plaintext hash or E2EE encryption).
+            members: getRaw('members'),
             logs: capRecent(rawLogs, CAP_LOGS, 'timestamp'),
             messages: capRecent(rawMessages, CAP_MESSAGES, 'timestamp'),
             annotations: capRecent(rawAnnotations, CAP_ANNOTATIONS, 'createdAt'),
@@ -661,6 +666,16 @@ const syncManager = (() => {
                 console.error('[Sync] E2EE failed, sending plaintext:', e);
             }
         }
+
+        // Plaintext path: privacy scrubbing. Replace emails with a non-reversible hash
+        // to allow matching without exposing PII in the shared file.
+        data.members = await Promise.all((data.members || []).map(async m => {
+            const { email, ...rest } = m;
+            if (!email) return rest;
+            // SHA-256 hash of email for matching.
+            const hash = await computeChecksum(email.trim().toLowerCase(), false);
+            return { ...rest, emailHash: hash.slice(0, 16) }; 
+        }));
 
         // Plaintext path: compute checksum on unencrypted snapshot.
         data.metadata.checksum = await computeChecksum(data);
