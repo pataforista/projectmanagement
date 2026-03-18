@@ -13,8 +13,17 @@ class OllamaAPI {
 
     setSettings(url, model) {
         if (url) {
-            this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-            localStorage.setItem('ollama_url', this.baseUrl);
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    throw new Error('Solo se permiten URLs HTTP/HTTPS');
+                }
+                this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+                localStorage.setItem('ollama_url', this.baseUrl);
+            } catch (e) {
+                console.error('[Ollama] Invalid URL:', e);
+                throw new Error('URL inválida para Ollama: ' + e.message);
+            }
         }
         if (model) {
             this.model = model;

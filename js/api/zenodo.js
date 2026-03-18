@@ -55,8 +55,14 @@ const zenodoApi = (() => {
             body: JSON.stringify({ metadata })
         });
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(`Zenodo createDeposition: ${res.status} — ${err.message || res.statusText}`);
+            let errorMsg = res.statusText || `HTTP ${res.status}`;
+            try {
+                const err = await res.json();
+                errorMsg = err.message || err.error_description || errorMsg;
+            } catch (e) {
+                // JSON parse failed, use statusText
+            }
+            throw new Error(`Zenodo createDeposition: ${res.status} — ${errorMsg}`);
         }
         return res.json();
     }
@@ -82,8 +88,14 @@ const zenodoApi = (() => {
             body: form
         });
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(`Zenodo uploadFile: ${res.status} — ${err.message || res.statusText}`);
+            let errorMsg = res.statusText || `HTTP ${res.status}`;
+            try {
+                const err = await res.json();
+                errorMsg = err.message || err.error_description || errorMsg;
+            } catch (e) {
+                // JSON parse failed, use statusText
+            }
+            throw new Error(`Zenodo uploadFile: ${res.status} — ${errorMsg}`);
         }
         return res.json();
     }
@@ -99,8 +111,14 @@ const zenodoApi = (() => {
             headers: headers()
         });
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(`Zenodo publishDeposition: ${res.status} — ${err.message || res.statusText}`);
+            let errorMsg = res.statusText || `HTTP ${res.status}`;
+            try {
+                const err = await res.json();
+                errorMsg = err.message || err.error_description || errorMsg;
+            } catch (e) {
+                // JSON parse failed, use statusText
+            }
+            throw new Error(`Zenodo publishDeposition: ${res.status} — ${errorMsg}`);
         }
         return res.json();
     }

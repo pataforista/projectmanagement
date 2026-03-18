@@ -86,7 +86,7 @@ function renderIntegrations(root) {
             </div>
             <div class="form-group" style="margin-top:8px;">
                 <label style="font-size:0.75rem; color:var(--text-muted);">API Key</label>
-                <input type="password" class="form-input" id="int-zot-key" value="${esc(zoteroCreds.apiKey || '')}" placeholder="Tu clave secreta...">
+                <input type="password" class="form-input" id="int-zot-key" placeholder="Tu clave secreta...">
             </div>
             <div style="display:flex; gap:8px; margin-top:16px;">
               <button class="btn btn-primary btn-sm flex-1" id="btn-save-zotero" style="flex:1;">Guardar</button>
@@ -110,7 +110,7 @@ function renderIntegrations(root) {
             </p>
             <div class="form-group" style="margin-top:12px;">
                 <label style="font-size:0.75rem; color:var(--text-muted);">API Token</label>
-                <input type="password" class="form-input" id="int-todoist-token" value="${esc(localStorage.getItem('todoist_token') || '')}" placeholder="API Token v2">
+                <input type="password" class="form-input" id="int-todoist-token" placeholder="API Token v2">
             </div>
             <div style="display:flex; gap:8px; margin-top:16px;">
               <button class="btn btn-primary btn-sm flex-1" id="btn-save-todoist" style="flex:1;">Guardar</button>
@@ -139,8 +139,7 @@ function renderIntegrations(root) {
             </p>
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Access Token</label>
-              <input type="password" class="form-input" id="int-zenodo-token"
-                value="${esc(zenodoCreds.token || '')}" placeholder="Token personal">
+              <input type="password" class="form-input" id="int-zenodo-token" placeholder="Token personal">
             </div>
             <label class="checkbox-item" style="margin-top:8px;">
               <input type="checkbox" id="int-zenodo-sandbox" ${zenodoCreds.sandbox !== false ? 'checked' : ''}>
@@ -207,8 +206,7 @@ function renderIntegrations(root) {
             </div>
             <div class="form-group" style="margin-top:8px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">API Key</label>
-              <input type="password" class="form-input" id="int-elab-key"
-                value="${esc(localStorage.getItem('elabftw_api_key') || '')}" placeholder="Tu clave API">
+              <input type="password" class="form-input" id="int-elab-key" placeholder="Tu clave API">
             </div>
             <div style="display:flex; gap:8px; margin-top:16px;">
               <button class="btn btn-primary btn-sm flex-1" id="btn-save-elab" style="flex:1;">Guardar</button>
@@ -255,8 +253,8 @@ function renderIntegrations(root) {
     if (window.zoteroApi?.setCredentials) {
       zoteroApi.setCredentials(uid, key);
     } else {
-      localStorage.setItem('zotero_uid', uid);
-      localStorage.setItem('zotero_key', key);
+      localStorage.setItem('zotero_user_id', uid);
+      localStorage.setItem('zotero_api_key', key);
     }
     showToast('Zotero configurado con éxito', 'success');
     renderIntegrations(root);
@@ -361,15 +359,33 @@ function renderIntegrations(root) {
         </div>`;
       document.body.appendChild(dialog);
 
+      const closeDialog = () => {
+        // Limpiar contenido sensible antes de remover
+        dialog.innerHTML = '';
+        dialog.remove();
+      };
+
       dialog.querySelector('#sec-dlg-copy').onclick = () => {
         navigator.clipboard.writeText(recoveryCode).catch(() => {});
         dialog.querySelector('#sec-dlg-copy').textContent = '¡Copiado!';
       };
       dialog.querySelector('#sec-dlg-done').onclick = () => {
-        dialog.remove();
+        closeDialog();
         showToast('Contraseña actualizada correctamente.', 'success');
         renderIntegrations(root);
       };
+
+      // Limpiar si el usuario presiona ESC o hace clic fuera
+      dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+          closeDialog();
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && dialog.parentNode) {
+          closeDialog();
+        }
+      });
     }
 
     localStorage.setItem('autolock_enabled', autolock);

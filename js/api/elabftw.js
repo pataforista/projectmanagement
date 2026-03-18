@@ -13,8 +13,17 @@ class ELabFTWAPI {
 
     setCredentials(url, key) {
         if (url) {
-            this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-            localStorage.setItem('elabftw_url', this.baseUrl);
+            try {
+                const parsed = new URL(url);
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    throw new Error('Solo se permiten URLs HTTP/HTTPS');
+                }
+                this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+                localStorage.setItem('elabftw_url', this.baseUrl);
+            } catch (e) {
+                console.error('[eLabFTW] Invalid URL:', e);
+                throw new Error('URL inválida para eLabFTW: ' + e.message);
+            }
         }
         if (key) {
             this.apiKey = key;
@@ -52,8 +61,14 @@ class ELabFTWAPI {
             });
 
             if (!response.ok) {
-                const errData = await response.json().catch(() => ({}));
-                throw new Error(errData.message || `eLabFTW Error: ${response.status}`);
+                let errorMsg = response.statusText || `HTTP ${response.status}`;
+                try {
+                    const errData = await response.json();
+                    errorMsg = errData.message || errData.error || errorMsg;
+                } catch (e) {
+                    // JSON parse failed, use statusText
+                }
+                throw new Error(`eLabFTW Error: ${response.status} — ${errorMsg}`);
             }
 
             const data = await response.json();
