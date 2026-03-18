@@ -462,7 +462,7 @@ export const ChatManager = (() => {
             sender: actor.name || actor.label,
             senderId: actor.id,
             text: text,
-            visibility: 'local'
+            visibility: 'shared'
         };
 
         await store.dispatch('ADD_MESSAGE', msg);

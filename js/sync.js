@@ -424,6 +424,7 @@ const syncManager = (() => {
                     // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
                     StorageManager.set(STATUS_KEY, 'true', 'session');
                     updateSyncUI('online');
+                    startChatSync(); // BUG FIX: Start the background chat polling loop
                     resolve(accessToken);
                 },
             });
@@ -489,6 +490,7 @@ const syncManager = (() => {
                 // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
                 StorageManager.set(STATUS_KEY, 'true', 'session');
                 updateSyncUI('online');
+                startChatSync(); // BUG FIX: Start background chat sync loop after initTokenClient auth
                 await pull();
                 if (!isSyncing) await push();
             },
@@ -2530,7 +2532,7 @@ const syncManager = (() => {
                             continue;
                         }
 
-                        msgData.visibility = 'local';
+                        msgData.visibility = 'shared'; // BUG FIX: Tag incoming messages as shared so they participate in sync.
 
                         // Evitar duplicados
                         const exist = (store.get.messages ? store.get.messages() : []).find(m => m.id === msgData.id);
