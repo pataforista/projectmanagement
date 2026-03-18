@@ -510,11 +510,15 @@ const store = (() => {
                 storeName = 'members';
                 const index = _state.members.findIndex(m => m.id === payload.id);
                 if (index === -1) throw new Error(`Member ${payload.id} not found`);
-                const record = _state.members[index];
-                await dbAPI.delete(storeName, payload.id);
-                _state.members.splice(index, 1);
+                const tombstone = {
+                    ..._state.members[index],
+                    _deleted: true,
+                    updatedAt: monotonicNow()
+                };
+                await dbAPI.put(storeName, tombstone);
+                _state.members[index] = tombstone;
                 _notify(storeName);
-                result = record;
+                result = tombstone;
                 break;
             }
 
@@ -806,19 +810,28 @@ const store = (() => {
                 storeName = 'messages';
                 const msgIdx = _state.messages.findIndex(m => m.id === payload.id);
                 if (msgIdx !== -1) {
-                    await dbAPI.delete(storeName, payload.id);
-                    _state.messages.splice(msgIdx, 1);
+                    const tombstone = {
+                        ..._state.messages[msgIdx],
+                        _deleted: true,
+                        updatedAt: monotonicNow()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    _state.messages[msgIdx] = tombstone;
                     _notify(storeName);
                 }
                 break;
             }
             case 'CLEAR_MESSAGES': {
                 storeName = 'messages';
-                const toDelete = _state.messages.filter(m => !m.visibility || m.visibility !== 'protected');
+                const toDelete = _state.messages.filter(m => (!m.visibility || m.visibility !== 'protected') && !m._deleted);
                 for (const m of toDelete) {
-                    await dbAPI.delete(storeName, m.id);
+                    const idx = _state.messages.findIndex(x => x.id === m.id);
+                    if (idx !== -1) {
+                        const tombstone = { ...m, _deleted: true, updatedAt: monotonicNow() };
+                        await dbAPI.put(storeName, tombstone);
+                        _state.messages[idx] = tombstone;
+                    }
                 }
-                _state.messages = _state.messages.filter(m => m.visibility === 'protected');
                 _notify(storeName);
                 break;
             }
