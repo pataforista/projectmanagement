@@ -459,9 +459,32 @@ const store = (() => {
             // ── Members ──
             case 'ADD_MEMBER': {
                 storeName = 'members';
-                const record = { id: _uid, createdAt: monotonicNow(), ...payload };
+                const avatar = payload.avatar || (payload.name ? payload.name.charAt(0).toUpperCase() : '?');
+                const record = { id: _uid, createdAt: monotonicNow(), avatar, ...payload };
                 await dbAPI.put(storeName, record);
                 _state.members.push(record);
+                _notify(storeName);
+                return record;
+            }
+
+            case 'UPDATE_MEMBER': {
+                storeName = 'members';
+                const existing = _state.members.find(m => m.id === payload.id);
+                if (!existing) throw new Error(`Member ${payload.id} not found`);
+                const updated = { ...existing, ...payload, updatedAt: monotonicNow() };
+                await dbAPI.put(storeName, updated);
+                Object.assign(existing, updated);
+                _notify(storeName);
+                return updated;
+            }
+
+            case 'DELETE_MEMBER': {
+                storeName = 'members';
+                const index = _state.members.findIndex(m => m.id === payload.id);
+                if (index === -1) throw new Error(`Member ${payload.id} not found`);
+                const record = _state.members[index];
+                await dbAPI.delete(storeName, payload.id);
+                _state.members.splice(index, 1);
                 _notify(storeName);
                 return record;
             }

@@ -1240,13 +1240,26 @@ async function openTaskDetail(task) {
   const saveAction = async () => {
     const title = panel.querySelector('#detail-task-title').value.trim();
     if (!title) { showToast('El título es obligatorio.', 'error'); return; }
+    if (title.length < 3) { showToast('El título debe tener al menos 3 caracteres.', 'warning'); return; }
+
+    const status = panel.querySelector('#detail-task-status').value;
+    if (!status) { showToast('El estado es obligatorio.', 'warning'); return; }
+
+    const priority = panel.querySelector('#detail-task-priority').value;
+    if (!priority) { showToast('La prioridad es obligatoria.', 'warning'); return; }
+
+    const dueDate = panel.querySelector('#detail-task-due').value;
+    if (dueDate && new Date(dueDate) < new Date().setHours(0, 0, 0, 0)) {
+      showToast('La fecha no puede ser en el pasado.', 'warning');
+      return;
+    }
 
     const payload = {
       title,
       projectId: panel.querySelector('#detail-task-project').value || null,
-      status: panel.querySelector('#detail-task-status').value,
-      priority: panel.querySelector('#detail-task-priority').value,
-      dueDate: panel.querySelector('#detail-task-due').value || null,
+      status,
+      priority,
+      dueDate: dueDate || null,
       description: panel.querySelector('#detail-task-desc').value,
       assigneeId: panel.querySelector('#detail-task-assignee').value || null,
       subtasks: subTasks

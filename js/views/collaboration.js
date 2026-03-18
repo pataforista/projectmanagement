@@ -233,15 +233,25 @@ async function renderCollaboration(root) {
                   <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Activas</th>
                   <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Terminadas</th>
                   <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total</th>
+                  <th style="text-align:center;padding:8px;border-bottom:1px solid var(--border-color);">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 ${workloadRows.map(row => `
-                  <tr>
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);">${esc(row.member.name)}</td>
+                  <tr data-member-id="${row.member.id}">
+                    <td style="padding:8px;border-bottom:1px solid var(--border-color);">
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <div class="avatar" style="width:28px;height:28px;font-size:0.7rem;">${esc(row.member.avatar)}</div>
+                        ${esc(row.member.name)}
+                      </div>
+                    </td>
                     <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.inProgress}</td>
                     <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.done}</td>
                     <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.total}</td>
+                    <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:center;">
+                      <button class="btn btn-icon edit-member" title="Editar" data-member-id="${row.member.id}"><i data-feather="edit-2" style="width:16px;height:16px;"></i></button>
+                      <button class="btn btn-icon delete-member" title="Eliminar" data-member-id="${row.member.id}" style="color:var(--accent-danger);"><i data-feather="trash-2" style="width:16px;height:16px;"></i></button>
+                    </td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -255,34 +265,199 @@ async function renderCollaboration(root) {
   const selectBtn = root.querySelector('#selectMemberBtn');
   if (selectBtn) {
     selectBtn.onclick = async () => {
-      const choice = prompt(
-        'Selecciona tu miembro del equipo:\n\n' +
-        members.map((m, i) => `${i+1}. ${m.name} (ID: ${m.id})`).join('\n'),
-        members[0]?.id || ''
-      );
-      if (choice) {
-        const selected = members.find(m => m.id === choice);
-        if (selected) {
-          setCurrentMemberId(selected.id);
-          showToast(`✓ Miembro configurado: ${selected.name}`, 'success');
-          // Re-render to remove warning
-          renderCollaboration(root);
-        } else {
-          showToast('Miembro no válido seleccionado.', 'error');
-        }
-      }
+      const modal = openModal(`
+        <div class="modal-header">
+          <h2><i data-feather="users"></i> Selecciona tu Miembro</h2>
+        </div>
+        <div class="modal-body">
+          <p style="color:var(--text-secondary); margin-bottom:16px;">Elige el miembro del equipo que corresponde a tu usuario:</p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${members.map(m => `
+              <button class="btn btn-secondary" style="width:100%; justify-content:flex-start; gap:12px;" data-member-id="${m.id}">
+                <div class="avatar" style="width:32px; height:32px; font-size:0.85rem;">${esc(m.avatar)}</div>
+                <div style="text-align:left;">
+                  <div style="font-weight:600;">${esc(m.name)}</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">${esc(m.role || 'Colaborador')}</div>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `);
+      feather.replace();
+
+      modal.querySelectorAll('[data-member-id]').forEach(btn => {
+        btn.onclick = () => {
+          const memberId = btn.dataset.memberId;
+          const selected = members.find(m => m.id === memberId);
+          if (selected) {
+            setCurrentMemberId(selected.id);
+            closeModal();
+            showToast(`✓ Miembro configurado: ${selected.name}`, 'success');
+            renderCollaboration(root);
+          }
+        };
+      });
     };
   }
 
   // Setup add member button
   root.querySelector('#btn-add-member').onclick = async () => {
-    const name = prompt('Nombre del nuevo miembro:');
-    if (name && name.trim()) {
-      await store.dispatch('ADD_MEMBER', { name: name.trim(), role: 'Colaborador' });
-      showToast(`Miembro ${name.trim()} añadido`, 'success');
-      renderCollaboration(root);
-    }
+    const modal = openModal(`
+      <div class="modal-header">
+        <h2><i data-feather="user-plus"></i> Nuevo Miembro</h2>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Nombre del Miembro</label>
+          <input class="form-input" id="new-member-name" placeholder="ej. María García" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rol</label>
+          <select class="form-select" id="new-member-role">
+            <option value="Administrador">Administrador</option>
+            <option value="Colaborador" selected>Colaborador</option>
+            <option value="Revisor">Revisor</option>
+            <option value="Observador">Observador</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email (opcional)</label>
+          <input class="form-input" id="new-member-email" type="email" placeholder="email@ejemplo.com" autocomplete="off">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="new-member-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="new-member-save"><i data-feather="check"></i> Crear Miembro</button>
+      </div>
+    `);
+    feather.replace();
+
+    const nameInput = modal.querySelector('#new-member-name');
+    nameInput.focus();
+
+    const saveBtn = modal.querySelector('#new-member-save');
+    const cancelBtn = modal.querySelector('#new-member-cancel');
+
+    const doSave = async () => {
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast('El nombre es obligatorio', 'warning');
+        return;
+      }
+      if (name.length < 2) {
+        showToast('El nombre debe tener al menos 2 caracteres', 'warning');
+        return;
+      }
+
+      const role = modal.querySelector('#new-member-role').value;
+      const email = modal.querySelector('#new-member-email').value.trim() || null;
+
+      try {
+        await store.dispatch('ADD_MEMBER', { name, role, email });
+        closeModal();
+        showToast(`✓ Miembro "${name}" añadido`, 'success');
+        renderCollaboration(root);
+      } catch (err) {
+        console.error('Error adding member:', err);
+        showToast('Error al crear el miembro', 'error');
+      }
+    };
+
+    saveBtn.onclick = doSave;
+    cancelBtn.onclick = closeModal;
+    nameInput.addEventListener('keypress', e => {
+      if (e.key === 'Enter') doSave();
+    });
   };
+
+  // Setup edit member buttons
+  root.querySelectorAll('.edit-member').forEach(btn => {
+    btn.onclick = () => {
+      const memberId = btn.dataset.memberId;
+      const member = members.find(m => m.id === memberId);
+      if (!member) return;
+
+      const modal = openModal(`
+        <div class="modal-header">
+          <h2><i data-feather="edit-2"></i> Editar Miembro</h2>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Nombre</label>
+            <input class="form-input" id="edit-member-name" value="${esc(member.name)}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rol</label>
+            <select class="form-select" id="edit-member-role">
+              <option value="Administrador" ${member.role === 'Administrador' ? 'selected' : ''}>Administrador</option>
+              <option value="Colaborador" ${member.role === 'Colaborador' ? 'selected' : ''}>Colaborador</option>
+              <option value="Revisor" ${member.role === 'Revisor' ? 'selected' : ''}>Revisor</option>
+              <option value="Observador" ${member.role === 'Observador' ? 'selected' : ''}>Observador</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email (opcional)</label>
+            <input class="form-input" id="edit-member-email" type="email" value="${esc(member.email || '')}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="edit-member-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="edit-member-save"><i data-feather="check"></i> Guardar</button>
+        </div>
+      `);
+      feather.replace();
+
+      const nameInput = modal.querySelector('#edit-member-name');
+      nameInput.focus();
+
+      const doSave = async () => {
+        const name = nameInput.value.trim();
+        if (!name) {
+          showToast('El nombre es obligatorio', 'warning');
+          return;
+        }
+        const role = modal.querySelector('#edit-member-role').value;
+        const email = modal.querySelector('#edit-member-email').value.trim() || null;
+
+        try {
+          await store.dispatch('UPDATE_MEMBER', { id: memberId, name, role, email });
+          closeModal();
+          showToast(`✓ Miembro actualizado`, 'success');
+          renderCollaboration(root);
+        } catch (err) {
+          console.error('Error updating member:', err);
+          showToast('Error al actualizar el miembro', 'error');
+        }
+      };
+
+      modal.querySelector('#edit-member-save').onclick = doSave;
+      modal.querySelector('#edit-member-cancel').onclick = closeModal;
+      nameInput.addEventListener('keypress', e => {
+        if (e.key === 'Enter') doSave();
+      });
+    };
+  });
+
+  // Setup delete member buttons
+  root.querySelectorAll('.delete-member').forEach(btn => {
+    btn.onclick = async () => {
+      const memberId = btn.dataset.memberId;
+      const member = members.find(m => m.id === memberId);
+      if (!member) return;
+
+      if (confirm(`¿Eliminar al miembro "${member.name}"? Esta acción no se puede deshacer.`)) {
+        try {
+          await store.dispatch('DELETE_MEMBER', { id: memberId });
+          showToast(`✓ Miembro eliminado`, 'success');
+          renderCollaboration(root);
+        } catch (err) {
+          console.error('Error deleting member:', err);
+          showToast('Error al eliminar el miembro', 'error');
+        }
+      }
+    };
+  });
 
   feather.replace();
 }
