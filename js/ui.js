@@ -253,6 +253,22 @@ export async function handleSearch(q) {
         (t.description || '').toLowerCase().includes(ql)
     ).slice(0, 6);
 
+    // ── Check if user wants semantic search (natural language patterns) ────────
+    const hasNLPatterns = /about|related|para|con|on|like|que|que tenga|search for/i.test(q);
+    let semanticResults = [];
+    if (hasNLPatterns && window.ollamaApi) {
+      try {
+        const allItems = [
+          ...store.get.projects().map(p => ({ ...p, name: p.name, description: p.goal })),
+          ...store.get.allTasks().map(t => ({ ...t, name: t.title, description: t.description }))
+        ];
+        const results = await window.ollamaApi.semanticSearch(q, allItems.slice(0, 30));
+        semanticResults = results.slice(0, 4);
+      } catch (e) {
+        console.log('[Search] Semantic search not available:', e.message);
+      }
+    }
+
     // ── Full-text en documentos (desde dbAPI para incluir contenido) ──────────
     let matchedDocs = [];
     let matchedWiki = [];
@@ -373,6 +389,29 @@ export async function handleSearch(q) {
                     <span class="res-meta">${lib.author ? highlight(lib.author) : 'Biblioteca'}</span>
                 </div>
             </div>`));
+    }
+
+    // ── Semantic search results (AI-powered) ────────────────────────────────────
+    if (semanticResults.length > 0) {
+        sections.push(`<div class="search-section-label" style="margin-top:12px; display:flex; align-items:center; gap:6px;">
+            <i data-feather="sparkles" style="width:14px; height:14px; color:var(--accent-warning);"></i> Búsqueda Semántica
+        </div>`);
+        sections.push(...semanticResults.map(r => {
+            const item = r.item;
+            const isProject = item.type && Object.keys(PROJECT_TYPES || {}).includes(item.type);
+            const isTask = item.status && !item.type;
+            const typeLabel = isProject ? 'Proyecto' : isTask ? 'Tarea' : 'Elemento';
+            const icon = isProject ? 'briefcase' : 'check-square';
+            const navUrl = isProject ? `/project/${item.id}` : '/backlog';
+            return `
+            <div class="search-result-item" onclick="router.navigate('${navUrl}'); closeSearch();" style="opacity:0.85;">
+                <i data-feather="${icon}" style="color:var(--accent-warning)"></i>
+                <div class="res-info">
+                    <span class="res-title">${esc(item.name)}</span>
+                    <span class="res-meta">${typeLabel} · Relevancia: ${r.score}%</span>
+                </div>
+            </div>`;
+        }));
     }
 
     results.innerHTML = sections.join('');

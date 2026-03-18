@@ -9,6 +9,14 @@ const PROJECT_TYPES = {
     libre: { label: 'Libre', icon: 'star', color: '#f39c12' },
 };
 
+const PROJECT_STATUSES = ['activo', 'planificado', 'pausado', 'archivado'];
+const PROJECT_STATUS_COLORS = {
+    activo: '#22c55e',
+    planificado: '#3b82f6',
+    pausado: '#f59e0b',
+    archivado: '#4b5563'
+};
+
 /**
  * utils.js — Shared helpers used across all views
  */

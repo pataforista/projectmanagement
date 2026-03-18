@@ -330,7 +330,12 @@ function openProjectModal(p = null) {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Objetivo</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label class="form-label" style="margin:0;">Objetivo</label>
+          <button class="btn btn-ghost btn-xs" id="btn-ai-goal" title="Generar descripción con IA" style="gap:4px; display:flex; align-items:center;">
+            <i data-feather="sparkles" style="width:12px;"></i> IA
+          </button>
+        </div>
         <textarea class="form-textarea" id="proj-goal" placeholder="¿Qué resultado específico buscas?" rows="2">${isEdit ? esc(p?.goal || '') : ''}</textarea>
       </div>
       <div class="form-group">
@@ -378,6 +383,39 @@ function openProjectModal(p = null) {
     });
   });
   if (!isEdit) modal.querySelector('.color-swatch').style.borderColor = '#fff'; // select first only if new
+
+  // AI button for generating project goal
+  modal.querySelector('#btn-ai-goal')?.addEventListener('click', async () => {
+    const name = modal.querySelector('#proj-name').value.trim();
+    const type = modal.querySelector('#proj-type').value;
+    if (!name) {
+      showToast('Ingresa el nombre del proyecto primero.', 'warning');
+      return;
+    }
+
+    const btn = modal.querySelector('#btn-ai-goal');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i data-feather="loader"></i> Generando...';
+    btn.disabled = true;
+    feather.replace();
+
+    try {
+      const prompt = `Proyecto: ${name}
+Tipo: ${PROJECT_TYPES[type]?.label || type}
+
+Genera un objetivo claro y conciso (2-3 oraciones) para este proyecto:`;
+
+      const goal = await window.ollamaApi.generate(prompt, 'Eres un asistente de gestión de proyectos. Genera objetivos SMART para proyectos. Sé conciso y específico.');
+      modal.querySelector('#proj-goal').value = goal.trim();
+      showToast('Objetivo generado con IA.', 'success');
+    } catch (e) {
+      showToast('Error al generar objetivo: ' + e.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      feather.replace();
+    }
+  });
 
   modal.querySelector('#modal-close').addEventListener('click', closeModal);
   modal.querySelector('#modal-cancel').addEventListener('click', closeModal);

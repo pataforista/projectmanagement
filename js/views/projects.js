@@ -5,6 +5,7 @@
 
 function renderProjects(root, params) {
   const projects = store.get.projects();
+  const currentView = localStorage.getItem('projects_view_mode') || 'grid';
 
   root.innerHTML = `
     <div class="view-inner">
@@ -18,28 +19,48 @@ function renderProjects(root, params) {
         </div>
       </div>
 
-      <div class="filter-bar">
-        <select class="filter-select" id="proj-filter-status">
-          <option value="">Todos los estados</option>
-          <option value="activo">Activo</option>
-          <option value="planificado">Planificado</option>
-          <option value="pausado">Pausado</option>
-          <option value="archivado">Archivado</option>
-        </select>
-        <select class="filter-select" id="proj-filter-type">
-          <option value="">Todos los tipos</option>
-          ${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
-        </select>
+      <div style="display:flex; gap:16px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+        <div class="filter-bar" style="flex:1; display:flex; gap:8px;">
+          <select class="filter-select" id="proj-filter-status">
+            <option value="">Todos los estados</option>
+            <option value="activo">Activo</option>
+            <option value="planificado">Planificado</option>
+            <option value="pausado">Pausado</option>
+            <option value="archivado">Archivado</option>
+          </select>
+          <select class="filter-select" id="proj-filter-type">
+            <option value="">Todos los tipos</option>
+            ${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="view-switcher" style="background:var(--bg-surface-2); padding:4px; border-radius:8px; display:flex; gap:4px;">
+          <button class="btn btn-xs ${currentView === 'grid' ? 'btn-primary' : 'btn-ghost'}" id="view-grid-btn" title="Vista de cuadrícula"><i data-feather="grid" style="width:14px;"></i></button>
+          <button class="btn btn-xs ${currentView === 'kanban' ? 'btn-primary' : 'btn-ghost'}" id="view-kanban-btn" title="Vista Kanban"><i data-feather="trello" style="width:14px;"></i></button>
+          <button class="btn btn-xs ${currentView === 'calendar' ? 'btn-primary' : 'btn-ghost'}" id="view-calendar-btn" title="Vista Calendario"><i data-feather="calendar" style="width:14px;"></i></button>
+        </div>
       </div>
 
-      <div class="projects-grid animate-cascade" id="projects-grid">
-        ${renderProjectCards(projects)}
+      <div id="projects-container">
+        ${renderProjectsByView(projects, currentView)}
       </div>
     </div>`;
 
   feather.replace();
 
   root.querySelector('#new-project-btn').addEventListener('click', () => openProjectModal());
+
+  root.querySelector('#view-grid-btn').addEventListener('click', () => {
+    localStorage.setItem('projects_view_mode', 'grid');
+    renderProjects(root, params);
+  });
+  root.querySelector('#view-kanban-btn').addEventListener('click', () => {
+    localStorage.setItem('projects_view_mode', 'kanban');
+    renderProjects(root, params);
+  });
+  root.querySelector('#view-calendar-btn').addEventListener('click', () => {
+    localStorage.setItem('projects_view_mode', 'calendar');
+    renderProjects(root, params);
+  });
 
   ['proj-filter-status', 'proj-filter-type'].forEach(id => {
     root.querySelector(`#${id}`).addEventListener('change', () => {
@@ -48,13 +69,20 @@ function renderProjects(root, params) {
       let filtered = store.get.projects();
       if (status) filtered = filtered.filter(p => p.status === status);
       if (type) filtered = filtered.filter(p => p.type === type);
-      root.querySelector('#projects-grid').innerHTML = renderProjectCards(filtered);
+      const container = root.querySelector('#projects-container');
+      container.innerHTML = renderProjectsByView(filtered, currentView);
       feather.replace();
       bindProjectCards(root);
     });
   });
 
   bindProjectCards(root);
+}
+
+function renderProjectsByView(projects, view) {
+  if (view === 'kanban') return renderProjectsKanban(projects);
+  if (view === 'calendar') return renderProjectsCalendar(projects);
+  return `<div class="projects-grid animate-cascade">${renderProjectCards(projects)}</div>`;
 }
 
 function renderProjectCards(projects) {
@@ -378,7 +406,19 @@ function showProjectTab(root, p, tab) {
     content.querySelector('#chat-input').onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
   } else if (tab === 'reports') {
     content.innerHTML = `
-        <div class="reports-view" style="padding:20px;">
+        <div class="reports-view" style="display:flex; flex-direction:column; gap:20px;">
+          <div class="card glass-panel" style="padding:20px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-surface-2);">
+            <h3 style="font-size:1rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+              <i data-feather="sparkles" style="width:18px;"></i> Reportes con IA
+            </h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:16px;">
+              <button class="btn btn-secondary btn-sm" id="btn-summarize-project" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="zap" style="width:14px;"></i> Resumir proyecto</button>
+              <button class="btn btn-secondary btn-sm" id="btn-suggest-tasks" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="lightbulb" style="width:14px;"></i> Sugerir tareas</button>
+              <button class="btn btn-secondary btn-sm" id="btn-generate-report" style="justify-content:center; gap:8px; display:flex; align-items:center;"><i data-feather="file-text" style="width:14px;"></i> Generar reporte</button>
+            </div>
+            <div id="ai-results" style="min-height:80px; padding:12px; background:var(--bg-card); border-radius:8px; border:1px solid var(--border-color); font-size:0.85rem; line-height:1.5;"></div>
+          </div>
+
           <div class="card glass-panel" style="padding:20px; border-radius:12px; border:1px solid var(--border-color); background:var(--bg-surface-2);">
             <h3 style="font-size:1rem; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
               <i data-feather="terminal" style="width:18px;"></i> Dataview-Lite
@@ -386,10 +426,92 @@ function showProjectTab(root, p, tab) {
             <textarea id="report-query" class="form-textarea" style="font-family:monospace; min-height:80px; font-size:0.85rem; border:1px solid var(--border-color); background:var(--bg-card); margin-bottom:15px;" placeholder="LIST TAREAS"></textarea>
             <button class="btn btn-primary" id="btn-run-report" style="width:100%;">Ejecutar</button>
           </div>
-          <div id="report-results" style="margin-top:25px;"></div>
+          <div id="report-results" style="margin-top:0;"></div>
         </div>
       `;
     feather.replace();
+
+    const aiResults = content.querySelector('#ai-results');
+
+    content.querySelector('#btn-summarize-project').onclick = async () => {
+      aiResults.innerHTML = '<div style="color:var(--text-muted); text-align:center;"><i data-feather="loader"></i> Resumiendo proyecto...</div>';
+      feather.replace();
+      try {
+        const tasks = store.get.tasksByProject(p.id);
+        const summary = await window.ollamaApi.summarizeProject(p, tasks);
+        aiResults.innerHTML = `<div style="color:var(--text-primary);">${esc(summary)}</div>
+          <button class="btn btn-ghost btn-xs" id="copy-summary" style="margin-top:12px; float:right;"><i data-feather="copy"></i> Copiar</button>`;
+        feather.replace();
+        content.querySelector('#copy-summary')?.addEventListener('click', () => {
+          navigator.clipboard.writeText(summary);
+          showToast('Resumen copiado al portapapeles.', 'success');
+        });
+      } catch (e) {
+        aiResults.innerHTML = `<div style="color:var(--accent-danger);">Error: ${esc(e.message)}</div>`;
+      }
+    };
+
+    content.querySelector('#btn-suggest-tasks').onclick = async () => {
+      aiResults.innerHTML = '<div style="color:var(--text-muted); text-align:center;"><i data-feather="loader"></i> Generando sugerencias...</div>';
+      feather.replace();
+      try {
+        const suggestions = await window.ollamaApi.suggestTasks(p);
+        aiResults.innerHTML = `<div style="color:var(--text-primary); margin-bottom:12px;"><strong>Tareas sugeridas:</strong></div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            ${suggestions.map((t, i) => `<div style="display:flex; align-items:center; gap:8px; padding:8px; background:var(--bg-surface-2); border-radius:6px; border-left:3px solid var(--accent-primary);">
+              <input type="checkbox" id="suggest-${i}" class="suggest-task-cb" data-task="${esc(t)}" style="flex-shrink:0;">
+              <label for="suggest-${i}" style="flex:1; cursor:pointer;">${esc(t)}</label>
+            </div>`).join('')}
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-add-suggested" style="margin-top:12px;">Agregar seleccionadas</button>`;
+        feather.replace();
+        content.querySelector('#btn-add-suggested')?.addEventListener('click', async () => {
+          const selected = Array.from(content.querySelectorAll('.suggest-task-cb:checked')).map(cb => cb.dataset.task);
+          for (const title of selected) {
+            await store.dispatch('ADD_TASK', {
+              projectId: p.id,
+              title,
+              status: 'Capturado',
+              priority: 'media',
+              visibility: 'shared'
+            });
+          }
+          showToast(`${selected.length} tarea${selected.length !== 1 ? 's' : ''} agregada${selected.length !== 1 ? 's' : ''}.`, 'success');
+          showProjectTab(root, p, 'tasks');
+        });
+      } catch (e) {
+        aiResults.innerHTML = `<div style="color:var(--accent-danger);">Error: ${esc(e.message)}</div>`;
+      }
+    };
+
+    content.querySelector('#btn-generate-report').onclick = async () => {
+      aiResults.innerHTML = '<div style="color:var(--text-muted); text-align:center;"><i data-feather="loader"></i> Generando reporte...</div>';
+      feather.replace();
+      try {
+        const logs = store.get.logsByProject?.(p.id) || [];
+        const report = await window.ollamaApi.generateProjectReport(p, logs, 'month');
+        aiResults.innerHTML = `<div style="color:var(--text-primary); white-space:pre-wrap; line-height:1.6;">${esc(report)}</div>
+          <button class="btn btn-ghost btn-xs" id="copy-report" style="margin-top:12px; float:right;"><i data-feather="copy"></i> Copiar</button>
+          <button class="btn btn-ghost btn-xs" id="download-report" style="margin-top:12px; float:right; margin-right:8px;"><i data-feather="download"></i> Descargar</button>`;
+        feather.replace();
+        content.querySelector('#copy-report')?.addEventListener('click', () => {
+          navigator.clipboard.writeText(report);
+          showToast('Reporte copiado al portapapeles.', 'success');
+        });
+        content.querySelector('#download-report')?.addEventListener('click', () => {
+          const blob = new Blob([report], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `reporte-${p.name.slugify()}-${new Date().toISOString().split('T')[0]}.txt`;
+          a.click();
+          URL.revokeObjectURL(url);
+        });
+      } catch (e) {
+        aiResults.innerHTML = `<div style="color:var(--accent-danger);">Error: ${esc(e.message)}</div>`;
+      }
+    };
+
     content.querySelector('#btn-run-report').onclick = () => {
       const q = content.querySelector('#report-query').value.trim().toUpperCase();
       if (q === 'LIST TAREAS') {
@@ -407,6 +529,103 @@ function showProjectTab(root, p, tab) {
 
   feather.replace();
   bindTaskCheckboxes(content);
+}
+
+function renderProjectsKanban(projects) {
+  if (!projects.length) return emptyState('briefcase', 'No hay proyectos.');
+  const statuses = ['activo', 'planificado', 'pausado', 'archivado'];
+  const statusLabels = { activo: 'Activo', planificado: 'Planificado', pausado: 'Pausado', archivado: 'Archivado' };
+  const statusColors = { activo: '#22c55e', planificado: '#3b82f6', pausado: '#f59e0b', archivado: '#4b5563' };
+
+  return `
+    <div class="kanban-board" style="display:flex; gap:16px; overflow-x:auto; padding-bottom:12px;">
+      ${statuses.map(status => {
+    const statusProjects = projects.filter(p => (p.status || 'activo') === status);
+    return `
+          <div class="kanban-column" style="flex:0 0 320px; background:var(--bg-surface-2); border-radius:12px; display:flex; flex-direction:column; max-height:600px;">
+            <div style="padding:12px; display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid ${statusColors[status]}; border-bottom-style: solid;">
+              <h4 style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); font-weight:700;">${statusLabels[status]}</h4>
+              <span class="badge badge-neutral" style="font-size:0.65rem;">${statusProjects.length}</span>
+            </div>
+            <div class="kanban-items" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px;">
+              ${statusProjects.length ? statusProjects.map(p => {
+        const meta = PROJECT_TYPES[p.type] || PROJECT_TYPES.libre;
+        const tasks = store.get.tasksByProject(p.id);
+        const done = tasks.filter(t => t.status === 'Terminado').length;
+        const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+        return `
+                <div class="card kanban-card" style="padding:12px; cursor:pointer; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; box-shadow:var(--shadow-sm);" onclick="router.navigate('/project/${p.id}')">
+                  <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+                    <i data-feather="${meta.icon}" style="width:14px;height:14px; color:${p.color || meta.color};"></i>
+                    <div style="font-size:0.85rem; font-weight:600; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.name)}</div>
+                  </div>
+                  <div style="font-size:0.7rem; color:var(--text-muted); margin-bottom:8px;">${esc(meta.label)}</div>
+                  <div style="font-size:0.68rem; color:var(--text-muted); margin-bottom:6px;">${done}/${tasks.length} tareas</div>
+                  <div class="progress-bar" style="height:4px;"><div class="progress-fill" style="width:${pct}%;"></div></div>
+                </div>
+              `;
+      }).join('') : '<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:20px;">Sin proyectos</div>'}
+            </div>
+          </div>
+        `;
+  }).join('')}
+    </div>
+  `;
+}
+
+function renderProjectsCalendar(projects) {
+  if (!projects.length) return emptyState('briefcase', 'No hay proyectos.');
+  const projectsWithDate = projects.filter(p => p.endDate);
+
+  // Get current month/year
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startDate = new Date(firstDay);
+  startDate.setDate(startDate.getDate() - firstDay.getDay());
+
+  return `
+    <div style="background:var(--bg-surface-2); border-radius:12px; padding:20px;">
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:0.95rem; font-weight:600; color:var(--text-primary);">
+          ${['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][month]} ${year}
+        </h3>
+      </div>
+      <div class="calendar-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap:8px;">
+        ${['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => `<div style="text-align:center; font-size:0.7rem; font-weight:700; color:var(--text-muted); padding-bottom:8px; text-transform:uppercase;">${d}</div>`).join('')}
+        ${Array.from({ length: 42 }).map((_, i) => {
+          const currentDate = new Date(startDate);
+          currentDate.setDate(currentDate.getDate() + i);
+          const isCurrentMonth = currentDate.getMonth() === month;
+          const dayNum = currentDate.getDate();
+          const dayProjects = projectsWithDate.filter(p => {
+            const pDate = new Date(p.endDate);
+            return pDate.toDateString() === currentDate.toDateString();
+          });
+
+          const bgColor = isCurrentMonth ? 'var(--bg-card)' : 'var(--bg-surface-3)';
+          const textColor = isCurrentMonth ? 'var(--text-primary)' : 'var(--text-muted)';
+          const borderColor = dayProjects.length ? 'var(--accent-primary)' : 'var(--border-color)';
+
+          return `
+            <div style="min-height:100px; background:${bgColor}; border-radius:8px; padding:8px; border:1px solid ${borderColor}; opacity:${isCurrentMonth ? '1' : '0.5'}; display:flex; flex-direction:column;">
+              <div style="font-size:0.75rem; font-weight:600; color:${textColor}; margin-bottom:6px;">${dayNum}</div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:3px; overflow:hidden;">
+                ${dayProjects.slice(0, 3).map(p => {
+                  const meta = PROJECT_TYPES[p.type] || PROJECT_TYPES.libre;
+                  return `<div style="font-size:0.6rem; background:${p.color || meta.color}; color:#fff; padding:2px 4px; border-radius:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="${esc(p.name)}" onclick="router.navigate('/project/${p.id}')">${esc(p.name.substring(0, 12))}</div>`;
+                }).join('')}
+                ${dayProjects.length > 3 ? `<div style="font-size:0.55rem; color:var(--text-muted);">+${dayProjects.length - 3} más</div>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderKanban(tasks) {
