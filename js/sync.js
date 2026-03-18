@@ -267,8 +267,14 @@ const syncManager = (() => {
 
             google.accounts.id.prompt((notification) => {
                 if (settled) return;
+
+                if (notification.isDismissedMoment?.() && notification.getDismissedReason?.() === 'credential_returned') {
+                    return; // Do not reject, wait for the callback which has the successful token.
+                }
+
                 if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
-                    settleOnce(reject, 'Google sign-in prompt was closed or skipped');
+                    const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
+                    settleOnce(reject, 'Google sign-in prompt was closed or skipped. Reason: ' + reason);
                 }
             });
         });
