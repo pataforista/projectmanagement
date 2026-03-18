@@ -262,7 +262,7 @@ function isTaskAssignedToCurrentUser(task) {
  * @returns {Promise<Response>}
  */
 export async function fetchWithTimeout(url, options = {}) {
-    const { timeout = 12000, ...fetchOptions } = options;
+    const { timeout = 60000, ...fetchOptions } = options;
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
     try {
