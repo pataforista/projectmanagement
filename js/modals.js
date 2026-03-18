@@ -160,7 +160,12 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
       </div>
 
       <div class="form-group">
-        <label class="form-label">Descripción</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label class="form-label" style="margin:0;">Descripción</label>
+          <button class="btn btn-ghost btn-xs" id="btn-ai-task-desc" title="Generar descripción con IA" style="gap:4px; display:flex; align-items:center;">
+            <i data-feather="zap" style="width:12px;"></i> IA
+          </button>
+        </div>
         <textarea class="form-textarea" id="task-desc" placeholder="Contexto, notas, referencias…" rows="2">${isEdit ? esc(task.description || '') : ''}</textarea>
       </div>
 
@@ -170,7 +175,8 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
           <div id="subtasks-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
           <div style="display:flex; gap:8px;">
             <input class="form-input" id="new-subtask" placeholder="Nueva subtarea…">
-            <button class="btn btn-secondary" id="add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
+            <button class="btn btn-secondary" id="add-subtask" style="padding:0 12px;" title="Agregar manual"><i data-feather="plus"></i></button>
+            <button class="btn btn-ghost btn-secondary" id="btn-ai-subtasks" style="padding:0 12px;" title="Sugerir con IA"><i data-feather="zap"></i></button>
           </div>
         </div>
         <div class="form-group">
@@ -221,6 +227,70 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
         `).join('');
     feather.replace();
   }
+
+  // --- AI Integration for Task Description ---
+  modal.querySelector('#btn-ai-task-desc')?.addEventListener('click', async () => {
+    const title = modal.querySelector('#task-title').value.trim();
+    const type = modal.querySelector('#task-type').value;
+    if (!title) {
+      showToast('Ingresa el título de la tarea primero.', 'warning');
+      return;
+    }
+
+    const btn = modal.querySelector('#btn-ai-task-desc');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i data-feather="loader"></i>...';
+    btn.disabled = true;
+    feather.replace();
+
+    try {
+      const prompt = `Tarea: ${title}\nTipo: ${type}\n\nGenera una descripción breve (1-2 párrafos) con el contexto necesario para realizar esta tarea.`;
+      const result = await window.ollamaApi.generate(prompt, 'Eres un gestor de proyectos experto. Sé útil y directo.');
+      modal.querySelector('#task-desc').value = result.trim();
+      showToast('Descripción generada con IA.', 'success');
+    } catch (e) {
+      showToast('Error IA: ' + e.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      feather.replace();
+    }
+  });
+
+  // --- AI Integration for Subtasks ---
+  modal.querySelector('#btn-ai-subtasks')?.addEventListener('click', async () => {
+    const title = modal.querySelector('#task-title').value.trim();
+    if (!title) {
+      showToast('Ingresa el título de la tarea para sugerir pasos.', 'warning');
+      return;
+    }
+
+    const btn = modal.querySelector('#btn-ai-subtasks');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i data-feather="loader"></i>';
+    btn.disabled = true;
+    feather.replace();
+
+    try {
+      const prompt = `Tarea: ${title}\n\nGenera una lista de 4 a 6 subtareas o pasos concretos para completar esta tarea. Responde ÚNICAMENTE con la lista, un paso por línea, sin números ni guiones iniciales.`;
+      const result = await window.ollamaApi.generate(prompt, 'Eres un asistente de organización. Responde solo con la lista de pasos, uno por línea.');
+      
+      const lines = result.split('\n').map(l => l.trim()).filter(l => l && l.length > 2);
+      if (lines.length > 0) {
+        lines.forEach(line => {
+          subTasks.push({ id: Date.now() + Math.random(), title: line, done: false });
+        });
+        renderSubtasks();
+        showToast('Subtareas sugeridas agregadas.', 'success');
+      }
+    } catch (e) {
+      showToast('Error IA: ' + e.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      feather.replace();
+    }
+  });
 
   if (isEdit) {
     modal.querySelector('#task-delete').addEventListener('click', async () => {
@@ -508,7 +578,12 @@ function openCycleModal(defaultProjectIdOrCycle) {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Objetivo del ciclo</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label class="form-label" style="margin:0;">Objetivo del ciclo</label>
+          <button class="btn btn-ghost btn-xs" id="btn-ai-cycle-goal" title="Generar objetivo con IA" style="gap:4px; display:flex; align-items:center;">
+            <i data-feather="zap" style="width:12px;"></i> IA
+          </button>
+        </div>
         <textarea class="form-textarea" id="cycle-goal" placeholder="¿Qué quieres lograr en este bloque temporal?" rows="2">${isEdit ? esc(cycle.goal || '') : ''}</textarea>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -572,6 +647,37 @@ function openCycleModal(defaultProjectIdOrCycle) {
     closeModal();
     refreshCurrentView();
   });
+
+  // --- AI Integration for Cycle Goal ---
+  modal.querySelector('#btn-ai-cycle-goal')?.addEventListener('click', async () => {
+    const name = modal.querySelector('#cycle-name').value.trim();
+    const projectId = modal.querySelector('#cycle-project').value;
+    const project = store.get.projectById(projectId);
+
+    if (!name) {
+      showToast('Ingresa el nombre del ciclo primero.', 'warning');
+      return;
+    }
+
+    const btn = modal.querySelector('#btn-ai-cycle-goal');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i data-feather="loader"></i>...';
+    btn.disabled = true;
+    feather.replace();
+
+    try {
+      const prompt = `Ciclo: ${name}\nProyecto: ${project?.name || 'N/A'}\n\nGenera un objetivo claro y accionable de 1-2 oraciones para este ciclo de trabajo.`;
+      const result = await window.ollamaApi.generate(prompt, 'Eres un facilitador de equipos ágiles. Sé conciso.');
+      modal.querySelector('#cycle-goal').value = result.trim();
+      showToast('Objetivo del ciclo generado.', 'success');
+    } catch (e) {
+      showToast('Error IA: ' + e.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      feather.replace();
+    }
+  });
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -620,7 +726,12 @@ function openDecisionModal(defaultProjectIdOrDecision) {
         <textarea class="form-textarea" id="dec-context" placeholder="¿Cuál era la situación que requería esta decisión?" rows="2">${isEdit ? esc(decision.context || '') : ''}</textarea>
       </div>
       <div class="form-group">
-        <label class="form-label">Decisión tomada *</label>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label class="form-label" style="margin:0;">Decisión tomada *</label>
+          <button class="btn btn-ghost btn-xs" id="btn-ai-dec-refine" title="Refinar con IA" style="gap:4px; display:flex; align-items:center;">
+            <i data-feather="zap" style="width:12px;"></i> IA
+          </button>
+        </div>
         <textarea class="form-textarea" id="dec-decision" placeholder="Describe la decisión con precisión" rows="2">${isEdit ? esc(decision.decision || '') : ''}</textarea>
       </div>
       <div class="form-group">
@@ -678,6 +789,36 @@ function openDecisionModal(defaultProjectIdOrDecision) {
     }
     closeModal();
     refreshCurrentView();
+  });
+
+  // --- AI Integration for Decision Refinement ---
+  modal.querySelector('#btn-ai-dec-refine')?.addEventListener('click', async () => {
+    const rawDecision = modal.querySelector('#dec-decision').value.trim();
+    const context = modal.querySelector('#dec-context').value.trim();
+
+    if (!rawDecision) {
+      showToast('Escribe un borrador de la decisión primero.', 'warning');
+      return;
+    }
+
+    const btn = modal.querySelector('#btn-ai-dec-refine');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i data-feather="loader"></i>...';
+    btn.disabled = true;
+    feather.replace();
+
+    try {
+      const prompt = `Contexto: ${context}\nDecisión borrador: ${rawDecision}\n\nRefina y profesionaliza el texto de esta decisión para que sea claro, formal y definitivo.`;
+      const result = await window.ollamaApi.generate(prompt, 'Eres un redactor profesional de actas y registros corporativos. Transforma el borrador en una declaración de decisión formal.');
+      modal.querySelector('#dec-decision').value = result.trim();
+      showToast('Decisión refinada con IA.', 'success');
+    } catch (e) {
+      showToast('Error IA: ' + e.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+      feather.replace();
+    }
   });
 }
 
