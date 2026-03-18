@@ -244,10 +244,24 @@
         </button>
       </div>
 
+      <!-- ── Mode Toggle ─────────────────────────────────────────────────── -->
+      <div class="workspace-mode-bar" id="workspace-mode-bar">
+        <button class="mode-pill" id="mode-btn-solo" data-mode="solo" title="Modo Individual — herramientas de trabajo personal">
+          <i data-feather="user"></i>
+          <span>Individual</span>
+        </button>
+        <button class="mode-pill" id="mode-btn-team" data-mode="team" title="Modo Equipo — herramientas colaborativas">
+          <i data-feather="users"></i>
+          <span>Equipo</span>
+        </button>
+      </div>
+
       <nav class="sidebar-nav">
 
         <div class="nav-section">
-          <span class="nav-label">Inicio</span>
+          <span class="nav-label nav-label-default">Inicio</span>
+          <span class="nav-label nav-label-solo-only" style="display:none;">Mi Trabajo</span>
+          <span class="nav-label nav-label-team-only" style="display:none;">Inicio del Equipo</span>
           <a class="nav-item" data-view="dashboard" href="#/dashboard">
             <i data-feather="home"></i> <span>Dashboard</span>
           </a>
@@ -263,7 +277,7 @@
           <a class="nav-item" data-view="calendar" href="#/calendar">
             <i data-feather="calendar"></i> <span>Calendario</span>
           </a>
-          <a class="nav-item" data-view="matrix" href="#/matrix">
+          <a class="nav-item" data-scope="solo" data-view="matrix" href="#/matrix">
             <i data-feather="grid"></i> <span>Matriz</span>
           </a>
           <a class="nav-item" data-view="library" href="#/library">
@@ -278,11 +292,13 @@
         </div>
 
         <div class="nav-section">
-          <span class="nav-label">Producción</span>
+          <span class="nav-label nav-label-default">Producción</span>
+          <span class="nav-label nav-label-solo-only" style="display:none;">Producción Personal</span>
+          <span class="nav-label nav-label-team-only" style="display:none;">Producción del Equipo</span>
           <a class="nav-item" data-view="projects" href="#/projects">
             <i data-feather="briefcase"></i> <span>Proyectos</span>
           </a>
-          <a class="nav-item" data-view="writing" href="#/writing">
+          <a class="nav-item" data-scope="solo" data-view="writing" href="#/writing">
             <i data-feather="type"></i> <span>Escritura</span>
           </a>
           <a class="nav-item" data-view="medical" href="#/medical">
@@ -297,7 +313,7 @@
           <a class="nav-item" data-view="logs" href="#/logs">
             <i data-feather="activity"></i> <span>Actividad</span>
           </a>
-          <a class="nav-item" data-view="collaboration" href="#/collaboration">
+          <a class="nav-item" data-scope="team" data-view="collaboration" href="#/collaboration">
             <i data-feather="users"></i> <span>Colaboración</span>
           </a>
         </div>

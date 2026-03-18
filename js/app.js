@@ -1,5 +1,6 @@
 import {
     initUIToggles,
+    initWorkspaceMode,
     refreshSidebarProjects,
     openSearch,
     closeSearch,
@@ -368,6 +369,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
+    initWorkspaceMode();
 
     // ── 9. Try sync pull ───────────────────────────────────────────────────────
     // FIX: syncManager.init() ya fue llamado al inicio (antes del auth block).
