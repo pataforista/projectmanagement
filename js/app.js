@@ -31,14 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── OPCIÓN 3: Initialize Session Manager with IndexedDB ─────────────────
     // Make SessionManager globally available
     window.SessionManager = SessionManager;
-    try {
-        if (window.db) {
-            await SessionManager.init(window.db);
-            console.log('[Boot] Session Manager initialized');
-        }
-    } catch (e) {
-        console.warn('[Boot] Session Manager init failed:', e);
-    }
 
     // ── OPCIÓN 1: Initialize Account Change Detector ────────────────────────
     // Monitor for Google account switches
@@ -332,6 +324,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
     try {
         await initDB();
+        
+        // ── Initialize Session Manager now that DB is ready ─────────────────
+        try {
+            if (window.db && window.SessionManager) {
+                await SessionManager.init(window.db);
+                console.log('[Boot] Session Manager initialized');
+            }
+        } catch (e) {
+            console.warn('[Boot] Session Manager init failed:', e);
+        }
     } catch (e) {
         console.warn('[Boot] IndexedDB init failed:', e);
     }
