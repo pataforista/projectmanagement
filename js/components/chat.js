@@ -589,7 +589,7 @@ export const ChatManager = (() => {
         if (!_isOpen && messages.length > lastCount) {
             const badge = document.getElementById('chat-badge');
             const diff = messages.length - lastCount;
-            const currentBadgeVal = parseInt(badge.textContent) || 0;
+            const currentBadgeVal = parseInt(badge.textContent, 10) || 0;
             badge.textContent = currentBadgeVal + diff;
             badge.classList.remove('hidden');
 

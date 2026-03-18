@@ -8,6 +8,8 @@
  * ─── Default Headers for ALL routes ────────────────────────────────────────
  */
 /*all routes*/
+  # Enforce HTTPS — prevent downgrade attacks
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   # Prevent site from being embedded in an iframe (Clickjacking)
   X-Frame-Options: SAMEORIGIN
   # Stop browsers from guessing content types (MIME sniffing)
@@ -19,5 +21,6 @@
   # Permissions Policy — disable features not used
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
   # Content Security Policy
-  # Allows scripts from self and specific trusted CDNs (Google Identity Services, Feather icons)
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com https://apis.google.com https://unpkg.com https://cdnjs.cloudflare.com 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.google.com https://*.googleapis.com https://*.googleusercontent.com; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com https://www.googleapis.com; frame-src https://accounts.google.com; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self';
+  # Allows scripts from self and specific trusted CDNs with SRI validation
+  # Blocks unpkg and cdnjs generic access — only specific versions allowed
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com https://apis.google.com https://unpkg.com/force-graph@1.47.4 https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.google.com https://*.googleapis.com https://*.googleusercontent.com; connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://sheets.googleapis.com; frame-src https://accounts.google.com; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self';

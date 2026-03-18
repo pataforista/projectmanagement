@@ -313,7 +313,7 @@ function showProjectTab(root, p, tab) {
 
     content.querySelectorAll('.del-thought-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const ts = parseInt(btn.dataset.ts);
+        const ts = parseInt(btn.dataset.ts, 10);
         const updatedThoughts = (p.thoughts || []).filter(t => t.ts !== ts);
         await store.dispatch('UPDATE_PROJECT', { id: p.id, thoughts: updatedThoughts });
         showProjectTab(root, p, 'overview');

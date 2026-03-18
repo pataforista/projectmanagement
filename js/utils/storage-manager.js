@@ -51,8 +51,8 @@ export const StorageManager = (() => {
         'elabftw_api_key',          // eLabFTW key (per-tab)
         'zenodo_token',             // Zenodo token (per-tab)
         'zenodo_sandbox',           // Zenodo sandbox flag (per-tab)
-        'zotero_uid',               // Zotero UID (per-tab)
-        'zotero_key',               // Zotero key (per-tab)
+        'zotero_user_id',           // Zotero user ID (per-tab)
+        'zotero_api_key',           // Zotero API key (per-tab)
     ]);
 
     // Sensitive keys that should NEVER be in sessionStorage

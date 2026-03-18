@@ -283,7 +283,7 @@ function fmtDate(dateStr) {
     if (!dateStr) return '';
     const [y, m, d] = dateStr.split('-');
     const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    return `${parseInt(d)} ${months[parseInt(m) - 1]} ${y}`;
+    return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]} ${y}`;
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
