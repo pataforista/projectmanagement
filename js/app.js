@@ -7,7 +7,8 @@ import {
     handleSearch,
     openQuickAdd,
     exportData,
-    initGlobalEffects
+    initGlobalEffects,
+    updateTopbarSyncWidget
 } from './ui.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -370,6 +371,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
     initWorkspaceMode();
+
+    // ── 8.1. Sync status widget ─────────────────────────────────────────────────
+    updateTopbarSyncWidget();
+    window.addEventListener('online', updateTopbarSyncWidget);
+    window.addEventListener('offline', updateTopbarSyncWidget);
+    window.addEventListener('sync:status-changed', updateTopbarSyncWidget);
+    // Poll every 15s to keep the widget fresh
+    setInterval(updateTopbarSyncWidget, 15_000);
 
     // ── 9. Try sync pull ───────────────────────────────────────────────────────
     // FIX: syncManager.init() ya fue llamado al inicio (antes del auth block).

@@ -64,9 +64,10 @@ function statPill(count, label, icon, color) {
  * @param {Object} t - El objeto de la Tarea.
  * @returns {string} HTML generado representando la fila de la tarea.
  */
-function taskItem(t) {
+function taskItem(t, { showDelete = false } = {}) {
   const proj = store.get.projectById(t.projectId);
   const isDone = t.status === 'Terminado' || t.status === 'Archivado';
+  const isSubtask = !!t.parentId;
 
   // Urgent logic
   const today = new Date();
@@ -77,13 +78,25 @@ function taskItem(t) {
   const isUrgent = dueDate && !isOverdue && !isDone && (dueDate - today) <= (7 * 24 * 60 * 60 * 1000);
   const urgentClass = isOverdue ? 'task-overdue' : (isUrgent ? 'task-urgent' : '');
 
+  // Count children (subtasks)
+  const childCount = store.get.getChildTasks ? store.get.getChildTasks(t.id).length : 0;
+
+  const deleteBtn = showDelete ? `
+    <button class="quick-delete-btn" data-task-id="${t.id}" title="Eliminar tarea"
+      onclick="event.stopPropagation(); if(confirm('¿Eliminar esta tarea?')) store.dispatch('DELETE_TASK',{id:'${t.id}'})">
+      <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 6 5 6 21 6'></polyline><path d='M19 6l-1 14H6L5 6'></path><path d='M10 11v6'></path><path d='M14 11v6'></path><path d='M9 6V4h6v2'></path></svg>
+    </button>` : '';
+
   return `
-    <li class="task-item ${urgentClass}" data-task-id="${t.id}">
+    <li class="task-item ${urgentClass}${isSubtask ? ' is-subtask' : ''}" data-task-id="${t.id}">
       <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}"></div>
       <div class="task-details">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
           <span class="task-title ${isDone ? 'done' : ''}">${esc(t.title)}</span>
-          ${t.assigneeId ? renderAvatar(t.assigneeId, t.assigneeName, 22) : ''}
+          <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+            ${childCount > 0 ? `<span class="task-depth-badge" title="${childCount} subtarea${childCount !== 1 ? 's' : ''}">↳ ${childCount}</span>` : ''}
+            ${t.assigneeId ? renderAvatar(t.assigneeId, t.assigneeName, 22) : ''}
+          </div>
         </div>
         <span class="task-meta">
           ${proj ? `<span style="color:${proj.color || 'var(--accent-primary)'}">● ${esc(proj.name)}</span>` : ''}
@@ -93,6 +106,7 @@ function taskItem(t) {
         </span>
       </div>
       <div class="priority-pip ${t.priority || 'baja'}"></div>
+      ${deleteBtn}
     </li>`;
 }
 
