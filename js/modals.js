@@ -1,3 +1,15 @@
+import { store } from './store.js';
+import { 
+  esc, 
+  showToast, 
+  setCurrentMemberId, 
+  fmtDate, 
+  generateUID, 
+  getCurrentWorkspaceUser, 
+  getCurrentWorkspaceMember, 
+  PROJECT_TYPES 
+} from './utils.js';
+
 /**
  * modals.js — All modal dialogs for creating/editing entities
  */
