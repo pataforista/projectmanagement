@@ -1,5 +1,6 @@
 import {
     initUIToggles,
+    initSessionSwitcher,
     initWorkspaceMode,
     refreshSidebarProjects,
     openSearch,
@@ -431,6 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── 8. Init UI Toggles (Theme/Sidebar) ─────────────────────────────────────
     initUIToggles();
+    initSessionSwitcher();  // OPCIÓN 3: Initialize session switcher in topbar
     initWorkspaceMode();
 
     // ── 8.1. Sync status widget ─────────────────────────────────────────────────

@@ -2053,3 +2053,105 @@
     background: var(--bg-surface-hover);
 }
 
+
+/* ──────────────────────────────────────────────────────────────────────────── */
+/* Session Switcher (OPCIÓN 3: Multi-Account Google Login)                     */
+/* ──────────────────────────────────────────────────────────────────────────── */
+
+.session-switcher-modal-overlay {
+    animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.session-switcher-panel {
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.session-item {
+    animation: fadeIn 0.2s ease-out;
+}
+
+.session-item:hover {
+    transform: translateX(2px);
+}
+
+.session-item.active {
+    box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+.session-avatar {
+    flex-shrink: 0;
+    user-select: none;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .session-switcher-panel {
+        width: 95% !important;
+        max-width: none;
+    }
+}
+
+/* Session switcher topbar button */
+#btn-session-switcher {
+    position: relative;
+}
+
+#btn-session-switcher::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    background: var(--accent-teal);
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+#btn-session-switcher:hover::after {
+    opacity: 1;
+}
+
+/* Session list scrollbar */
+#sessions-list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
+#sessions-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+#sessions-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#sessions-list::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+#sessions-list::-webkit-scrollbar-thumb:hover {
+    background: var(--border-highlight);
+}
