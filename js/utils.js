@@ -600,4 +600,4 @@ window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 window.fetchWithTimeout = fetchWithTimeout;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId, generateICS };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId };
