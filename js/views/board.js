@@ -103,24 +103,36 @@ function kanbanCard(t) {
   const proj = store.get.projectById(t.projectId);
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Terminado';
   const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
+  
   return `
     <div class="kanban-card" draggable="true" data-task-id="${t.id}" data-status="${t.status}">
-      ${proj ? `<div style="font-size:0.68rem;display:flex;align-items:center;gap:4px;color:${proj.color || 'var(--accent-primary)'};">
-        <span style="width:5px;height:5px;border-radius:50%;background:currentColor;"></span>${esc(proj.name)}
-      </div>` : ''}
+      ${proj ? `
+        <div class="kanban-card-project" style="color:${proj.color || 'var(--accent-primary)'};">
+          <span class="project-dot" style="background:currentColor;"></span>
+          ${esc(proj.name)}
+        </div>` : ''}
+      
       <div class="kanban-card-title">${esc(t.title)}</div>
-      <div style="margin-top:6px;">
-        <span style="display:inline-block; padding:1px 7px; border-radius:999px; font-size:0.62rem; font-weight:700; ${ownershipLabel === 'Mía' ? 'background:rgba(16,185,129,0.14); color:#86efac;' : 'background:rgba(59,130,246,0.14); color:#93c5fd;'}">${ownershipLabel}</span>
+      
+      <div class="kanban-card-tags">
+        <span class="status-pill ${ownershipLabel === 'Mía' ? 'status-terminado' : 'status-definido'}" style="font-size:0.6rem; padding:1px 6px; opacity:0.8;">
+          ${ownershipLabel}
+        </span>
+        <span class="priority-pip ${t.priority || 'baja'}"></span>
       </div>
+
       <div class="kanban-card-foot">
         <div class="kanban-card-date ${isOverdue ? 'overdue' : ''}">
           ${t.dueDate ? `<i data-feather="calendar"></i>${fmtDate(t.dueDate)}` : ''}
         </div>
-        <div style="display:flex;align-items:center;gap:4px;">
-          ${t.assigneeId ? `<div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}" style="width:18px;height:18px;font-size:0.6rem;background:var(--accent-primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;">${esc(store.get.memberById(t.assigneeId)?.avatar || '?')}</div>` : ''}
-          <button class="btn btn-icon btn-sm task-move-btn d-mobile-only" title="Mover estado" style="padding:2px; color:var(--text-muted);"><i data-feather="more-horizontal" style="width:14px;height:14px;"></i></button>
-          <span class="priority-pip ${t.priority || 'baja'}"></span>
-          <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="padding:2px; margin-left:4px; opacity:0; transition:opacity 0.2s; color:var(--text-muted);"><i data-feather="trash-2" style="width:12px;height:12px;"></i></button>
+        <div class="kanban-card-meta">
+          ${t.assigneeId ? `
+            <div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}">
+              ${esc(store.get.memberById(t.assigneeId)?.avatar || '?')}
+            </div>` : ''}
+          <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar">
+            <i data-feather="trash-2"></i>
+          </button>
         </div>
       </div>
     </div>`;

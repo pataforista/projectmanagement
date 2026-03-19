@@ -94,35 +94,34 @@ function renderProjectCards(projects) {
     const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
     const cycle = store.get.activeCycles().find(c => c.projectId === p.id);
     return `
-      <div class="project-card" style="--project-color:${p.color || meta.color};" data-project-id="${p.id}">
+      <div class="project-card playful-pop" style="--project-color:${p.color || meta.color}; border-radius:var(--radius-xl); box-shadow: 0 8px 16px color-mix(in srgb, ${p.color || meta.color} 10%, transparent);" data-project-id="${p.id}">
         <div class="project-card-top">
-          <div class="project-icon" style="--project-color:${p.color || meta.color};">
+          <div class="project-icon" style="--project-color:${p.color || meta.color}; border-radius:var(--shape-md);">
             <i data-feather="${meta.icon}"></i>
           </div>
           <div style="display:flex; gap:4px;">
-            <span class="badge ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'badge-primary' : 'badge-neutral'}" style="font-size:0.6rem;">
-              ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'Tuyo' : 'Equipo'}
+            <span class="badge ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'badge-primary' : 'badge-neutral'}" style="font-size:0.6rem; border-radius:10px;">
+              ${p.ownerId === getCurrentWorkspaceUser().memberId ? 'Tuyo ✨' : 'Equipo 👥'}
             </span>
-            <span class="badge badge-neutral">${meta.label}</span>
+            <span class="badge badge-neutral" style="font-size:0.6rem; border-radius:10px;">${meta.label}</span>
           </div>
         </div>
         <div>
-          <div class="project-card-name">
-            ${p.visibility === 'local' ? '<i data-feather="lock" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>' : '<i data-feather="cloud" style="width:14px;height:14px;margin-right:4px;vertical-align:text-bottom;"></i>'}
+          <div class="project-card-name" style="font-weight:700; font-size:1.05rem;">
+            ${p.visibility === 'local' ? '<i data-feather="lock" style="width:14px;height:14px;margin-right:4px;"></i>' : '<i data-feather="cloud" style="width:14px;height:14px;margin-right:4px;"></i>'}
             ${esc(p.name)}
           </div>
-          ${p.goal ? `<div class="project-card-goal" style="margin-top:6px;">${esc(p.goal)}</div>` : ''}
+          ${p.goal ? `<div class="project-card-goal" style="margin-top:6px; font-style:italic; opacity:0.8;">${esc(p.goal)}</div>` : ''}
         </div>
         <div>
-          <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:5px;">
-            <span>${done}/${tasks.length} tareas</span><span>${pct}%</span>
+          <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-secondary);margin-bottom:6px; font-weight:600;">
+            <span>${done}/${tasks.length} completadas</span><span>${pct}%</span>
           </div>
-          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <div class="progress-bar" style="height:6px; border-radius:10px;"><div class="progress-fill" style="width:${pct}%; border-radius:10px; background:var(--project-color); box-shadow: 0 0 8px var(--project-color);"></div></div>
         </div>
         <div class="project-card-meta">
-          ${cycle ? `<span><i data-feather="refresh-cw" style="width:10px;height:10px;"></i> ${esc(cycle.name)}</span>` : ''}
-          ${p.endDate ? `<span><i data-feather="calendar" style="width:10px;height:10px;"></i> ${fmtDate(p.endDate)}</span>` : ''}
-          ${statusBadge(p.status)}
+          ${cycle ? `<span style="display:flex; align-items:center; gap:4px;"><i data-feather="refresh-cw" style="width:11px;"></i> ${esc(cycle.name)}</span>` : ''}
+          ${p.status === 'activo' ? '<span class="badge badge-success" style="padding:2px 8px; font-size:0.65rem;">En marcha 🚀</span>' : statusBadge(p.status)}
         </div>
       </div>`;
   }).join('');
@@ -264,16 +263,18 @@ function showProjectTab(root, p, tab) {
               <input type="text" class="form-input" id="new-thought-input" placeholder="¿Qué estás pensando sobre este proyecto?">
               <button class="btn btn-primary" id="add-thought-btn"><i data-feather="plus"></i></button>
             </div>
-            <div id="thoughts-list" style="display:flex; flex-direction:column; gap:12px;">
-              ${thoughts.length ? thoughts.sort((a, b) => b.ts - a.ts).map(t => `
-                <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border-left:3px solid var(--accent-primary);">
-                  <div style="font-size:0.86rem; line-height:1.4;">${esc(t.text)}</div>
-                  <div style="font-size:0.68rem; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between;">
-                    <span>${new Date(t.ts).toLocaleString()}</span>
-                    <button class="btn-text del-thought-btn" data-ts="${t.ts}" style="color:var(--accent-danger); font-size:0.65rem;">Eliminar</button>
+            <div id="thoughts-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:16px;">
+              ${thoughts.length ? thoughts.sort((a, b) => b.ts - a.ts).map(t => {
+                const rotation = (Math.random() * 4 - 2).toFixed(1);
+                return `
+                <div class="playful-pop" style="padding:16px; background:var(--bg-surface-2); border-radius:var(--radius-md); border-top:4px solid var(--accent-primary); transform: rotate(${rotation}deg); box-shadow: var(--shadow-md); transition: transform 0.2s var(--ease);">
+                  <div style="font-size:0.9rem; line-height:1.5; color:var(--text-primary);">${esc(t.text)}</div>
+                  <div style="font-size:0.65rem; color:var(--text-muted); margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>${fmtDate(t.ts)}</span>
+                    <button class="btn-text del-thought-btn" data-ts="${t.ts}" style="color:var(--accent-danger); font-weight:700;">Borrar</button>
                   </div>
                 </div>
-              `).join('') : '<div style="font-size:0.8rem; color:var(--text-muted); text-align:center; padding:20px;">No has capturado pensamientos aún.</div>'}
+              `}).join('') : '<div style="grid-column: 1/-1; font-size:0.8rem; color:var(--text-muted); text-align:center; padding:20px;">No hay notas aún. ¡Captura lo que piensas! 💡</div>'}
             </div>
           </div>
         </div>

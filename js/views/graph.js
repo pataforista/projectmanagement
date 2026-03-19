@@ -94,26 +94,57 @@ export const renderGraph = (root) => {
         }
     });
 
-    // 2. Add Documents
+    // 2. Add Documents (including Wiki Pages)
     documents.forEach(d => {
+        const isWiki = d.wikiType && d.wikiType.startsWith('wiki-');
+        const nodeColor = isWiki 
+            ? (d.wikiType === 'wiki-book' ? '#ef4444' : d.wikiType === 'wiki-chapter' ? '#f59e0b' : '#38bdf8')
+            : '#14b8a6';
+
         data.nodes.push({
             id: d.id,
-            name: d.title,
-            type: 'doc',
-            val: 12,
-            color: '#14b8a6'
+            name: d.title || 'Sin título',
+            type: isWiki ? d.wikiType : 'doc',
+            val: isWiki ? (d.wikiType === 'wiki-book' ? 20 : 12) : 10,
+            color: nodeColor
         });
-        // Project containment links: Project -> Document
+
+        // Project/Wiki hierarchy links
         if (d.projectId) {
             data.links.push({ source: d.projectId, target: d.id, type: 'containment' });
+        } else if (d.parentId) {
+            data.links.push({ source: d.parentId, target: d.id, type: 'hierarchy' });
         }
 
-        // Cross-references [[Doc Title]]
-        documents.forEach(other => {
-            if (other.id !== d.id && d.content && d.content.includes(`[[${other.title}]]`)) {
-                data.links.push({ source: d.id, target: other.id, type: 'crosslink' });
+        // Networked connections: Wiki-links & Tags
+        if (d.content) {
+            const contentLow = d.content.toLowerCase();
+            
+            // Wiki-links [[Doc Title]]
+            documents.forEach(other => {
+                if (other.id !== d.id && contentLow.includes(`[[${(other.title || '').toLowerCase()}]]`)) {
+                    data.links.push({ source: d.id, target: other.id, type: 'crosslink' });
+                }
+            });
+
+            // Tag detection #tag
+            const tagRegex = /(?:^|\s)#([a-zA-Z0-9_\-]+)/g;
+            let match;
+            while ((match = tagRegex.exec(d.content)) !== null) {
+                const tagName = match[1];
+                const tagId = `tag-${tagName}`;
+                if (!data.nodes.find(n => n.id === tagId)) {
+                    data.nodes.push({
+                        id: tagId,
+                        name: `#${tagName}`,
+                        type: 'tag',
+                        val: 8,
+                        color: '#2dd4bf'
+                    });
+                }
+                data.links.push({ source: d.id, target: tagId, type: 'tag_link' });
             }
-        });
+        }
     });
 
     const container = root.querySelector('#graph-canvas-wrap');
@@ -157,9 +188,10 @@ export const renderGraph = (root) => {
         .nodeLabel('name')
         .nodeColor('color')
         .linkColor(link => {
-            if (link.type === 'hierarchy') return '#6366f1';
-            if (link.type === 'crosslink') return '#14b8a6';
-            if (link.type === 'custom_link') return '#f59e0b';
+            if (link.type === 'hierarchy' || link.type === 'containment') return 'rgba(99, 102, 241, 0.3)';
+            if (link.type === 'crosslink') return 'rgba(20, 184, 166, 0.6)';
+            if (link.type === 'custom_link') return 'rgba(245, 158, 11, 0.6)';
+            if (link.type === 'tag_link') return 'rgba(45, 212, 191, 0.3)';
             return 'rgba(255,255,255,0.1)';
         })
         .linkWidth(link => link.type === 'hierarchy' ? 3 : link.type === 'custom_link' ? 2 : 1)

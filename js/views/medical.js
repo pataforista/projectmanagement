@@ -4,7 +4,8 @@
 
 function renderMedical(root) {
   const interconsultations = store.get.interconsultations() || [];
-  const projects = store.get.projects().filter(p => p.type === 'Médico' || p.type === 'Investigación');
+  const savedSheetsUrl = localStorage.getItem('cfg_med_csvUrl') || '';
+  const isSyncing = root.dataset.syncing === 'true';
 
   root.innerHTML = `
     <div class="view-inner">
@@ -14,13 +15,25 @@ function renderMedical(root) {
           <p class="view-subtitle">Seguimiento de derivaciones y consultas especializadas.</p>
         </div>
         <div class="view-actions" style="display:flex; gap:8px;">
+           ${savedSheetsUrl ? `
+             <button class="btn btn-secondary ${isSyncing ? 'btn-loading' : ''}" id="btn-sync-medical" onclick="syncInterconsultations()">
+               <i data-feather="${isSyncing ? 'loader' : 'refresh-cw'}"></i> Sincronizar Excel
+             </button>
+             <button class="btn btn-ghost" id="btn-toggle-excel" onclick="toggleExcelEmbed()">
+               <i data-feather="eye"></i> <span id="text-toggle-excel">Ver Excel</span>
+             </button>
+           ` : ''}
            <button class="btn btn-secondary" onclick="openImportInterconsultationModal()">
-             <i data-feather="download"></i> Importar
+             <i data-feather="download"></i> Configurar Origen
            </button>
            <button class="btn btn-primary" onclick="openInterconsultationModal()">
-             <i data-feather="plus"></i> Nueva Interconsulta
+             <i data-feather="plus"></i> Nueva
            </button>
         </div>
+      </div>
+
+      <div id="excel-embed-container" style="display:none; margin-bottom:20px; height:400px; border-radius:12px; overflow:hidden; border:1px solid var(--border-color);" class="glass-panel">
+        <iframe id="medical-excel-iframe" src="" style="width:100%; height:100%; border:none;"></iframe>
       </div>
 
       <div class="medical-stats" style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
@@ -394,6 +407,109 @@ window.openImportInterconsultationModal = function () {
       feather.replace();
     }
   });
+};
+
+// Sync Logic
+window.syncInterconsultations = async function() {
+    const url = localStorage.getItem('cfg_med_csvUrl');
+    if (!url) return;
+
+    const root = document.getElementById('app-root');
+    root.dataset.syncing = 'true';
+    renderMedical(root);
+
+    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (!match || !match[1]) {
+        root.dataset.syncing = 'false';
+        renderMedical(root);
+        return showToast('URL de Sheets no válida', 'error');
+    }
+    const spreadsheetId = match[1];
+    const token = window.syncManager?.getAccessToken?.();
+    
+    if (!token) {
+        root.dataset.syncing = 'false';
+        renderMedical(root);
+        return showToast('No hay token de Google. Conecta Drive primero.', 'error');
+    }
+
+    try {
+        const apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:Z`;
+        const res = await fetch(apiUrl, { headers: { Authorization: `Bearer ${token}` }});
+        if (!res.ok) throw new Error('Error al obtener datos: ' + res.status);
+
+        const data = await res.json();
+        const rows = data.values;
+        if (!rows || rows.length < 2) throw new Error('No hay datos en la hoja.');
+
+        const headers = rows[0].map(h => String(h).toLowerCase().trim());
+        const existingRecords = store.get.interconsultations();
+        let added = 0;
+        let updated = 0;
+
+        for (let i = 1; i < rows.length; i++) {
+            const vals = rows[i];
+            if (!vals || vals.length === 0) continue;
+            const obj = {};
+            headers.forEach((h, j) => obj[h] = vals[j] || '');
+
+            const patientId = obj.expediente || obj.paciente || obj.patient || obj.id;
+            if (!patientId) continue;
+
+            // Simple duplicate detection: if patientId and date match a record, update it.
+            // Otherwise add new.
+            const date = obj.fecha || obj.date || '';
+            const existing = existingRecords.find(r => r.patientId === patientId && r.date === date);
+
+            const payload = {
+                date: date,
+                patientName: obj.nombre || obj.patientname || '',
+                patientId: patientId,
+                specialty: obj.especialidad || obj.specialty || 'General',
+                notes: obj.observaciones || obj.notas || obj.notes || '',
+                agenda: obj.agenda || '',
+                acceptedBy: obj.acepta || obj.acceptedby || '',
+                reason: obj.razon || obj.reason || '',
+                status: obj.estado || obj.status || 'Solicitada',
+                visibility: 'shared'
+            };
+
+            if (existing) {
+                await store.dispatch('UPDATE_INTERCONSULTATION', { id: existing.id, ...payload });
+                updated++;
+            } else {
+                await store.dispatch('ADD_INTERCONSULTATION', payload);
+                added++;
+            }
+        }
+
+        showToast(`Sincronización finalizada: ${added} nuevos, ${updated} actualizados.`, 'success');
+        localStorage.setItem('cfg_med_lastSync', new Date().toISOString());
+    } catch (err) {
+        console.error(err);
+        showToast('Fallo en sincronización: ' + err.message, 'error');
+    } finally {
+        root.dataset.syncing = 'false';
+        renderMedical(root);
+    }
+};
+
+window.toggleExcelEmbed = function() {
+    const container = document.getElementById('excel-embed-container');
+    const iframe = document.getElementById('medical-excel-iframe');
+    const text = document.getElementById('text-toggle-excel');
+    const url = localStorage.getItem('cfg_med_csvUrl');
+
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        text.textContent = 'Ocultar Excel';
+        // Convert edit URL to preview URL
+        const previewUrl = url.replace(/\/edit.*$/, '/preview');
+        if (iframe.src !== previewUrl) iframe.src = previewUrl;
+    } else {
+        container.style.display = 'none';
+        text.textContent = 'Ver Excel';
+    }
 };
 
 window.renderMedical = renderMedical;

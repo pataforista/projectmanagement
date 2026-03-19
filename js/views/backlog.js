@@ -82,28 +82,28 @@ function refreshBacklog(root) {
 
 function renderBacklogTable(tasks) {
   return `
-    <table class="list-table">
+    <table class="notion-table">
       <thead>
         <tr>
           <th style="width:32px;"></th>
-          <th>Título</th>
-          <th>Proyecto</th>
-          <th>Estado</th>
-          <th>Asignado</th>
-          <th>Prioridad</th>
-          <th>Tipo</th>
-          <th>Fecha límite</th>
+          <th><span class="prop-icon">Aa</span> Título</th>
+          <th><i data-feather="folder"></i> Proyecto</th>
+          <th><span class="prop-icon">#</span> Estado</th>
+          <th><i data-feather="user"></i> Asignado</th>
+          <th><span class="prop-icon">!</span> Prioridad</th>
+          <th><i data-feather="tag"></i> Tipo</th>
+          <th><i data-feather="calendar"></i> Fecha límite</th>
           <th style="width:32px;"></th>
         </tr>
       </thead>
       <tbody>
         ${tasks.map(t => backlogRow(t)).join('')}
-        <tr class="quick-add-row" style="background:var(--bg-surface-2)40;">
+        <tr class="quick-add-row" style="background:var(--bg-surface)40;">
           <td></td>
           <td colspan="7">
             <div style="display:flex; align-items:center; gap:8px;">
-              <i data-feather="plus" style="width:14px; height:14px; color:var(--accent-primary);"></i>
-              <input type="text" id="quick-add-input" placeholder="Añadir tarea rápidamente..." style="background:transparent; border:none; color:var(--text-primary); outline:none; font-size:0.85rem; width:100%; padding:8px 0;">
+              <i data-feather="plus" style="width:14px; height:14px; color:var(--text-muted);"></i>
+              <input type="text" id="quick-add-input" placeholder="Añadir nueva fila..." style="background:transparent; border:none; color:var(--text-primary); outline:none; font-size:0.85rem; width:100%; padding:8px 0;">
             </div>
           </td>
           <td></td>
@@ -131,8 +131,11 @@ function backlogRow(t) {
       <td>
         <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}" style="margin:0 auto;"></div>
       </td>
-      <td>
-        <span class="task-title ${isDone ? 'done' : ''}">${esc(t.title)}</span>
+      <td style="max-width: 300px;">
+        <div style="display:flex; align-items:center;">
+            <span class="task-title ${isDone ? 'done' : ''}" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%;">${esc(t.title)}</span>
+            <button class="hover-open-btn" data-open="${t.id}">⤢ Abrir</button>
+        </div>
         ${t.tags && t.tags.length ? `
           <div style="display:flex; gap:4px; margin-top:4px;">
             ${t.tags.map(tag => `<span class="badge badge-neutral" style="font-size:0.6rem; padding:1px 5px; opacity:0.7;">${esc(tag)}</span>`).join('')}
@@ -146,7 +149,7 @@ function backlogRow(t) {
         </span>` : '<span style="color:var(--text-muted);">—</span>'}
       </td>
       <td>
-        <select class="filter-select inline-status-select" data-task-id="${t.id}" style="font-size:0.75rem; padding:3px 22px 3px 7px;">
+        <select class="notion-pill-select inline-status-select" data-task-id="${t.id}">
           ${BACKLOG_STATUSES.map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
         </select>
       </td>
@@ -155,10 +158,9 @@ function backlogRow(t) {
         <span style="display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:0.62rem; font-weight:700; ${ownershipStyle}">${ownershipLabel}</span>
       </td>
       <td>
-        <span style="display:inline-flex;align-items:center;gap:5px;">
-          <span class="priority-pip ${t.priority || 'baja'}"></span>
-          <span style="font-size:0.78rem;text-transform:capitalize;">${esc(t.priority || 'baja')}</span>
-        </span>
+        <select class="notion-pill-select inline-priority-select" data-task-id="${t.id}" style="text-transform:capitalize;">
+          ${PRIORITIES.map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p}</option>`).join('')}
+        </select>
       </td>
       <td><span class="badge badge-neutral" style="font-size:0.68rem;">${esc(t.type || 'tarea')}</span></td>
       <td style="font-size:0.78rem; ${isOverdue ? 'color:var(--accent-danger);font-weight:600;' : 'color:var(--text-muted);'}">
@@ -179,6 +181,26 @@ function bindInlineStatus(root) {
       await store.dispatch('UPDATE_TASK', { id: taskId, status: e.target.value });
       refreshBacklog(root);
     });
+  });
+
+  root.querySelectorAll('.inline-priority-select').forEach(sel => {
+    sel.addEventListener('change', async e => {
+      e.stopPropagation();
+      const tr = sel.closest('tr');
+      const taskId = tr.dataset.taskId;
+      await store.dispatch('UPDATE_TASK', { id: taskId, priority: e.target.value });
+      refreshBacklog(root);
+    });
+  });
+
+  // Open button explicitly wired
+  root.querySelectorAll('.hover-open-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+          e.stopPropagation();
+          const taskId = btn.dataset.open;
+          const task = store.get.allTasks().find(t => t.id === taskId);
+          if (task) openTaskDetail(task);
+      });
   });
 
   root.querySelectorAll('.task-quick-delete').forEach(btn => {
@@ -205,24 +227,21 @@ function bindInlineStatus(root) {
         if (!title) return;
         const currentProjectId = root.querySelector('#bl-proj')?.value || null;
         await store.dispatch('ADD_TASK', { title, projectId: currentProjectId });
-        // After add, refresh and refocus? Or just refresh? 
-        // For now, refresh and focus back to the new input row (since it will be re-rendered)
         refreshBacklog(root);
         setTimeout(() => root.querySelector('#quick-add-input')?.focus(), 100);
       }
     });
   }
 
-  // Open modal on row click (excluding the status dropdown, checkbox and delete button)
-  root.querySelectorAll('table.list-table tbody tr').forEach(row => {
+  // Row click functionality (mimic generic "open" when clicking empty space)
+  root.querySelectorAll('.notion-table tbody tr').forEach(row => {
     if (row.classList.contains('quick-add-row')) return;
     row.addEventListener('click', e => {
-      if (e.target.closest('.task-checkbox') || e.target.closest('.inline-status-select') || e.target.closest('.task-quick-delete')) return;
+      if (e.target.closest('.task-checkbox') || e.target.closest('.notion-pill-select') || e.target.closest('.task-quick-delete') || e.target.closest('.hover-open-btn')) return;
 
       const taskId = row.dataset.taskId;
       const task = store.get.allTasks().find(t => t.id === taskId);
       if (task) openTaskDetail(task);
-
     });
   });
 }

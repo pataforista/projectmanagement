@@ -48,6 +48,7 @@
   <link rel="stylesheet" href="styles/components.css">
   <link rel="stylesheet" href="styles/animations.css">
   <link rel="stylesheet" href="styles/skeletons.css">
+  <link rel="stylesheet" href="styles/ollama.css">
 
   <!-- Feather Icons (local vendor) -->
   <script src="js/vendor/feather.min.js"></script>
@@ -125,10 +126,23 @@
           </button>
         </div>
 
-        <div style="text-align:center; margin-top:4px;">
+        <div style="text-align:center; margin-top:4px; display:flex; flex-direction:column; gap:8px;">
+          <button type="button" id="auth-join-btn"
+            style="background:none; border:none; color:var(--accent-primary); font-size:0.8rem; cursor:pointer; text-decoration:underline;">Tengo un Código de Invitación (Unirse a equipo)</button>
+          
           <button type="button" id="auth-manual-setup"
             style="background:none; border:none; color:var(--text-muted); font-size:0.8rem; cursor:pointer; text-decoration:underline;">Configuración
             manual (Solo local)</button>
+        </div>
+
+        <div id="auth-join-panel" style="display:none; flex-direction:column; gap:12px; padding:16px; background:var(--bg-surface-2); border-radius:12px; border:1px solid var(--accent-primary)40;">
+          <h3 style="margin:0; font-size:1rem;">Unirse al Equipo</h3>
+          <p style="font-size:0.8rem; color:var(--text-secondary); margin:0;">Pega el código de invitación que te proporcionó tu administrador.</p>
+          <textarea id="auth-invite-code" class="form-textarea" placeholder="Pega el código aquí..." rows="3" style="font-size:0.75rem; font-family:monospace;"></textarea>
+          <div style="display:flex; gap:8px;">
+            <button type="button" id="auth-join-back" class="btn btn-secondary" style="flex:1;">Volver</button>
+            <button type="button" id="auth-join-confirm" class="btn btn-primary" style="flex:2;">Procesar Código</button>
+          </div>
         </div>
       </div>
 
@@ -310,6 +324,9 @@
           <a class="nav-item" data-scope="team" data-view="collaboration" href="#/collaboration" title="Solo disponible en modo Equipo">
             <i data-feather="users"></i> <span>Colaboración</span>
           </a>
+          <a class="nav-item" data-view="admin" href="#/admin" title="Administración del Workspace">
+            <i data-feather="shield"></i> <span>Administración</span>
+          </a>
         </div>
 
         <div class="nav-section">
@@ -318,7 +335,7 @@
           <a class="nav-item" data-scope="solo" data-view="writing" href="#/writing" title="Solo disponible en modo Individual">
             <i data-feather="type"></i> <span>Escritura</span>
           </a>
-          <a class="nav-item" data-scope="solo" data-view="medical" href="#/medical" title="Solo disponible en modo Individual">
+          <a class="nav-item" data-view="medical" href="#/medical" title="Panel de Gestión Médica">
             <i data-feather="heart"></i> <span>Médico</span>
           </a>
         </div>
@@ -395,9 +412,11 @@
           <button class="btn btn-icon" id="btn-search" title="Buscar (Ctrl+K)">
             <i data-feather="search"></i>
           </button>
-          <button class="btn btn-icon" id="btn-session-switcher" title="Cambiar sesión o cuenta" style="display:none;">
-            <i data-feather="user-check"></i>
           </button>
+          <div class="ollama-status-indicator" id="ollama-status-widget" title="Estado de Ollama (Ctrl+Space)" onclick="ollamaCompanion.toggle()">
+            <span class="ollama-led" id="ollama-led"></span>
+            <span id="ollama-status-label" class="d-desktop">IA Offline</span>
+          </div>
           <button class="btn btn-primary" id="btn-new-global">
             <i data-feather="plus"></i> <span class="d-desktop">Nuevo</span>
           </button>
@@ -444,6 +463,24 @@
 
   <!-- Toast container -->
   <div id="toast-container" data-autofill-ignore="true" data-lpignore="true"></div>
+
+  <!-- Command Palette Overlay -->
+  <div id="command-palette-overlay" class="command-palette-overlay">
+    <div class="command-palette">
+      <div class="palette-search-wrap">
+        <i data-feather="terminal"></i>
+        <input id="palette-input" class="palette-input" type="text" placeholder="Buscar comando o saltar a nota..." autocomplete="off">
+      </div>
+      <div id="palette-results" class="palette-results">
+        <!-- Results injected here -->
+      </div>
+      <div class="palette-footer">
+        <span><kbd>↑</kbd> <kbd>↓</kbd> Navegar</span>
+        <span><kbd>Enter</kbd> Seleccionar</span>
+        <span><kbd>Esc</kbd> Cerrar</span>
+      </div>
+    </div>
+  </div>
 
   <!-- PWA Install prompt (appears when supported) -->
   <div id="pwa-install-banner" class="pwa-banner" style="display:none;">

@@ -23,6 +23,7 @@ const ROUTES = {
     '/graph': 'graph',
     '/collaboration': 'collaboration',
     '/notes-wiki': 'notes-wiki',
+    '/admin': 'admin',
 };
 
 // Route meta for topbar breadcrumb + subtitle
@@ -43,6 +44,7 @@ const ROUTE_META = {
     canvas: { label: 'Canvas', subtitle: 'Tablero visual de ideas y proyectos.' },
     collaboration: { label: 'Colaboración', subtitle: 'Estado operativo del equipo, asignaciones y protocolos.' },
     'notes-wiki': { label: 'Wiki', subtitle: 'Documentación jerárquica: Libros, Capítulos y Páginas.' },
+    admin: { label: 'Administración', subtitle: 'Configuración global, miembros e invitaciones del workspace.' },
     project: { label: 'Proyecto', subtitle: 'Vista de detalle del proyecto.' },
     document: { label: 'Documento', subtitle: 'Documento vivo del proyecto.' },
 };

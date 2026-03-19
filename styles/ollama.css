@@ -1,0 +1,284 @@
+/* ollama.css — Styles for the AI Assistant Companion */
+
+:root {
+    --ollama-width: 380px;
+    --ollama-bg: rgba(18, 18, 26, 0.85);
+    --ollama-border: rgba(255, 255, 255, 0.08);
+    --ollama-glass-blur: 16px;
+    --ollama-accent: var(--accent-primary, #5e6ad2);
+    --ollama-glow: rgba(94, 106, 210, 0.25);
+}
+
+/* ── Topbar LED Indicator ────────────────────────────────────────────────── */
+.ollama-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--ollama-border);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ollama-status-indicator:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.ollama-led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4b5563; /* Gray / Offline */
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.ollama-led.online {
+    background: #22c55e;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.ollama-led.loading {
+    background: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+    animation: ollama-pulse 1.5s infinite;
+}
+
+.ollama-led.error {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+}
+
+@keyframes ollama-pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* ── Companion Drawer ──────────────────────────────────────────────────── */
+#ollama-companion {
+    position: fixed;
+    top: 0;
+    right: -var(--ollama-width);
+    width: var(--ollama-width);
+    height: 100vh;
+    background: var(--ollama-bg);
+    backdrop-filter: blur(var(--ollama-glass-blur));
+    border-left: 1px solid var(--ollama-border);
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.4);
+    transition: right 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+#ollama-companion.open {
+    right: 0;
+}
+
+.ollama-header {
+    padding: 24px 24px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--ollama-border);
+}
+
+.ollama-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.ollama-brand i {
+    color: var(--ollama-accent);
+    filter: drop-shadow(0 0 4px var(--ollama-glow));
+}
+
+.ollama-brand h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+/* ── Chat Content ──────────────────────────────────────────────────────── */
+.ollama-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.chat-bubble {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    max-width: 90%;
+    animation: bubbleIn 0.3s ease-out;
+}
+
+@keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.bubble-user {
+    align-self: flex-end;
+    background: var(--ollama-accent);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.bubble-ai {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border: 1px solid var(--ollama-border);
+    border-bottom-left-radius: 4px;
+}
+
+/* ── Quick Actions ─────────────────────────────────────────────────────── */
+.ollama-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.action-pill {
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--ollama-border);
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.action-pill:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--ollama-accent);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.action-pill i {
+    width: 12px;
+    height: 12px;
+    margin-right: 4px;
+}
+
+/* ── Input Area ───────────────────────────────────────────────────────── */
+.ollama-footer {
+    padding: 20px 24px 32px;
+    border-top: 1px solid var(--ollama-border);
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.ollama-input-container {
+    display: flex;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--ollama-border);
+    border-radius: 12px;
+    padding: 8px 12px;
+    transition: border-color 0.2s ease;
+}
+
+.ollama-input-container:focus-within {
+    border-color: var(--ollama-accent);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+#ollama-input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    resize: none;
+    padding: 6px 0;
+    max-height: 120px;
+    font-family: inherit;
+}
+
+#ollama-input:focus {
+    outline: none;
+}
+
+/* ── Offline State ─────────────────────────────────────────────────────── */
+.ollama-offline-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+    gap: 20px;
+}
+
+.offline-icon {
+    width: 64px;
+    height: 64px;
+    color: var(--text-muted);
+    opacity: 0.4;
+}
+
+.offline-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.offline-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+}
+
+.offline-cmd {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    border-radius: 8px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8rem;
+    color: var(--accent-teal);
+    width: 100%;
+    word-break: break-all;
+    border: 1px dashed rgba(255,255,255,0.1);
+    position: relative;
+    cursor: copy;
+}
+
+.offline-cmd::after {
+    content: 'Copiar';
+    position: absolute;
+    right: 8px;
+    top: 4px;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+/* ── Mobile Responsive ────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    #ollama-companion {
+        width: 100%;
+        right: -100%;
+    }
+}

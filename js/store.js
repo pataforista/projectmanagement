@@ -197,6 +197,15 @@ const store = (() => {
                 const idx = _state.projects.findIndex(p => p.id === payload.id);
                 if (idx !== -1) {
                     const actor = getCurrentWorkspaceActor();
+                    const project = _state.projects[idx];
+
+                    // Permission check: only Lead or Author can edit content
+                    if (!RoleManager.canEditContent(project, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to edit project ${project.id}`);
+                        if (window.showToast) showToast('No tienes permiso para editar este proyecto.', 'error');
+                        return;
+                    }
+
                     const _now = monotonicNow();
                     const updated = {
                         ..._state.projects[idx],
@@ -235,6 +244,16 @@ const store = (() => {
                 storeName = 'projects';
                 const pIdx = _state.projects.findIndex(p => p.id === payload.id);
                 if (pIdx !== -1) {
+                    const actor = getCurrentWorkspaceActor();
+                    const project = _state.projects[pIdx];
+
+                    // Permission check
+                    if (!RoleManager.canEditContent(project, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to delete project ${project.id}`);
+                        if (window.showToast) showToast('No tienes permiso para eliminar este proyecto.', 'error');
+                        return;
+                    }
+
                     const tombstone = {
                         ..._state.projects[pIdx],
                         _deleted: true,
@@ -368,6 +387,15 @@ const store = (() => {
                 const idx = _state.cycles.findIndex(c => c.id === payload.id);
                 if (idx !== -1) {
                     const actor = getCurrentWorkspaceActor();
+                    const cycle = _state.cycles[idx];
+
+                    // Permission check
+                    if (!RoleManager.canEditContent(cycle, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to edit cycle ${cycle.id}`);
+                        if (window.showToast) showToast('No tienes permiso para editar este ciclo.', 'error');
+                        return;
+                    }
+
                     const _now = monotonicNow();
                     const updated = {
                         ..._state.cycles[idx],
@@ -387,6 +415,16 @@ const store = (() => {
                 storeName = 'cycles';
                 const cIdx = _state.cycles.findIndex(c => c.id === payload.id);
                 if (cIdx !== -1) {
+                    const actor = getCurrentWorkspaceActor();
+                    const cycle = _state.cycles[cIdx];
+
+                    // Permission check
+                    if (!RoleManager.canEditContent(cycle, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to delete cycle ${cycle.id}`);
+                        if (window.showToast) showToast('No tienes permiso para eliminar este ciclo.', 'error');
+                        return;
+                    }
+
                     const tombstone = {
                         ..._state.cycles[cIdx],
                         _deleted: true,
@@ -403,7 +441,15 @@ const store = (() => {
             // ── Decisions ──
             case 'ADD_DECISION': {
                 storeName = 'decisions';
-                const record = { id: _uid, createdAt: monotonicNow(), relatedTaskIds: [], ...payload };
+                const actor = getCurrentWorkspaceActor();
+                const record = {
+                    id: _uid,
+                    createdAt: monotonicNow(),
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    relatedTaskIds: [],
+                    ...payload
+                };
                 await dbAPI.put(storeName, record);
                 _state.decisions.push(record);
                 _notify(storeName);
@@ -415,11 +461,23 @@ const store = (() => {
                 storeName = 'decisions';
                 const idx = _state.decisions.findIndex(d => d.id === payload.id);
                 if (idx !== -1) {
+                    const actor = getCurrentWorkspaceActor();
+                    const decision = _state.decisions[idx];
+
+                    // Permission check
+                    if (!RoleManager.canEditContent(decision, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to edit decision ${decision.id}`);
+                        if (window.showToast) showToast('No tienes permiso para editar esta decisión.', 'error');
+                        return;
+                    }
+
                     const _now = monotonicNow();
                     const updated = {
                         ..._state.decisions[idx],
                         ...payload,
                         updatedAt: _now,
+                        updatedBy: actor.label,
+                        updatedById: actor.id,
                         _timestamps: stampFields(_state.decisions[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
@@ -432,6 +490,16 @@ const store = (() => {
                 storeName = 'decisions';
                 const dIdx = _state.decisions.findIndex(d => d.id === payload.id);
                 if (dIdx !== -1) {
+                    const actor = getCurrentWorkspaceActor();
+                    const decision = _state.decisions[dIdx];
+
+                    // Permission check
+                    if (!RoleManager.canEditContent(decision, actor.label)) {
+                        console.warn(`[Permissions] User ${actor.label} unauthorized to delete decision ${decision.id}`);
+                        if (window.showToast) showToast('No tienes permiso para eliminar esta decisión.', 'error');
+                        return;
+                    }
+
                     const tombstone = {
                         ..._state.decisions[dIdx],
                         _deleted: true,
@@ -580,6 +648,7 @@ const store = (() => {
                     createdById: actor.id,
                     ownerId: actor.memberId,
                     status: 'Solicitada',
+                    visibility: payload.visibility || 'shared',
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
@@ -593,11 +662,14 @@ const store = (() => {
                 storeName = 'interconsultations';
                 const idx = _state.interconsultations.findIndex(i => i.id === payload.id);
                 if (idx !== -1) {
+                    const actor = getCurrentWorkspaceActor();
                     const _now = monotonicNow();
                     const updated = {
                         ..._state.interconsultations[idx],
                         ...payload,
                         updatedAt: _now,
+                        updatedBy: actor.label,
+                        updatedById: actor.id,
                         _timestamps: stampFields(_state.interconsultations[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);

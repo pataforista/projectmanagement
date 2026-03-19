@@ -141,9 +141,12 @@ function _applyMode(mode) {
     }
 
     if (window.showToast) {
-        const label = mode === 'solo' ? 'Individual' : 'Equipo';
+        const label = mode === 'solo' ? 'Individual ✨' : 'Equipo 👥';
         window.showToast(`Modo ${label} activado`, 'info');
     }
+    
+    // Refresh breadcrumbs when mode changes as it might affect the workspace label
+    if (window.updateBreadcrumbs) window.updateBreadcrumbs();
 }
 
 export function refreshSidebarProjects() {
@@ -506,6 +509,14 @@ export function updateTopbarSyncWidget() {
 }
 
 export function initGlobalEffects() {
+    document.addEventListener('mousedown', (e) => {
+        const target = e.target.closest('.btn, .card, .nav-item, .playful-pop');
+        if (target) {
+            target.classList.add('pop-active');
+            setTimeout(() => target.classList.remove('pop-active'), 150);
+        }
+    });
+
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.btn');
         if (!btn) return;
@@ -517,8 +528,6 @@ export function initGlobalEffects() {
         ripple.className = 'ripple';
         ripple.style.cssText = `width:${size}px;height:${size}px;left:${x - rect.left - size / 2}px;top:${y - rect.top - size / 2}px;`;
         
-        // MITIGATION: Browser extensions like Bitwarden/LastPass sometimes crash when 
-        // they see rapid DOM mutations like our ripple effect. We tag it to be ignored.
         ripple.setAttribute('data-autofill-ignore', 'true');
         ripple.setAttribute('data-lpignore', 'true');
         ripple.setAttribute('data-form-type', 'other');
@@ -526,4 +535,232 @@ export function initGlobalEffects() {
         btn.appendChild(ripple);
         setTimeout(() => ripple.remove(), 600);
     });
+}
+/**
+ * Hierarchical & Interactive Breadcrumbs (Notion-style)
+ */
+export function updateBreadcrumbs() {
+    const breadcrumbs = document.querySelector('.breadcrumbs');
+    if (!breadcrumbs) return;
+
+    // Clear except the mode badge (which is managed by initWorkspaceMode)
+    const badge = document.getElementById('mode-topbar-badge');
+    breadcrumbs.innerHTML = '';
+    if (badge) breadcrumbs.appendChild(badge);
+
+    const hash = window.location.hash.replace('#/', '');
+    const segments = hash.split('/');
+    const viewName = segments[0] || 'dashboard';
+    const id = segments[1];
+
+    const viewLabels = {
+        dashboard: 'Dashboard', projects: 'Proyectos', backlog: 'Backlog',
+        cycles: 'Ciclos', board: 'Tablero', calendar: 'Calendario',
+        decisions: 'Decisiones', library: 'Biblioteca', matrix: 'Matriz',
+        writing: 'Escritura', medical: 'Médico', integrations: 'Integraciones',
+        logs: 'Actividad', canvas: 'Canvas', document: 'Documento', admin: 'Admin'
+    };
+
+    // 1. Workspace Segment
+    const mode = localStorage.getItem('workspace-mode') || 'solo';
+    const workspaceName = mode === 'solo' ? 'Mi Workspace' : 'Equipo';
+    
+    appendCrumb(breadcrumbs, workspaceName, '#/dashboard', 'home');
+
+    // 2. Contextual Hierarchy
+    if (viewName === 'project' && id) {
+        const p = store.get.projectById(id);
+        if (p) {
+            appendSep(breadcrumbs);
+            appendCrumb(breadcrumbs, p.name, `#/project/${id}`, 'folder');
+        }
+    } else if (viewName === 'document' && id) {
+        appendSep(breadcrumbs);
+        appendCrumb(breadcrumbs, 'Biblioteca', '#/library', 'book');
+    } else if (viewName !== 'dashboard') {
+        appendSep(breadcrumbs);
+        appendCrumb(breadcrumbs, viewLabels[viewName] || viewName, `#/` + hash, null);
+    }
+
+    if (window.feather) feather.replace();
+}
+
+function appendCrumb(container, text, href, iconName) {
+    const item = document.createElement('div');
+    item.className = 'breadcrumb-item';
+    item.innerHTML = `
+        ${iconName ? `<i data-feather="${iconName}"></i>` : ''}
+        <span>${esc(text)}</span>
+    `;
+    item.onclick = () => {
+        if (href) window.location.hash = href;
+    };
+    container.appendChild(item);
+}
+
+function appendSep(container) {
+    const sep = document.createElement('span');
+    sep.className = 'breadcrumb-sep';
+    sep.textContent = '/';
+    container.appendChild(sep);
+}
+
+// Helper to escape HTML safely (using the one from utils or defining here if needed)
+function esc(str) {
+    if (!str) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return str.replace(/[&<>"']/g, m => map[m]);
+}
+
+window.updateBreadcrumbs = updateBreadcrumbs;
+
+// ── Command Palette (Ctrl+P) ────────────────────────────────────────────────
+export function initCommandPalette() {
+    const overlay = document.getElementById('command-palette-overlay');
+    const input = document.getElementById('palette-input');
+    const resultsContainer = document.getElementById('palette-results');
+    let selectedIndex = 0;
+    let currentResults = [];
+
+    if (!overlay || !input || !resultsContainer) return;
+
+    function openPalette() {
+        overlay.style.display = 'flex';
+        input.value = '';
+        input.focus();
+        search('');
+    }
+
+    function closePalette() {
+        overlay.style.display = 'none';
+        input.blur();
+    }
+
+    function search(query) {
+        query = query.toLowerCase();
+        currentResults = [];
+        
+        // 1. Static Commands
+        const commands = [
+            { id: 'cmd:today', title: 'Crear o saltar a Nota Diaria (Hoy)', icon: 'calendar', type: 'Comando', action: () => { window.location.hash = '#/notes-wiki'; setTimeout(() => document.getElementById('wiki-today')?.click(), 100); } },
+            { id: 'cmd:new-task', title: 'Crear nueva Tarea', icon: 'check-square', type: 'Comando', action: () => { if(window.openTaskModal) window.openTaskModal(); } },
+            { id: 'cmd:graph', title: 'Abrir Grafo de Conocimiento', icon: 'share-2', type: 'Navegación', action: () => window.location.hash = '#/graph' },
+            { id: 'cmd:dark', title: 'Tema Oscuro', icon: 'moon', type: 'Ajuste', action: () => document.documentElement.setAttribute('data-theme', 'dark') },
+            { id: 'cmd:light', title: 'Tema Claro', icon: 'sun', type: 'Ajuste', action: () => document.documentElement.setAttribute('data-theme', 'light') },
+        ];
+        
+        // 2. Projects & Documents from Store
+        if (window.store) {
+            const projects = window.store.get.projects() || [];
+            const docs = window.store.get.documents() || [];
+            
+            projects.forEach(p => {
+                currentResults.push({
+                    id: `proj:${p.id}`, title: p.name, icon: 'folder', type: 'Proyecto', action: () => window.location.hash = `#/board?project=${p.id}`
+                });
+            });
+            
+            docs.forEach(d => {
+                const isWiki = d.wikiType && d.wikiType.startsWith('wiki-');
+                currentResults.push({
+                    id: `doc:${d.id}`, title: d.title || 'Sin título', icon: isWiki ? 'book-open' : 'file-text', type: isWiki ? 'Wiki' : 'Documento', 
+                    action: () => {
+                        if (isWiki) {
+                            window.location.hash = '#/notes-wiki';
+                            // Might need state manipulation depending on wiki architecture
+                        } else {
+                            localStorage.setItem('active_writing_project', d.projectId || '');
+                            window.location.hash = '#/writing';
+                        }
+                    }
+                });
+            });
+        }
+
+        // Filter
+        if (query) {
+            currentResults = currentResults.concat(commands).filter(r => r.title.toLowerCase().includes(query) || r.type.toLowerCase().includes(query));
+        } else {
+            currentResults = commands.concat(currentResults).slice(0, 15); // Show recent/default
+        }
+
+        renderResults();
+    }
+
+    function renderResults() {
+        resultsContainer.innerHTML = '';
+        if (currentResults.length === 0) {
+            resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-muted); font-size:0.85rem;">No se encontraron resultados</div>';
+            return;
+        }
+
+        selectedIndex = 0;
+        currentResults.forEach((res, idx) => {
+            const el = document.createElement('div');
+            el.className = `palette-item ${idx === 0 ? 'selected' : ''}`;
+            el.innerHTML = `
+                <i data-feather="${res.icon}"></i>
+                <div class="palette-item-text">
+                    <span class="palette-item-title">${esc(res.title)}</span>
+                    <span class="palette-item-meta">${esc(res.type)}</span>
+                </div>
+            `;
+            el.addEventListener('click', () => {
+                closePalette();
+                res.action();
+            });
+            el.addEventListener('mouseenter', () => {
+                document.querySelectorAll('.palette-item').forEach(i => i.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedIndex = idx;
+            });
+            resultsContainer.appendChild(el);
+        });
+        if (window.feather) feather.replace();
+    }
+
+    // Event Listeners
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+            e.preventDefault();
+            if (overlay.style.display === 'flex') closePalette();
+            else openPalette();
+        } else if (overlay.style.display === 'flex') {
+            if (e.key === 'Escape') closePalette();
+            else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = (selectedIndex + 1) % currentResults.length;
+                updateSelection();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = (selectedIndex - 1 + currentResults.length) % currentResults.length;
+                updateSelection();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentResults[selectedIndex]) {
+                    closePalette();
+                    currentResults[selectedIndex].action();
+                }
+            }
+        }
+    });
+
+    input.addEventListener('input', (e) => search(e.target.value));
+    
+    // Close on click outside
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closePalette();
+    });
+
+    function updateSelection() {
+        const items = resultsContainer.querySelectorAll('.palette-item');
+        items.forEach((item, idx) => {
+            if (idx === selectedIndex) {
+                item.classList.add('selected');
+                item.scrollIntoView({ block: 'nearest' });
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+    }
 }

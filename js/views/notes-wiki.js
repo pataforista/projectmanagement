@@ -128,6 +128,41 @@ const WIKI_CSS = `
     gap: 12px;
     font-size: 0.88rem;
   }
+  .wikilink.is-ghost {
+    color: var(--accent-danger);
+    border-bottom: 1px dashed var(--accent-danger);
+    opacity: 0.8;
+  }
+  .wiki-tag {
+    color: var(--accent-teal);
+    background: var(--accent-teal-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .backlinks-section {
+    margin-top: 40px;
+    padding: 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-surface-2);
+    border-radius: 12px;
+  }
+  .backlink-item {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .backlink-item:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+  }
   .wiki-empty-state i { width: 40px; height: 40px; opacity: 0.3; }
 `;
 
@@ -173,6 +208,8 @@ async function wikiDelete(id) {
 }
 
 function renderMarkdown(text) {
+  const allPages = wikiGetAll('wiki-page');
+  
   return (text || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -186,7 +223,13 @@ function renderMarkdown(text) {
     .replace(/~~(.*?)~~/g, '<del>$1</del>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-    .replace(/\[\[(.*?)\]\]/g, '<a href="#/notes-wiki" class="wikilink" data-title="$1">$1</a>')
+    // Obsidian Wiki-links with existence check
+    .replace(/\[\[(.*?)\]\]/g, (match, title) => {
+      const exists = allPages.some(p => (p.title || '').toLowerCase() === title.toLowerCase());
+      return `<a href="#/notes-wiki" class="wikilink ${exists ? '' : 'is-ghost'}" data-title="${title}">${title}</a>`;
+    })
+    // Obsidian Tags #tag
+    .replace(/(^|\s)#([a-zA-Z0-9_\-]+)/g, '$1<span class="wiki-tag" data-tag="$2">#$2</span>')
     .replace(/^---$/gim, '<hr>')
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>');
@@ -219,6 +262,10 @@ function renderNotesWiki(root) {
             <p class="view-subtitle">Documentación jerárquica: Libros → Capítulos → Páginas</p>
           </div>
           <div class="view-actions">
+            <button class="btn btn-secondary btn-sm" id="wiki-today" title="Nota Diaria">
+              <i data-feather="calendar"></i> Hoy
+            </button>
+            <div style="width:1px; background:var(--border-color); margin:0 4px;"></div>
             <div style="font-size:0.75rem; color:var(--text-muted);">
               ${books.length} libros · ${wikiGetAll('wiki-chapter').length} capítulos · ${wikiGetAll('wiki-page').length} páginas
             </div>
@@ -349,6 +396,26 @@ function renderNotesWiki(root) {
                 <div id="wiki-preview-panel" class="wiki-preview content-view"
                      style="${wikiState.previewMode ? 'display:block;' : 'display:none;'}">
                   ${renderMarkdown(activePage?.content || '')}
+                  
+                  <!-- Backlinks Section -->
+                  <div class="backlinks-section">
+                    <h5 style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:12px;">Menciones vinculadas</h5>
+                    <div id="wiki-backlinks-list">
+                      ${(() => {
+                        const title = activePage?.title?.toLowerCase();
+                        if (!title) return '';
+                        const allPages = wikiGetAll('wiki-page');
+                        const linking = allPages.filter(p => p.id !== activePage.id && (p.content || '').toLowerCase().includes(`[[${title}]]`));
+                        return linking.length 
+                          ? linking.map(p => `
+                            <div class="backlink-item" data-id="${p.id}">
+                              <i data-feather="link-2" style="width:14px; height:14px;"></i>
+                              <span>${esc(p.title)}</span>
+                            </div>`).join('')
+                          : '<div style="font-size:0.8rem; color:var(--text-muted);">Sin menciones detectadas.</div>';
+                      })()}
+                    </div>
+                  </div>
                 </div>
               </div>
             `}
@@ -521,17 +588,39 @@ function attachWikiListeners(root, books, chapters, pages) {
     });
   }
 
-  // ── Wikilink navigation ─────────────────────────────────────────────────────
+  // ── Wikilink navigation & creation ──────────────────────────────────────────
   root.querySelectorAll('.wikilink').forEach(link => {
-    link.addEventListener('click', (e) => {
+    link.addEventListener('click', async (e) => {
       e.preventDefault();
-      const targetTitle = link.dataset.title?.toLowerCase();
+      const targetTitle = link.dataset.title;
       if (!targetTitle) return;
       const allPages = wikiGetAll('wiki-page');
-      const target = allPages.find(p => (p.title || '').toLowerCase() === targetTitle);
+      let target = allPages.find(p => (p.title || '').toLowerCase() === targetTitle.toLowerCase());
+      
+      if (!target) {
+        // Ghost link logic: Create on click
+        if (confirm(`La página "${targetTitle}" no existe. ¿Deseas crearla?`)) {
+          const id = `wiki-page-${Date.now()}`;
+          // Use current chapter as parent if available, or first chapter of first book
+          let parentId = wikiState.activeChapterId;
+          if (!parentId) {
+            const firstBook = wikiGetAll('wiki-book')[0];
+            const firstChapter = firstBook ? wikiGetChildren('wiki-chapter', firstBook.id)[0] : null;
+            parentId = firstChapter ? firstChapter.id : null;
+          }
+          
+          if (!parentId) return showToast('Crea un libro y un capítulo primero.', 'warning');
+          
+          target = { id, wikiType: 'wiki-page', parentId, title: targetTitle, content: '' };
+          await wikiSave(target);
+          showToast(`Página "${targetTitle}" creada.`, 'success');
+        } else {
+          return;
+        }
+      }
+
       if (target) {
         wikiState.activePageId = target.id;
-        // Find and activate the chapter and book
         const chapter = wikiGetAll('wiki-chapter').find(c => c.id === target.parentId);
         if (chapter) {
           wikiState.activeChapterId = chapter.id;
@@ -539,8 +628,59 @@ function attachWikiListeners(root, books, chapters, pages) {
           if (book) wikiState.activeBookId = book.id;
         }
         renderNotesWiki(root);
-      } else {
-        showToast(`Página "${link.dataset.title}" no encontrada.`, 'warning');
+      }
+    });
+  });
+
+  // ── Daily Note (Today) ──────────────────────────────────────────────────────
+  root.querySelector('#wiki-today')?.addEventListener('click', async () => {
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const allPages = wikiGetAll('wiki-page');
+    let target = allPages.find(p => p.title === todayStr);
+
+    if (!target) {
+      // Create Daily Note
+      let diarioBook = wikiGetAll('wiki-book').find(b => b.title.toLowerCase() === 'diario');
+      if (!diarioBook) {
+        const bid = `wiki-book-diario-${Date.now()}`;
+        await wikiSave({ id: bid, wikiType: 'wiki-book', title: 'Diario' });
+        diarioBook = { id: bid };
+      }
+      
+      let generalChapter = wikiGetChildren('wiki-chapter', diarioBook.id).find(c => c.title.toLowerCase() === 'general');
+      if (!generalChapter) {
+        const cid = `wiki-chapter-gen-${Date.now()}`;
+        await wikiSave({ id: cid, wikiType: 'wiki-chapter', parentId: diarioBook.id, title: 'General' });
+        generalChapter = { id: cid };
+      }
+
+      const pid = `wiki-page-today-${Date.now()}`;
+      target = { id: pid, wikiType: 'wiki-page', parentId: generalChapter.id, title: todayStr, content: `# ${todayStr}\n\nNotas del día...` };
+      await wikiSave(target);
+      showToast('Nota diaria creada.', 'success');
+    }
+
+    wikiState.activePageId = target.id;
+    const chapter = wikiGetAll('wiki-chapter').find(c => c.id === target.parentId);
+    if (chapter) {
+      wikiState.activeChapterId = chapter.id;
+      wikiState.activeBookId = chapter.parentId;
+    }
+    renderNotesWiki(root);
+  });
+
+  // ── Backlinks navigation ────────────────────────────────────────────────────
+  root.querySelectorAll('.backlink-item').forEach(item => {
+    item.addEventListener('click', () => {
+      wikiState.activePageId = item.dataset.id;
+      const target = _wikiDocs.find(d => d.id === wikiState.activePageId);
+      if (target) {
+        const chapter = wikiGetAll('wiki-chapter').find(c => c.id === target.parentId);
+        if (chapter) {
+          wikiState.activeChapterId = chapter.id;
+          wikiState.activeBookId = chapter.parentId;
+        }
+        renderNotesWiki(root);
       }
     });
   });

@@ -79,29 +79,6 @@ const SLASH_MENU_CSS = `
   }
 `;
 
-window.quickAIAction = async function (action) {
-  const editor = document.getElementById('wr-editor');
-  const text = editor.value;
-  const selection = text.slice(editor.selectionStart, editor.selectionEnd) || text;
-
-  let prompt = "";
-  if (action === 'revisar-gramatica') prompt = `Revisa la gramática y ortografía del siguiente texto de investigación, manteniendo el contenido original pero corrigiendo errores:\n\n${selection}`;
-  if (action === 'sugerir-referencias') prompt = `Basado en este fragmento de manuscrito, sugiere 3 temas o palabras clave para buscar artículos científicos relacionados:\n\n${selection}`;
-  if (action === 'mejorar-academicismo') prompt = `Reescribe el siguiente texto con un tono más formal, académico y preciso, adecuado para una publicación científica de alto impacto:\n\n${selection}`;
-
-  document.getElementById('ai-chat-input').value = prompt;
-  document.getElementById('ai-chat-send').click();
-};
-
-window.addAIChatMessage = function (text, type = 'system') {
-  const container = document.getElementById('ai-chat-messages');
-  if (!container) return;
-  const div = document.createElement('div');
-  div.className = `ai-msg ai-msg-${type}`;
-  div.textContent = text;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-};
 
 function renderWriting(root) {
   // Inject toolbar CSS once
@@ -246,34 +223,6 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
           </div>
         </main>
 
-        <!-- AI Assistant Sidebar -->
-        <aside class="writing-ai-sidebar glass-panel" id="wr-ai-sidebar" style="display:none;">
-          <div class="writing-sidebar-header" style="justify-content:space-between;">
-            <h3>Asistente de Investigación</h3>
-            <button class="btn btn-ghost btn-xs" onclick="document.getElementById('wr-ai-sidebar').style.display='none'">✕</button>
-          </div>
-          <div class="ai-chat-container">
-            <div class="ai-messages" id="ai-chat-messages">
-                <div class="ai-msg ai-msg-system">
-                    Hola. Soy tu asistente de investigación local. ¿En qué puedo ayudarte con este manuscrito?
-                </div>
-            </div>
-            <div class="ai-input-wrap">
-                <textarea id="ai-chat-input" class="form-textarea" placeholder="Pregunta algo sobre el texto..." rows="2"></textarea>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button class="btn btn-primary btn-xs flex-1" id="ai-chat-send">Consultar AI</button>
-                    <button class="btn btn-secondary btn-xs" id="ai-gen-summary" title="Resumir sección">Resumir</button>
-                </div>
-            </div>
-          </div>
-          
-          <div class="ai-shortcuts" style="padding:12px; border-top:1px solid var(--border-color);">
-            <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:8px; font-weight:700;">ACCIONES RÁPIDAS</p>
-            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('revisar-gramatica')">Revisar gramática</button>
-            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('sugerir-referencias')">Sugerir referencias bibliográficas</button>
-            <button class="btn btn-ghost btn-xs" style="width:100%; justify-content:flex-start;" onclick="quickAIAction('mejorar-academicismo')">Aumentar tono académico</button>
-          </div>
-        </aside>
 
       </div>
     `;
@@ -343,38 +292,7 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
 
     // AI & ELN Listeners
     root.querySelector('#wr-ai-toggle')?.addEventListener('click', () => {
-      const sidebar = root.querySelector('#wr-ai-sidebar');
-      sidebar.style.display = sidebar.style.display === 'none' ? 'flex' : 'none';
-      root.querySelector('.writing-layout').style.gridTemplateColumns = sidebar.style.display === 'none' ? '240px 1fr' : '240px 1fr 280px';
-    });
-
-    root.querySelector('#ai-chat-send')?.addEventListener('click', async () => {
-      const input = root.querySelector('#ai-chat-input');
-      const text = input.value.trim();
-      if (!text) return;
-
-      addAIChatMessage(text, 'user');
-      input.value = '';
-
-      try {
-        const response = await ollamaApi.generate(text, "Eres un asistente de investigación científica experto. Ayudas al usuario a redactar, revisar y mejorar su manuscrito académico.");
-        addAIChatMessage(response, 'system');
-      } catch (err) {
-        addAIChatMessage("Error al conectar con Ollama. Asegúrate de que el servidor esté activo.", 'system');
-      }
-    });
-
-    root.querySelector('#ai-gen-summary')?.addEventListener('click', async () => {
-      const content = root.querySelector('#wr-editor').value;
-      if (!content) return showToast('El editor está vacío', 'warning');
-
-      addAIChatMessage("Generando resumen ejecutivo...", 'system');
-      try {
-        const summary = await ollamaApi.generate(`Resume el siguiente manuscrito en 3 puntos clave:\n\n${content}`, "Eres un asistente de síntesis científica.");
-        addAIChatMessage(summary, 'system');
-      } catch (err) {
-        addAIChatMessage("Error al resumir.", 'system');
-      }
+      if (window.ollamaCompanion) window.ollamaCompanion.toggle();
     });
 
     root.querySelector('#wr-elabftw-export')?.addEventListener('click', async () => {
@@ -479,10 +397,16 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
         slashMenu.style.top = `${coords.y + 20}px`;
 
         const options = [
+          { id: 'h1', icon: 'type', label: 'Título 1' },
+          { id: 'h2', icon: 'type', label: 'Título 2' },
+          { id: 'h3', icon: 'type', label: 'Título 3' },
+          { id: 'todo', icon: 'square', label: 'Lista de tareas' },
+          { id: 'bullet', icon: 'list', label: 'Lista de viñetas' },
+          { id: 'callout', icon: 'info', label: 'Callout (Nota)' },
+          { id: 'divider', icon: 'minus', label: 'Divisor' },
           { id: 'cita', icon: 'book-open', label: 'Cita Académica' },
           { id: 'img', icon: 'image', label: 'Imagen' },
           { id: 'ref', icon: 'link', label: 'Cita Pandoc [@key]' },
-          { id: 'title', icon: 'type', label: 'Título H2' },
           { id: 'quarto', icon: 'code', label: 'Bloque Quarto' },
           { id: 'zotero-note', icon: 'file-text', label: 'Nota de Zotero' }
         ];
@@ -500,9 +424,15 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
           item.onclick = () => {
             const action = item.dataset.action;
             let insert = '';
+            if (action === 'h1') insert = '# ';
+            if (action === 'h2') insert = '## ';
+            if (action === 'h3') insert = '### ';
+            if (action === 'todo') insert = '[ ] ';
+            if (action === 'bullet') insert = '- ';
+            if (action === 'callout') insert = '> [!NOTE]\n> ';
+            if (action === 'divider') insert = '\n---\n';
             if (action === 'cita') insert = '> "Texto de la cita" (Autor, Año)';
             if (action === 'img') insert = '![Descripción](url)';
-            if (action === 'title') insert = '## ';
             if (action === 'quarto') insert = '```{r}\n#| label: block-name\n#| echo: true\n\n\n```';
             if (action === 'ref') {
               // Show library picker

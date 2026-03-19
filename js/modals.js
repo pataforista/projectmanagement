@@ -1333,35 +1333,56 @@ async function openTaskDetail(task) {
   const projects = store.get.projects();
   const members = store.get.members();
 
+  const mode = localStorage.getItem('workspace-mode') || 'solo';
+  const workspaceLabel = mode === 'solo' ? 'Mi Workspace' : 'Equipo';
+  const project = store.get.projectById(task.projectId);
+
   panel.innerHTML = `
     <div class="details-header">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <i data-feather="check-square" style="color:var(--accent-primary); width:18px; height:18px;"></i>
-        <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Detalles de Tarea</span>
+      <div class="breadcrumbs" style="font-size: 0.75rem; opacity: 0.8;">
+        <span class="breadcrumb-item">${esc(workspaceLabel)}</span>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-item">${esc(project?.name || 'Tareas')}</span>
       </div>
-      <button class="btn btn-icon" id="details-close"><i data-feather="x"></i></button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-icon btn-sm" id="detail-expand" title="Abrir como página"><i data-feather="maximize-2"></i></button>
+        <button class="btn btn-icon btn-sm" id="details-close"><i data-feather="x"></i></button>
+      </div>
     </div>
     <div class="details-body">
       <input type="text" class="details-title-input" id="detail-task-title" value="${esc(task.title)}" placeholder="Título de la tarea...">
       
-      <div class="details-field-group">
-        <label class="details-field-label">Proyecto</label>
-        <select class="form-select" id="detail-task-project">
-          <option value="">Sin proyecto</option>
-          ${projects.map(p => `<option value="${p.id}" ${p.id === task.projectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-        </select>
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-        <div class="details-field-group">
-          <label class="details-field-label">Estado</label>
-          <select class="form-select" id="detail-task-status">
+      <!-- Property Grid -->
+      <div class="property-row">
+        <div class="property-label"><i data-feather="circle"></i> Estado</div>
+        <div class="property-value">
+          <select class="form-select form-select-sm" id="detail-task-status" style="border:none; padding-left:0; background:transparent;">
             ${STATUSES.map(s => `<option value="${s}" ${s === task.status ? 'selected' : ''}>${s}</option>`).join('')}
           </select>
         </div>
-        <div class="details-field-group">
-          <label class="details-field-label">Prioridad</label>
-          <select class="form-select" id="detail-task-priority">
+      </div>
+
+      <div class="property-row">
+        <div class="property-label"><i data-feather="user"></i> Asignado</div>
+        <div class="property-value">
+          <select class="form-select form-select-sm" id="detail-task-assignee" style="border:none; padding-left:0; background:transparent;">
+            <option value="">Sin asignar</option>
+            ${members.map(m => `<option value="${m.id}" ${task.assigneeId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="property-row">
+        <div class="property-label"><i data-feather="calendar"></i> Fecha límite</div>
+        <div class="property-value">
+          <input type="date" class="form-input form-input-sm" id="detail-task-due" value="${task.dueDate || ''}" style="border:none; padding-left:0; background:transparent;">
+        </div>
+      </div>
+
+      <div class="property-row">
+        <div class="property-label"><i data-feather="zap"></i> Prioridad</div>
+        <div class="property-value">
+          <select class="form-select form-select-sm" id="detail-task-priority" style="border:none; padding-left:0; background:transparent;">
             <option value="alta" ${task.priority === 'alta' ? 'selected' : ''}>Alta</option>
             <option value="media" ${task.priority === 'media' ? 'selected' : ''}>Media</option>
             <option value="baja" ${task.priority === 'baja' ? 'selected' : ''}>Baja</option>
@@ -1369,37 +1390,36 @@ async function openTaskDetail(task) {
         </div>
       </div>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-        <div class="details-field-group">
-          <label class="details-field-label">Asignado a</label>
-          <select class="form-select" id="detail-task-assignee">
-            <option value="">Sin asignar</option>
-            ${members.map(m => `<option value="${m.id}" ${task.assigneeId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+      <div class="property-row">
+        <div class="property-label"><i data-feather="folder"></i> Proyecto</div>
+        <div class="property-value">
+          <select class="form-select form-select-sm" id="detail-task-project" style="border:none; padding-left:0; background:transparent;">
+            <option value="">Sin proyecto</option>
+            ${projects.map(p => `<option value="${p.id}" ${p.id === task.projectId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
           </select>
-        </div>
-        <div class="details-field-group">
-          <label class="details-field-label">Fecha límite</label>
-          <input type="date" class="form-input" id="detail-task-due" value="${task.dueDate || ''}">
         </div>
       </div>
 
+      <div class="property-divider"></div>
+
       <div class="details-field-group">
-        <label class="details-field-label">Descripción</label>
-        <textarea class="form-textarea" id="detail-task-desc" placeholder="Notas, contexto..." rows="4">${esc(task.description || '')}</textarea>
+        <textarea class="form-textarea" id="detail-task-desc" placeholder="Añade una descripción..." rows="6" style="border:none; background:transparent; padding:0; font-size:1rem; line-height:1.6; resize:none;">${esc(task.description || '')}</textarea>
       </div>
+
+      <div class="property-divider"></div>
 
       <div class="details-field-group">
         <label class="details-field-label">Subtareas</label>
-        <div id="detail-subtasks-list" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;"></div>
+        <div id="detail-subtasks-list" style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px;"></div>
         <div style="display:flex; gap:8px;">
-          <input class="form-input" id="detail-new-subtask" placeholder="Nueva subtarea...">
-          <button class="btn btn-secondary" id="detail-add-subtask" style="padding:0 12px;"><i data-feather="plus"></i></button>
+          <input class="form-input form-input-sm" id="detail-new-subtask" placeholder="Nueva subtarea..." style="background:var(--bg-input);">
+          <button class="btn btn-secondary btn-sm" id="detail-add-subtask"><i data-feather="plus"></i></button>
         </div>
       </div>
     </div>
-    <div class="details-footer">
-      <button class="btn btn-ghost" id="detail-task-delete" style="color:var(--accent-danger);">Eliminar</button>
-      <button class="btn btn-primary" id="detail-task-save"><i data-feather="check"></i> Guardar</button>
+    <div class="details-footer" style="background:transparent; border:none; padding-top:0;">
+      <button class="btn btn-ghost btn-sm" id="detail-task-delete" style="color:var(--text-muted);">Eliminar</button>
+      <button class="btn btn-primary btn-sm" id="detail-task-save"><i data-feather="check"></i> Guardar</button>
     </div>
   `;
 
@@ -1519,7 +1539,8 @@ function openInitialSetupModal() {
 
       <div class="form-group" style="padding:12px; background:var(--accent-primary)10; border-radius:8px; border:1px solid var(--accent-primary)30;">
         <span style="font-size:0.8rem; font-weight:700; color:var(--accent-primary); display:block; margin-bottom:4px;">🔑 Eres el Administrador</span>
-        <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">Como primer usuario, tendrás el rol de Administrador para gestionar el workspace.</p>
+        <p style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">Como primer usuario, tendrás el rol de Administrador. Define una <b>Clave Maestra</b> para proteger la gestión del equipo.</p>
+        <input type="password" class="form-input" id="setup-master-key" placeholder="Define la Clave Maestra de Admin">
       </div>
     </div>
     <div class="modal-footer">
@@ -1531,11 +1552,18 @@ function openInitialSetupModal() {
     const wsName = modal.querySelector('#setup-ws-name').value.trim() || 'Mi Workspace';
     const adminName = modal.querySelector('#setup-admin-name').value.trim() || 'Admin';
 
-    // 1. Save Workspace Metadata in sync config (since store doesn't have SETTINGS action)
+    const masterKey = modal.querySelector('#setup-master-key').value.trim();
+    if (!masterKey) return showToast('La Clave Maestra es necesaria para proteger el workspace.', 'warning');
+
+    const cryptoLayer = await import('./utils/crypto.js');
+    const masterKeyHash = await cryptoLayer.hashPassword(masterKey);
+
+    // 1. Save Workspace Metadata in sync config
     syncManager.saveConfig({ 
       ...syncManager.getConfig(),
       workspace_name: wsName,
       admin_setup_completed: true,
+      admin_key_hash: masterKeyHash,
       created_at: new Date().toISOString()
     });
 

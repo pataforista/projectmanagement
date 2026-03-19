@@ -9,14 +9,18 @@ import {
     openQuickAdd,
     exportData,
     initGlobalEffects,
-    updateTopbarSyncWidget
+    updateTopbarSyncWidget,
+    initCommandPalette
 } from './ui.js';
 import { StorageManager } from './utils/storage-manager.js';
 import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
+import { companion as ollamaCompanion } from './components/ollama-companion.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     initGlobalEffects();
+    initCommandPalette();
+    ollamaCompanion.init();
 
     // ── OPCIÓN 2: Initialize Storage Manager ──────────────────────────────────
     // Migrate session keys from localStorage to sessionStorage for per-tab isolation
@@ -224,6 +228,55 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         }
 
+        const joinBtn = document.getElementById('auth-join-btn');
+        const joinPanel = document.getElementById('auth-join-panel');
+        const joinBack = document.getElementById('auth-join-back');
+        const joinConfirm = document.getElementById('auth-join-confirm');
+        const inviteInput = document.getElementById('auth-invite-code');
+
+        if (joinBtn) {
+            joinBtn.onclick = () => {
+                setupPanel.style.display = 'none';
+                joinPanel.style.display = 'flex';
+            };
+        }
+        if (joinBack) {
+            joinBack.onclick = () => {
+                setupPanel.style.display = 'flex';
+                joinPanel.style.display = 'none';
+            };
+        }
+        if (joinConfirm) {
+            joinConfirm.onclick = () => {
+                const code = inviteInput.value.trim();
+                if (!code) return showToast('Pega un código válido.', 'error');
+                try {
+                    const data = JSON.parse(atob(code));
+                    if (!data.c || !data.f) throw new Error('Invalid code');
+                    
+                    setupClientIdInput.value = data.c;
+                    const sharedIdInput = document.getElementById('auth-setup-shared-id') || { value: '' };
+                    sharedIdInput.value = data.f;
+                    
+                    // Pre-fill config so syncManager uses it
+                    syncManager.saveConfig({
+                        ...syncManager.getConfig(),
+                        clientId: data.c,
+                        sharedFolderId: data.f,
+                        fileName: data.n || 'workspace-team-data.json',
+                        workspace_name: data.w || 'Workspace Unido',
+                        pending_invite_role: data.r || 'member'
+                    });
+
+                    showToast('Código procesado. Ahora conéctate con Google.', 'success');
+                    setupPanel.style.display = 'flex';
+                    joinPanel.style.display = 'none';
+                } catch (e) {
+                    showToast('Código de invitación inválido.', 'error');
+                }
+            };
+        }
+
         if (googleBtn) {
             googleBtn.onclick = async () => {
                 const providedClientId = setupClientIdInput?.value.trim();
@@ -414,6 +467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .on('canvas', (root) => renderCanvas && renderCanvas(root))
         .on('logs', (root) => renderLogs(root))
         .on('collaboration', (root) => renderCollaboration(root))
+        .on('admin', (root) => renderAdmin(root))
         .on('notes-wiki', (root) => renderNotesWiki && renderNotesWiki(root))
         .on('document', (root, params) => renderDocumentView(root, params))
         .on('project', (root, params) => renderProjectDetail(root, params));
@@ -455,18 +509,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ── 9.1. Identity & First-Run Setup ─────────────────────────────────────
-    // If the workspace is empty (no members), prompt the first user to initialize it.
     const allMembers = store.get.members();
+    const config = syncManager.getConfig();
+    const user = getCurrentWorkspaceUser();
+
     if (allMembers.length === 0) {
         console.log('[Auth] Empty workspace detected. Launching Admin Setup...');
-        if (window.openInitialSetupModal) {
-            openInitialSetupModal();
-        }
-    } else if (localStorage.getItem('workspace_user_email') && !localStorage.getItem('workspace_user_member_id')) {
-        // Existing logic for auto-linking
-        const member = getCurrentWorkspaceMember();
-        if (member && member.id) {
-            console.log(`[Auth] Auto-linking local identity to workspace member: ${member.id}`);
+        if (window.openInitialSetupModal) openInitialSetupModal();
+    } else if (user.email) {
+        let member = allMembers.find(m => m.email === user.email || (m.emailHash && m.emailHash === user.emailHash));
+        
+        // If not a member yet, but has a pending invite role
+        if (!member && config.pending_invite_role) {
+            const role = config.pending_invite_role;
+            const proceedWithCreate = async () => {
+                const newMember = await store.dispatch('ADD_MEMBER', {
+                    name: user.name || 'Nuevo Miembro',
+                    email: user.email,
+                    emailHash: user.emailHash || null,
+                    role: role,
+                    avatar: (user.name || 'N').charAt(0).toUpperCase(),
+                    joinedAt: new Date().toISOString()
+                });
+                if (newMember) {
+                    setCurrentMemberId(newMember.id);
+                    syncManager.saveConfig({ ...config, pending_invite_role: null });
+                    showToast(`¡Bienvenido al equipo, ${user.name}!`, 'success');
+                    if (window.updateUserProfileUI) updateUserProfileUI();
+                }
+            };
+
+            if (role === 'admin' && config.admin_key_hash) {
+                // Verification required for Admin roles
+                const key = prompt('Este código otorga permisos de Administrador. Ingresa la Clave Maestra del Workspace para continuar:');
+                if (key) {
+                    const cryptoLayer = await import('./utils/crypto.js');
+                    const hash = await cryptoLayer.hashPassword(key);
+                    if (hash === config.admin_key_hash) {
+                        await proceedWithCreate();
+                    } else {
+                        showToast('Clave Maestra incorrecta. Te unirás como Miembro estándar.', 'warning');
+                        syncManager.saveConfig({ ...config, pending_invite_role: 'member' });
+                        location.reload();
+                    }
+                }
+            } else {
+                await proceedWithCreate();
+            }
+        } else if (member) {
             setCurrentMemberId(member.id);
             if (window.updateUserProfileUI) updateUserProfileUI();
         }
@@ -526,11 +616,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             breadcrumbEl.textContent = viewLabels[view] || view;
         };
         window.addEventListener('hashchange', () => {
-            updateBreadcrumb();
+            if (window.updateBreadcrumbs) window.updateBreadcrumbs();
             // Close details panel on navigation for better fluidity
             if (window.closeDetailsPanel) closeDetailsPanel();
         });
-        updateBreadcrumb();
+        if (window.updateBreadcrumbs) window.updateBreadcrumbs();
     }
 
     if (window.feather) feather.replace();

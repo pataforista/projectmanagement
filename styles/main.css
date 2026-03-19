@@ -51,32 +51,72 @@
     /* Layout */
     --sidebar-width: 256px;
     --topbar-height: 56px;
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 14px;
-    --radius-xl: 20px;
+    --radius-sm: 10px;
+    --radius-md: 16px;
+    --radius-lg: 22px;
+    --radius-xl: 34px;
 
-    /* M3.5 shape + state tokens */
-    --shape-xs: 8px;
-    --shape-sm: 12px;
-    --shape-md: 16px;
-    --shape-lg: 24px;
-    --shape-xl: 30px;
+    /* M3.5 playful shapes */
+    --shape-xs: 10px;
+    --shape-sm: 14px;
+    --shape-md: 20px;
+    --shape-lg: 30px;
+    --shape-xl: 40px;
     --state-hover: color-mix(in srgb, var(--accent-primary) 11%, transparent);
     --state-pressed: color-mix(in srgb, var(--accent-primary) 20%, transparent);
     --surface-tonal: color-mix(in srgb, var(--bg-surface-2) 82%, var(--accent-primary) 18%);
     --surface-tonal-soft: color-mix(in srgb, var(--bg-surface) 90%, var(--accent-primary) 10%);
 
-    /* Transitions */
-    --ease: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    /* Transitions — Playful Bouncy */
+    --ease: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in: cubic-bezier(0.4, 0, 0.2, 1);
-    --dur-fast: 140ms;
-    --dur-med: 240ms;
-    --dur-slow: 380ms;
+    --dur-fast: 180ms;
+    --dur-med: 280ms;
+    --dur-slow: 420ms;
 }
 
 [data-theme="light"] {
+
+/* ── Notion-Style Breadcrumbs ────────────────────────────────────────────── */
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--dur-fast);
+}
+
+.breadcrumb-item:hover {
+    background: var(--bg-surface-hover);
+    color: var(--text-primary);
+}
+
+.breadcrumb-sep {
+    color: var(--text-muted);
+    opacity: 0.6;
+    padding: 0 4px;
+    font-weight: 300;
+}
+
+.breadcrumb-item i {
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+}
+/* ──────────────────────────────────────────────────────────────────────────── */
+
     --bg-base: #f8f9fa;
     --bg-surface: rgba(255, 255, 255, 0.85);
   /* ── Light Theme ── */
@@ -430,6 +470,20 @@ body::before {
     z-index: 0;
 }
 
+@keyframes viewIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.view-inner {
+    animation: viewIn var(--dur-med) var(--ease);
+}
+
+.playful-pop:active, .pop-active {
+    transform: scale(0.95) !important;
+    transition: transform 0.1s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
 /* ── Layout ─────────────────────────────────────────────────────────────────── */
 .app-container {
     display: grid;
@@ -452,32 +506,36 @@ body::before {
     --sidebar-width: 68px;
 }
 
-/* Glassmorphism base */
+/* Glassmorphism Refined 2.0 */
 .glass-panel {
     background: var(--surface-tonal-soft);
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
-    border: 1px solid color-mix(in srgb, var(--border-highlight) 80%, var(--accent-primary) 20%);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition: all var(--dur-med) var(--ease-out);
+    border: 1px solid color-mix(in srgb, var(--border-highlight) 85%, var(--accent-primary) 15%);
+    box-shadow: 
+        0 4px 24px rgba(0, 0, 0, 0.15), 
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: all var(--dur-med) var(--ease);
 }
 
-/* ── Universal Card Refinement ────────────────────────────────────────────── */
+/* ── Universal Card Playful ────────────────────────────────────────────── */
 .card, .project-card, .cycle-card, .decision-card {
     background: var(--bg-surface);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: 24px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
-    transition: all var(--dur-med) var(--ease-out);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: all var(--dur-med) var(--ease);
     position: relative;
     overflow: hidden;
 }
 
 .card:hover, .project-card:hover, .cycle-card:hover, .decision-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22), 0 4px 8px rgba(0, 0, 0, 0.15);
-    border-color: var(--border-highlight);
+    transform: translateY(-5px) scale(1.015);
+    box-shadow: 
+        0 14px 36px rgba(0, 0, 0, 0.25), 
+        0 0 15px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+    border-color: color-mix(in srgb, var(--border-highlight) 60%, var(--accent-primary) 40%);
     background: var(--bg-surface-hover);
 }
 
@@ -1450,15 +1508,52 @@ body::before {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    z-index: 15;
-    background: var(--bg-surface-2);
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+    background: var(--surface-tonal-soft);
+    backdrop-filter: var(--blur);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.2);
     transform: translateX(100%);
-    transition: transform var(--dur-med) var(--ease-out);
+    transition: transform var(--dur-med) var(--ease);
 }
 
 .app-container.show-details .details-panel {
     transform: translateX(0);
+}
+
+/* Notion Property Grid */
+.property-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.property-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.property-label i {
+    width: 14px;
+    height: 14px;
+    opacity: 0.7;
+}
+
+.property-value {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.property-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 20px 0;
+    opacity: 0.5;
 }
 
 .details-header {
@@ -1483,20 +1578,19 @@ body::before {
 }
 
 .details-title-input {
-    font-size: 1.5rem;
-    font-weight: 800;
     width: 100%;
-    border: none;
     background: transparent;
+    border: none;
+    font-size: 1.8rem;
+    font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 16px;
-    padding: 8px 0;
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.2s;
+    margin-bottom: 24px;
+    padding: 0;
+    letter-spacing: -0.01em;
 }
 
 .details-title-input:focus {
-    border-color: var(--accent-primary);
+    outline: none;
 }
 
 .details-field-group {
@@ -1531,6 +1625,61 @@ body::before {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     border-color: var(--accent-primary);
+}
+
+/* Kanban Card Modernization */
+.kanban-card-project {
+    font-size: 0.68rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.project-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.kanban-card-tags {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kanban-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.kanban-card-meta .task-quick-delete {
+    opacity: 0;
+    transition: opacity 0.2s;
+    padding: 2px;
+    color: var(--text-muted);
+}
+
+.kanban-card:hover .task-quick-delete {
+    opacity: 1;
+}
+
+.kanban-card-meta .member-avatar-xs {
+    width: 20px;
+    height: 20px;
+    font-size: 0.6rem;
+    background: var(--accent-primary);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .list-table tbody tr {
@@ -2011,3 +2160,217 @@ tr:hover .quick-delete-btn {
     cursor: default;
 }
 
+/* ── Command Palette (Obsidian/Notion Style) ───────────────────────────── */
+.command-palette-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
+    z-index: 10000;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 15vh;
+}
+
+.command-palette {
+    width: 100%;
+    max-width: 600px;
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border-highlight);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+    animation: slideDownFade 0.2s var(--ease-out);
+}
+
+@keyframes slideDownFade {
+    from { opacity: 0; transform: translateY(-20px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.palette-search-wrap {
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.palette-search-wrap i {
+    width: 20px;
+    height: 20px;
+    color: var(--text-muted);
+}
+
+.palette-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.palette-results {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.palette-item {
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.1s;
+}
+
+.palette-item:hover, .palette-item.selected {
+    background: var(--bg-surface-hover);
+}
+
+.palette-item i {
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+}
+
+.palette-item-text {
+    flex: 1;
+    overflow: hidden;
+}
+
+.palette-item-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.palette-item-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.palette-footer {
+    padding: 10px 16px;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-color);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    display: flex;
+    gap: 16px;
+}
+
+.palette-footer kbd {
+    background: var(--bg-input);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+}
+
+/* ── Notion-Style Database Table (Backlog) ─────────────────────────────── */
+.notion-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    border-top: 1px solid var(--border-color);
+}
+
+.notion-table th {
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.notion-table th .prop-icon {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-right: 6px;
+    opacity: 0.7;
+}
+
+.notion-table th i {
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    vertical-align: text-bottom;
+    opacity: 0.7;
+}
+
+.notion-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.notion-table tr {
+    transition: background 0.1s;
+}
+
+.notion-table tbody tr:hover {
+    background: var(--bg-surface-hover);
+}
+
+.notion-pill-select {
+    appearance: none;
+    background: var(--bg-surface-2);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 18px 2px 8px;
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='gray' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 10px;
+    transition: all 0.15s;
+}
+
+.notion-pill-select:hover {
+    background-color: var(--border-color);
+}
+
+.notion-pill-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+
+.hover-open-btn {
+    opacity: 0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: none;
+}
+
+.notion-table tbody tr:hover .hover-open-btn {
+    opacity: 1;
+}
+
+.hover-open-btn:hover {
+    background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
