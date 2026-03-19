@@ -135,14 +135,16 @@
             manual (Solo local)</button>
         </div>
 
-        <div id="auth-join-panel" style="display:none; flex-direction:column; gap:12px; padding:16px; background:var(--bg-surface-2); border-radius:12px; border:1px solid var(--accent-primary)40;">
-          <h3 style="margin:0; font-size:1rem;">Unirse al Equipo</h3>
-          <p style="font-size:0.8rem; color:var(--text-secondary); margin:0;">Pega el código de invitación que te proporcionó tu administrador.</p>
-          <textarea id="auth-invite-code" class="form-textarea" placeholder="Pega el código aquí..." rows="3" style="font-size:0.75rem; font-family:monospace;"></textarea>
-          <div style="display:flex; gap:8px;">
-            <button type="button" id="auth-join-back" class="btn btn-secondary" style="flex:1;">Volver</button>
-            <button type="button" id="auth-join-confirm" class="btn btn-primary" style="flex:2;">Procesar Código</button>
-          </div>
+        <!-- auth-join-panel was moved from here -->
+      </div>
+
+      <div id="auth-join-panel" style="display:none; flex-direction:column; gap:12px; padding:16px; background:var(--bg-surface-2); border-radius:12px; border:1px solid var(--accent-primary)40;">
+        <h3 style="margin:0; font-size:1rem;">Unirse al Equipo</h3>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin:0;">Pega el código de invitación que te proporcionó tu administrador.</p>
+        <textarea id="auth-invite-code" class="form-textarea" placeholder="Pega el código aquí..." rows="3" style="font-size:0.75rem; font-family:monospace;"></textarea>
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="auth-join-back" class="btn btn-secondary" style="flex:1;">Volver</button>
+          <button type="button" id="auth-join-confirm" class="btn btn-primary" style="flex:2;">Procesar Código</button>
         </div>
       </div>
 
