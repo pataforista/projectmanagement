@@ -1,6 +1,6 @@
 /**
  * api/ollama.js — Local AI Assistant via Ollama
- * 
+ *
  * Interacts with a local Ollama instance (default: http://localhost:11434)
  * providing researchers with local, private LLM capabilities.
  */
@@ -9,9 +9,10 @@ class OllamaAPI {
     constructor() {
         this.baseUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
         this.model = localStorage.getItem('ollama_model') || 'llama3';
+        this.corsProxyUrl = localStorage.getItem('ollama_cors_proxy') || '';
     }
 
-    setSettings(url, model) {
+    setSettings(url, model, corsProxy = '') {
         if (url) {
             try {
                 const parsed = new URL(url);
@@ -29,13 +30,60 @@ class OllamaAPI {
             this.model = model;
             localStorage.setItem('ollama_model', model);
         }
+        if (corsProxy !== undefined) {
+            this.corsProxyUrl = corsProxy;
+            if (corsProxy) {
+                localStorage.setItem('ollama_cors_proxy', corsProxy);
+            } else {
+                localStorage.removeItem('ollama_cors_proxy');
+            }
+        }
     }
 
     getSettings() {
         return {
             baseUrl: this.baseUrl,
-            model: this.model
+            model: this.model,
+            corsProxyUrl: this.corsProxyUrl
         };
+    }
+
+    /**
+     * Builds the actual URL to fetch from, handling CORS proxy if configured
+     * @private
+     */
+    _buildFetchUrl(endpoint) {
+        const fullUrl = `${this.baseUrl}${endpoint}`;
+
+        // If CORS proxy is configured, route through it
+        if (this.corsProxyUrl) {
+            try {
+                // URL encode the target URL for the proxy
+                const proxyUrl = new URL(this.corsProxyUrl);
+                proxyUrl.searchParams.set('url', fullUrl);
+                return proxyUrl.toString();
+            } catch (e) {
+                console.warn('[Ollama] Invalid CORS proxy URL, using direct connection:', e);
+                return fullUrl;
+            }
+        }
+
+        return fullUrl;
+    }
+
+    /**
+     * Detects if we need CORS proxy based on protocol mismatch
+     * @private
+     */
+    _shouldWarnAboutCors() {
+        // If frontend is HTTPS and Ollama is HTTP, CORS will be an issue
+        try {
+            const frontendProtocol = window.location.protocol; // https: or http:
+            const ollamaUrl = new URL(this.baseUrl);
+            return frontendProtocol === 'https:' && ollamaUrl.protocol === 'http:';
+        } catch {
+            return false;
+        }
     }
 
     /**
@@ -43,7 +91,8 @@ class OllamaAPI {
      */
     async generate(prompt, systemPrompt = '') {
         try {
-            const response = await fetchWithTimeout(`${this.baseUrl}/api/generate`, {
+            const fetchUrl = this._buildFetchUrl('/api/generate');
+            const response = await fetchWithTimeout(fetchUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -59,7 +108,41 @@ class OllamaAPI {
             return data.response;
         } catch (err) {
             console.error('[Ollama] Error:', err);
+            this._handleCorsError(err);
             throw err;
+        }
+    }
+
+    /**
+     * Handles and logs helpful CORS error messages
+     * @private
+     */
+    _handleCorsError(error) {
+        const errorMsg = error?.message || '';
+        const isCorsError = errorMsg.includes('CORS') || errorMsg.includes('Failed to fetch') || errorMsg.includes('origin');
+        const shouldWarnCors = this._shouldWarnAboutCors();
+
+        if (isCorsError || shouldWarnCors) {
+            console.error('[Ollama] CORS/Mixed-content issue detected. Solutions:');
+            console.error('1. Configure Ollama CORS on your local machine (RECOMMENDED):');
+            console.error('   - Set environment variable: OLLAMA_ORIGINS="https://pataforista.github.io"');
+            console.error('   - Or use wildcard: OLLAMA_ORIGINS="*" (less secure)');
+            console.error('2. Use a CORS proxy service by configuring it in the Integrations panel');
+            console.error('3. Run this locally over HTTP instead of HTTPS');
+        }
+    }
+
+    /**
+     * Health check - ping the Ollama server
+     */
+    async healthCheck() {
+        try {
+            const fetchUrl = this._buildFetchUrl('/api/tags');
+            const response = await fetchWithTimeout(fetchUrl);
+            return response.ok;
+        } catch (err) {
+            console.warn('[Ollama] Health check failed:', err);
+            return false;
         }
     }
 

@@ -165,8 +165,13 @@ function renderIntegrations(root) {
           </div>
           <div class="integration-body">
             <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
-              Asegúrate de que Ollama esté ejecutándose localmente. P ej: <code>OLLAMA_ORIGINS="*" ollama serve</code>
+              Asegúrate de que Ollama esté ejecutándose localmente. Para solucionar errores CORS:
             </p>
+            <div style="padding:8px; background:rgba(94, 106, 210, 0.05); border-radius:6px; border-left:3px solid var(--accent-primary); font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">
+              <strong>Opción 1:</strong> Configura Ollama localmente:<br/>
+              <code style="font-size:0.7rem;">OLLAMA_ORIGINS="https://pataforista.github.io" ollama serve</code><br/><br/>
+              <strong>Opción 2:</strong> Usa un proxy CORS (abajo)
+            </div>
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Servidor URL</label>
               <input type="text" class="form-input" id="int-ollama-url"
@@ -176,6 +181,14 @@ function renderIntegrations(root) {
               <label style="font-size:0.75rem; color:var(--text-muted);">Modelo Base</label>
               <input type="text" class="form-input" id="int-ollama-model"
                 value="${esc(localStorage.getItem('ollama_model') || 'llama3')}" placeholder="Ej: mistral, llama3">
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label style="font-size:0.75rem; color:var(--text-muted);">CORS Proxy URL (opcional)</label>
+              <input type="text" class="form-input" id="int-ollama-cors-proxy"
+                value="${esc(localStorage.getItem('ollama_cors_proxy') || '')}" placeholder="Ej: https://cors-proxy.example.com/?url=">
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                Si tienes problemas CORS, usa un proxy como <code>https://cors-anywhere.herokuapp.com/?url=</code> (requiere activación previa)
+              </div>
             </div>
             <div style="display:flex; gap:8px; margin-top:16px;">
               <button class="btn btn-primary btn-sm flex-1" id="btn-save-ollama" style="flex:1;">Guardar</button>
@@ -398,11 +411,17 @@ function renderIntegrations(root) {
   root.querySelector('#btn-save-ollama')?.addEventListener('click', () => {
     const url = root.querySelector('#int-ollama-url').value.trim();
     const model = root.querySelector('#int-ollama-model').value.trim();
+    const corsProxy = root.querySelector('#int-ollama-cors-proxy').value.trim();
     if (window.ollamaApi?.setSettings) {
-      ollamaApi.setSettings(url, model);
+      ollamaApi.setSettings(url, model, corsProxy);
     } else {
       localStorage.setItem('ollama_url', url);
       localStorage.setItem('ollama_model', model);
+      if (corsProxy) {
+        localStorage.setItem('ollama_cors_proxy', corsProxy);
+      } else {
+        localStorage.removeItem('ollama_cors_proxy');
+      }
     }
     showToast('Ollama configurado correctamente', 'success');
     renderIntegrations(root);
@@ -477,12 +496,19 @@ function renderIntegrations(root) {
 
   root.querySelector('#btn-test-ollama')?.addEventListener('click', () => {
     testApi('#btn-test-ollama', 'Probar', async () => {
-      let url = root.querySelector('#int-ollama-url').value.trim();
+      const url = root.querySelector('#int-ollama-url').value.trim();
+      const model = root.querySelector('#int-ollama-model').value.trim();
+      const corsProxy = root.querySelector('#int-ollama-cors-proxy').value.trim();
       if (!url) throw new Error("Falta la URL del servidor local");
-      url = url.endsWith('/') ? url.slice(0, -1) : url;
-      const res = await fetchWithTimeout(`${url}/api/tags`);
-      if (!res.ok) throw new Error(`El servidor respondió con error ${res.status}`);
-      await res.json();
+
+      // Temporarily configure API for testing
+      if (window.ollamaApi?.setSettings) {
+        ollamaApi.setSettings(url, model, corsProxy);
+        const isHealthy = await ollamaApi.healthCheck();
+        if (!isHealthy) throw new Error("Ollama no responde o CORS está bloqueado");
+      } else {
+        throw new Error("API de Ollama no inicializada");
+      }
     });
   });
 

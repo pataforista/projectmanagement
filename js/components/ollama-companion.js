@@ -91,8 +91,8 @@ class OllamaCompanion {
         const oldStatus = this.status;
         try {
             // Ping Ollama tags endpoint as a health check
-            const response = await fetch(`${ollamaApi.baseUrl}/api/tags`);
-            this.status = response.ok ? 'connected' : 'disconnected';
+            const isHealthy = await ollamaApi.healthCheck();
+            this.status = isHealthy ? 'connected' : 'disconnected';
         } catch (e) {
             this.status = 'disconnected';
         }
