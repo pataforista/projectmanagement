@@ -89,6 +89,37 @@
     border-bottom: 1px solid var(--ollama-border);
 }
 
+#ollama-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--ollama-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+#ollama-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--ollama-accent);
+    color: var(--text-primary);
+}
+
+#ollama-close:active {
+    transform: scale(0.95);
+}
+
+#ollama-close i {
+    width: 18px;
+    height: 18px;
+}
+
 .ollama-brand {
     display: flex;
     align-items: center;

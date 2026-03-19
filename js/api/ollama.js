@@ -68,6 +68,11 @@ class OllamaAPI {
             }
         }
 
+        // Auto-detect CORS issues and suggest configuration
+        if (this._shouldWarnAboutCors()) {
+            console.warn('[Ollama] CORS issue detected (HTTPS → HTTP). Configure CORS on Ollama or use a proxy.');
+        }
+
         return fullUrl;
     }
 
@@ -139,9 +144,14 @@ class OllamaAPI {
         try {
             const fetchUrl = this._buildFetchUrl('/api/tags');
             const response = await fetchWithTimeout(fetchUrl);
-            return response.ok;
+            if (!response.ok) {
+                this._handleCorsError(new Error(`HTTP ${response.status}`));
+                return false;
+            }
+            return true;
         } catch (err) {
             console.warn('[Ollama] Health check failed:', err);
+            this._handleCorsError(err);
             return false;
         }
     }

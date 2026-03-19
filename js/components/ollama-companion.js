@@ -125,11 +125,26 @@ class OllamaCompanion {
     refreshInterface() {
         const content = this.el.querySelector('#ollama-chat-content');
         if (this.status === 'disconnected') {
+            const settings = ollamaApi.getSettings();
+            const isCorsIssue = ollamaApi._shouldWarnAboutCors();
+
             content.innerHTML = `
                 <div class="ollama-offline-screen">
                     <i data-feather="cloud-off" class="offline-icon"></i>
                     <h3 class="offline-title">Ollama no detectado</h3>
-                    <p class="offline-hint">Para usar el asistente, asegúrate de que Ollama esté corriendo en tu PC.</p>
+                    <p class="offline-hint">
+                        ${isCorsIssue
+                            ? '⚠️ Error CORS detectado. Tu app es HTTPS pero Ollama es HTTP.'
+                            : 'Para usar el asistente, asegúrate de que Ollama esté corriendo en tu PC.'}
+                    </p>
+                    ${isCorsIssue ? `
+                        <div style="background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:12px; font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">
+                            <strong style="color:var(--accent-danger);">Soluciones:</strong><br/>
+                            1️⃣ Inicia Ollama con:<br/>
+                            <code style="display:block; margin:4px 0; color:var(--accent-teal);">OLLAMA_ORIGINS="https://pataforista.github.io" ollama serve</code>
+                            2️⃣ O usa un CORS proxy en Integraciones
+                        </div>
+                    ` : ''}
                     <div class="offline-cmd" id="copy-ollama-cmd">
                         ollama run ${this.model}
                     </div>
@@ -137,7 +152,8 @@ class OllamaCompanion {
                         <i data-feather="refresh-cw"></i> Re-intentar conexión
                     </button>
                     <div style="font-size:0.75rem; color:var(--text-muted); margin-top:10px;">
-                        URL: <code>${ollamaApi.baseUrl}</code>
+                        URL: <code>${settings.baseUrl}</code><br/>
+                        ${settings.corsProxyUrl ? `Proxy: <code>${settings.corsProxyUrl}</code>` : ''}
                     </div>
                 </div>
             `;
