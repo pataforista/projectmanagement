@@ -64,7 +64,7 @@
 #ollama-companion {
     position: fixed;
     top: 0;
-    left: -var(--ollama-width);
+    left: calc(-1 * var(--ollama-width));
     width: var(--ollama-width);
     height: 100vh;
     background: var(--ollama-bg);
