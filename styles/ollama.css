@@ -64,21 +64,21 @@
 #ollama-companion {
     position: fixed;
     top: 0;
-    right: -var(--ollama-width);
+    left: -var(--ollama-width);
     width: var(--ollama-width);
     height: 100vh;
     background: var(--ollama-bg);
     backdrop-filter: blur(var(--ollama-glass-blur));
-    border-left: 1px solid var(--ollama-border);
+    border-right: 1px solid var(--ollama-border);
     z-index: 400;
     display: flex;
     flex-direction: column;
-    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.4);
-    transition: right 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.4);
+    transition: left 0.4s cubic-bezier(0.19, 1, 0.22, 1);
 }
 
 #ollama-companion.open {
-    right: 0;
+    left: 0;
 }
 
 .ollama-header {
@@ -353,7 +353,7 @@
 @media (max-width: 768px) {
     #ollama-companion {
         width: 100%;
-        right: -100%;
+        left: -100%;
     }
 
     .ollama-fab {
