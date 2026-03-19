@@ -75,6 +75,12 @@
     flex-direction: column;
     box-shadow: 10px 0 30px rgba(0, 0, 0, 0.4);
     transition: left 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+    
+    /* Force high-contrast dark theme inside, regardless of global theme */
+    color: #efefef;
+    --text-primary: #efefef;
+    --text-secondary: #94949e;
+    --text-muted: #828291;
 }
 
 #ollama-companion.open {
@@ -179,9 +185,9 @@
 
 .ollama-bubble-ai {
     align-self: flex-start;
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary);
-    border: 1px solid var(--ollama-border);
+    background: rgba(255, 255, 255, 0.08); /* Slightly more visible */
+    color: #efefef; /* Forced light color */
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-bottom-left-radius: 4px;
 }
 
@@ -194,15 +200,16 @@
 }
 
 .action-pill {
-    padding: 6px 12px;
+    padding: 6px 14px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--ollama-border);
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     font-size: 0.78rem;
-    color: var(--text-secondary);
+    color: #efefef; /* Forced high contrast */
     cursor: pointer;
     transition: all 0.2s ease;
     white-space: nowrap;
+    font-weight: 500;
 }
 
 .action-pill:hover {
@@ -244,12 +251,16 @@
     flex: 1;
     background: none;
     border: none;
-    color: var(--text-primary);
+    color: #ffffff; /* Absolute contrast */
     font-size: 0.9rem;
     resize: none;
     padding: 6px 0;
     max-height: 120px;
     font-family: inherit;
+}
+
+#ollama-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
 }
 
 #ollama-input:focus {
