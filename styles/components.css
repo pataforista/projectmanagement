@@ -760,7 +760,7 @@
 .search-input-wrap {
     display: flex;
     align-items: center;
-    padding: 14px 18px;
+    padding: 10px 12px;
     gap: 10px;
     border-bottom: 1px solid var(--border-color);
 }

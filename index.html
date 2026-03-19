@@ -452,8 +452,9 @@
       <div class="search-input-wrap">
         <i data-feather="search"></i>
         <input id="search-input" type="text" placeholder="Buscar tareas, proyectos, sesiones…" autocomplete="off">
-        <kbd
-          style="font-size:0.7rem;color:var(--text-muted);border:1px solid var(--border-color);border-radius:4px;padding:2px 5px;">ESC</kbd>
+        <button class="btn btn-icon" id="search-close" title="Cerrar búsqueda (Esc)" type="button" style="margin-left:auto;">
+          <i data-feather="x"></i>
+        </button>
       </div>
       <div class="search-results" id="search-results">
         <div class="search-hint">Escribe para buscar tareas y proyectos…</div>

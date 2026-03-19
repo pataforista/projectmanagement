@@ -578,6 +578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.lockWorkspace) lockWorkspace();
     });
 
+    document.getElementById('search-close')?.addEventListener('click', closeSearch);
     document.getElementById('search-overlay')?.addEventListener('click', e => {
         if (e.target.id === 'search-overlay') closeSearch();
     });

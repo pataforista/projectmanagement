@@ -61,41 +61,23 @@ class OllamaCompanion {
     }
 
     setupListeners() {
-        // Close button - use event delegation for robustness
-        const handleClose = (e) => {
-            console.log('[Companion] Close triggered, target:', e.target, 'button:', this.el.querySelector('#ollama-close'));
-            e.preventDefault();
-            e.stopPropagation();
-            this.toggle(false);
-        };
-
-        // Method 1: Direct listener on close button
-        const closeBtn = this.el.querySelector('#ollama-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', handleClose);
-            console.log('[Companion] Close button listener attached');
-
-            // Method 2: Also listen on SVG inside button (in case SVG captures event)
-            const closeSvg = closeBtn.querySelector('svg');
-            if (closeSvg) {
-                closeSvg.addEventListener('click', handleClose);
-                console.log('[Companion] Close SVG listener attached');
-            }
-        } else {
-            console.warn('[Companion] Close button element not found');
-        }
-
-        // Method 3: Event delegation on header (catches all clicks in header)
+        // Close button - use event delegation on header for robustness
+        // This survives feather.replace() calls that recreate SVG elements
         const header = this.el.querySelector('.ollama-header');
         if (header) {
             header.addEventListener('click', (e) => {
-                if (e.target.closest('#ollama-close')) {
-                    console.log('[Companion] Close clicked via delegation');
+                // Check if click is on close button or any element inside it
+                const closeBtn = e.target.closest('#ollama-close');
+                if (closeBtn) {
+                    console.log('[Companion] Close clicked');
                     e.preventDefault();
                     e.stopPropagation();
                     this.toggle(false);
                 }
             });
+            console.log('[Companion] Close button delegation listener attached');
+        } else {
+            console.warn('[Companion] Header element not found');
         }
 
         // Floating action button (FAB) - toggle companion
