@@ -316,25 +316,35 @@ class OllamaCompanion {
         this.history.push({ role: 'user', content });
         this.renderHistory();
 
-        // Loading state
-        const loadingHtml = `
-            <div class="chat-bubble bubble-ai" id="ollama-loading">
+        // Loading and Streaming state
+        const chatContent = this.el.querySelector('#ollama-chat-content');
+        const aiBubbleId = `ai-bubble-${Date.now()}`;
+        const aiHtml = `
+            <div class="chat-bubble bubble-ai" id="${aiBubbleId}">
                 <i data-feather="loader" class="spin" style="width:14px;height:14px;"></i> Pensando...
             </div>
         `;
-        this.el.querySelector('#ollama-chat-content').insertAdjacentHTML('beforeend', loadingHtml);
+        chatContent.insertAdjacentHTML('beforeend', aiHtml);
         if (window.feather) feather.replace();
         this.scrollToBottom();
 
+        const aiBubble = document.getElementById(aiBubbleId);
+        let fullResponse = '';
+
         try {
-            const response = await ollamaApi.generate(content);
-            this.el.querySelector('#ollama-loading')?.remove();
+            await ollamaApi.generate(content, '', (chunk, accumulated) => {
+                fullResponse = accumulated;
+                // Replace loader with text on first chunk
+                aiBubble.innerHTML = esc(fullResponse).replace(/\n/g, '<br>');
+                this.scrollToBottom();
+            });
             
-            this.history.push({ role: 'assistant', content: response });
+            this.history.push({ role: 'assistant', content: fullResponse });
             this.saveHistory();
+            // Final render to clean up any formatting issues
             this.renderHistory();
         } catch (e) {
-            this.el.querySelector('#ollama-loading')?.remove();
+            aiBubble?.remove();
             showToast('Error IA: ' + e.message, 'error');
             this.history.push({ role: 'assistant', content: 'Lo siento, hubo un error procesando tu solicitud: ' + e.message });
             this.renderHistory();

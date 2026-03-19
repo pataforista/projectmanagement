@@ -93,24 +93,68 @@ class OllamaAPI {
 
     /**
      * Basic chat/completion request
+     * Supports both direct return (buffered) and streaming callback
      */
-    async generate(prompt, systemPrompt = '') {
+    async generate(prompt, systemPrompt = '', onChunk = null) {
         try {
             const fetchUrl = this._buildFetchUrl('/api/generate');
-            const response = await fetchWithTimeout(fetchUrl, {
+            const response = await fetch(fetchUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     model: this.model,
                     prompt: prompt,
                     system: systemPrompt,
-                    stream: false
+                    stream: !!onChunk
                 })
             });
 
             if (!response.ok) throw new Error(`Ollama error: ${response.statusText}`);
-            const data = await response.json();
-            return data.response;
+
+            if (onChunk) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    
+                    // Keep the last partial line in the buffer
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const json = JSON.parse(line);
+                            if (json.response) {
+                                fullResponse += json.response;
+                                onChunk(json.response, fullResponse);
+                            }
+                        } catch (e) {
+                            console.warn('[Ollama] Error parsing stream line:', e);
+                        }
+                    }
+                }
+                // Process any remaining data in buffer
+                if (buffer.trim()) {
+                    try {
+                        const json = JSON.parse(buffer);
+                        if (json.response) {
+                            fullResponse += json.response;
+                            onChunk(json.response, fullResponse);
+                        }
+                    } catch (e) { /* ignore final partial */ }
+                }
+                return fullResponse;
+            } else {
+                const data = await response.json();
+                return data.response;
+            }
         } catch (err) {
             console.error('[Ollama] Error:', err);
             this._handleCorsError(err);
