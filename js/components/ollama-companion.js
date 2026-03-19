@@ -250,7 +250,7 @@ class OllamaCompanion {
             `;
         } else {
             content.innerHTML = this.history.map(msg => `
-                <div class="chat-bubble ${msg.role === 'user' ? 'bubble-user' : 'bubble-ai'}">
+                <div class="ollama-bubble ${msg.role === 'user' ? 'ollama-bubble-user' : 'ollama-bubble-ai'}">
                     ${esc(msg.content).replace(/\n/g, '<br>')}
                 </div>
             `).join('');
@@ -320,7 +320,7 @@ class OllamaCompanion {
         const chatContent = this.el.querySelector('#ollama-chat-content');
         const aiBubbleId = `ai-bubble-${Date.now()}`;
         const aiHtml = `
-            <div class="chat-bubble bubble-ai" id="${aiBubbleId}">
+            <div class="ollama-bubble ollama-bubble-ai" id="${aiBubbleId}">
                 <i data-feather="loader" class="spin" style="width:14px;height:14px;"></i> Pensando...
             </div>
         `;
