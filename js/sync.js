@@ -206,7 +206,7 @@ const syncManager = (() => {
     async function signIn(optionalClientId) {
         return new Promise(async (resolve, reject) => {
             const cfg = getConfig();
-            const client_id = optionalClientId || cfg.clientId;
+            const client_id = (optionalClientId || cfg.clientId || '').trim();
             if (!client_id) return reject('No Google Client ID configured');
 
             await loadGIS();
@@ -220,7 +220,7 @@ const syncManager = (() => {
 
             google.accounts.id.initialize({
                 client_id: client_id,
-                use_fedcm_for_prompt: true,
+                use_fedcm_for_prompt: false, // Disabling FedCM to avoid 401: invalid_client on certain origins
                 callback: async (response) => {
                     if (!response.credential) {
                         settleOnce(reject, 'No credential returned');
@@ -403,12 +403,12 @@ const syncManager = (() => {
     async function authorize(optionalClientId, forceConsent = false) {
         return new Promise(async (resolve, reject) => {
             const cfg = getConfig();
-            const client_id = optionalClientId || cfg.clientId;
+            const client_id = (optionalClientId || cfg.clientId || '').trim();
             if (!client_id) return reject('No Google Client ID configured');
 
             await loadGIS();
             tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: client_id,
+                client_id: (optionalClientId || cfg.clientId || '').trim(),
                 scope: SCOPES,
                 callback: (resp) => {
                     if (resp?.error) {
@@ -478,7 +478,7 @@ const syncManager = (() => {
 
         await loadGIS();
         tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: cfg.clientId,
+            client_id: (cfg.clientId || '').trim(),
             scope: SCOPES,
             callback: async (resp) => {
                 if (resp?.error) {
