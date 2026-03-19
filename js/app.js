@@ -252,7 +252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const code = inviteInput.value.trim();
                 if (!code) return showToast('Pega un código válido.', 'error');
                 try {
-                    const data = JSON.parse(atob(code));
+                    const data = JSON.parse(decodeURIComponent(escape(atob(code))));
                     if (!data.c || !data.f) throw new Error('Invalid code');
                     
                     setupClientIdInput.value = data.c;
