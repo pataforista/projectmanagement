@@ -103,6 +103,12 @@
     cursor: pointer;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    pointer-events: auto;
+    z-index: 401;
+}
+
+#ollama-close svg {
+    pointer-events: auto;
 }
 
 #ollama-close:hover {

@@ -61,17 +61,41 @@ class OllamaCompanion {
     }
 
     setupListeners() {
-        // Close button - ensure it's properly bound
+        // Close button - use event delegation for robustness
+        const handleClose = (e) => {
+            console.log('[Companion] Close triggered, target:', e.target, 'button:', this.el.querySelector('#ollama-close'));
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggle(false);
+        };
+
+        // Method 1: Direct listener on close button
         const closeBtn = this.el.querySelector('#ollama-close');
         if (closeBtn) {
-            closeBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('[Companion] Close button clicked');
-                this.toggle(false);
-            });
+            closeBtn.addEventListener('click', handleClose);
+            console.log('[Companion] Close button listener attached');
+
+            // Method 2: Also listen on SVG inside button (in case SVG captures event)
+            const closeSvg = closeBtn.querySelector('svg');
+            if (closeSvg) {
+                closeSvg.addEventListener('click', handleClose);
+                console.log('[Companion] Close SVG listener attached');
+            }
         } else {
-            console.warn('[Companion] Close button not found');
+            console.warn('[Companion] Close button element not found');
+        }
+
+        // Method 3: Event delegation on header (catches all clicks in header)
+        const header = this.el.querySelector('.ollama-header');
+        if (header) {
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('#ollama-close')) {
+                    console.log('[Companion] Close clicked via delegation');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.toggle(false);
+                }
+            });
         }
 
         // Floating action button (FAB) - toggle companion
