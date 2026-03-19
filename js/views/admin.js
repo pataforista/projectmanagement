@@ -220,7 +220,7 @@ window.generateInvite = function(role) {
     w: config.workspace_name,
     r: role
   };
-  const code = btoa(JSON.stringify(payload));
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
   const output = document.getElementById('invite-output');
   const input = document.getElementById('invite-code-input');
   output.style.display = 'block';

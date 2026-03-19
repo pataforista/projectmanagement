@@ -199,12 +199,13 @@ function setCurrentMemberId(memberId) {
         console.warn('[Utils] Attempted to set empty memberId');
         return false;
     }
-    // OPCIÓN 2: Store in sessionStorage if available, else localStorage
+    // Store in both sessionStorage (fast per-tab) and localStorage (survives refresh)
     if (window.StorageManager && window.StorageManager.set) {
         window.StorageManager.set('workspace_user_member_id', memberId, 'session');
     } else {
         sessionStorage.setItem('workspace_user_member_id', memberId);
     }
+    localStorage.setItem('workspace_user_member_id', memberId);
     console.log(`[Utils] Configured memberId: ${memberId}`);
     return true;
 }
