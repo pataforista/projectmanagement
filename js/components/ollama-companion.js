@@ -61,24 +61,26 @@ class OllamaCompanion {
     }
 
     setupListeners() {
-        // Close button - use event delegation on header for robustness
-        // This survives feather.replace() calls that recreate SVG elements
-        const header = this.el.querySelector('.ollama-header');
-        if (header) {
-            header.addEventListener('click', (e) => {
-                // Check if click is on close button or any element inside it
-                const closeBtn = e.target.closest('#ollama-close');
-                if (closeBtn) {
-                    console.log('[Companion] Close clicked');
-                    e.preventDefault();
-                    e.stopPropagation();
+        // Close button 
+        const closeBtn = this.el.querySelector('#ollama-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                console.log('[Companion] Close clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                this.toggle(false);
+            });
+        }
+
+        // Close on outside click for better UX
+        document.addEventListener('click', (e) => {
+            if (this.isOpen && this.el) {
+                const path = e.composedPath();
+                if (!path.includes(this.el) && !path.some(el => el && (el.id === 'ollama-toggle-fab' || el.id === 'ollama-status-widget'))) {
                     this.toggle(false);
                 }
-            });
-            console.log('[Companion] Close button delegation listener attached');
-        } else {
-            console.warn('[Companion] Header element not found');
-        }
+            }
+        });
 
         // Floating action button (FAB) - toggle companion
         const fabBtn = document.getElementById('ollama-toggle-fab');
@@ -183,11 +185,31 @@ class OllamaCompanion {
                             : 'Para usar el asistente, asegúrate de que Ollama esté corriendo en tu PC.'}
                     </p>
                     ${isCorsIssue ? `
-                        <div style="background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:12px; font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">
-                            <strong style="color:var(--accent-danger);">Soluciones:</strong><br/>
-                            1️⃣ Inicia Ollama con:<br/>
-                            <code style="display:block; margin:4px 0; color:var(--accent-teal);">OLLAMA_ORIGINS="https://pataforista.github.io" ollama serve</code>
-                            2️⃣ O usa un CORS proxy en Integraciones
+                        <div style="background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:12px; font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; text-align:left;">
+                            <strong style="color:var(--accent-danger); font-size: 0.85rem; display:block; margin-bottom: 8px;">Cómo solucionar el error CORS:</strong>
+                            <p style="margin-bottom: 8px;">Por seguridad, los navegadores bloquean peticiones locales. Debes indicarle a Ollama que permita conexiones.</p>
+                            
+                            <strong style="color:var(--text-primary); margin-top: 8px; display:block;">Opción A: Terminal (Temporal)</strong>
+                            <div style="margin-bottom: 8px; padding-left: 8px; border-left: 2px solid var(--accent-primary);">
+                                <em>Windows (PowerShell):</em><br/>
+                                <code style="display:block; margin:4px 0; color:var(--accent-teal); padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.2); user-select: all;">$env:OLLAMA_ORIGINS="*"<br>ollama serve</code>
+                                <em>Mac/Linux:</em><br/>
+                                <code style="display:block; margin:4px 0; color:var(--accent-teal); padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.2); user-select: all;">OLLAMA_ORIGINS="*" ollama serve</code>
+                            </div>
+
+                            <strong style="color:var(--text-primary); margin-top: 8px; display:block;">Opción B: Windows (Permanente)</strong>
+                            <ol style="padding-left: 16px; margin-top: 4px; margin-bottom: 8px;">
+                                <li>Cierra completamente la app de Ollama (desde la bandeja cerca del reloj de Windows).</li>
+                                <li>Abre el menú Inicio y busca <strong>"Variables de entorno"</strong>.</li>
+                                <li>Haz clic en <strong>"Editar las variables de entorno del sistema"</strong> &gt; botón <strong>"Variables de entorno..."</strong>.</li>
+                                <li>En "Variables del usuario", haz clic en <strong>"Nueva..."</strong>.</li>
+                                <li>Nombre: <code style="color:var(--accent-teal); user-select: all;">OLLAMA_ORIGINS</code></li>
+                                <li>Valor: <code style="color:var(--accent-teal); user-select: all;">*</code></li>
+                                <li>Acepta todo y vuelve a abrir la app de Ollama.</li>
+                            </ol>
+                            
+                            <strong style="color:var(--text-primary); margin-top: 8px; display:block;">Opción C: Configuración de la App</strong>
+                            <p style="margin-top: 4px; margin-bottom: 0;">Ve a <strong>Integraciones</strong> (icono de engranaje en el menú izquierdo abajo) y configura un Proxy CORS.</p>
                         </div>
                     ` : ''}
                     <div class="offline-cmd" id="copy-ollama-cmd">
