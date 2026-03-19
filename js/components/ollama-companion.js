@@ -31,7 +31,7 @@ class OllamaCompanion {
                         <i data-feather="zap"></i>
                         <h2>AI Companion</h2>
                     </div>
-                    <button class="btn btn-icon" id="ollama-close" title="Cerrar (Esc)">
+                    <button class="btn btn-icon" id="ollama-close" title="Cerrar (Esc)" type="button">
                         <i data-feather="x"></i>
                     </button>
                 </div>
@@ -44,12 +44,15 @@ class OllamaCompanion {
                     </div>
                     <div class="ollama-input-container">
                         <textarea id="ollama-input" placeholder="Pregunta algo o usa una acción..." rows="1"></textarea>
-                        <button class="btn btn-primary btn-icon" id="ollama-send" title="Enviar (Enter)">
+                        <button class="btn btn-primary btn-icon" id="ollama-send" title="Enviar (Enter)" type="button">
                             <i data-feather="send"></i>
                         </button>
                     </div>
                 </div>
             </div>
+            <button id="ollama-toggle-fab" class="ollama-fab" title="Abrir AI Companion (Ctrl+Space)">
+                <i data-feather="zap"></i>
+            </button>
         `;
         document.body.insertAdjacentHTML('beforeend', html);
         this.el = document.getElementById('ollama-companion');
@@ -58,8 +61,30 @@ class OllamaCompanion {
     }
 
     setupListeners() {
-        this.el.querySelector('#ollama-close').addEventListener('click', () => this.toggle(false));
-        
+        // Close button - ensure it's properly bound
+        const closeBtn = this.el.querySelector('#ollama-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Companion] Close button clicked');
+                this.toggle(false);
+            });
+        } else {
+            console.warn('[Companion] Close button not found');
+        }
+
+        // Floating action button (FAB) - toggle companion
+        const fabBtn = document.getElementById('ollama-toggle-fab');
+        if (fabBtn) {
+            fabBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[Companion] FAB button clicked');
+                this.toggle();
+            });
+        }
+
         const input = this.el.querySelector('#ollama-input');
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -114,11 +139,25 @@ class OllamaCompanion {
 
     toggle(force) {
         this.isOpen = force !== undefined ? force : !this.isOpen;
-        this.el.classList.toggle('open', this.isOpen);
+        console.log('[Companion] Toggle called, isOpen:', this.isOpen);
+
+        // Ensure the element exists before manipulating
+        if (!this.el) {
+            console.error('[Companion] Element not found, cannot toggle');
+            return;
+        }
+
+        // Update class based on state
         if (this.isOpen) {
+            this.el.classList.add('open');
             this.renderQuickActions();
-            this.el.querySelector('#ollama-input').focus();
+            const input = this.el.querySelector('#ollama-input');
+            if (input) input.focus();
             this.scrollToBottom();
+            console.log('[Companion] Panel opened');
+        } else {
+            this.el.classList.remove('open');
+            console.log('[Companion] Panel closed');
         }
     }
 
