@@ -12,6 +12,7 @@ import {
     updateTopbarSyncWidget,
     initCommandPalette
 } from './ui.js';
+import { setCurrentMemberId, getCurrentWorkspaceUser, getCurrentWorkspaceMember, showToast } from './utils.js';
 import { StorageManager } from './utils/storage-manager.js';
 import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
