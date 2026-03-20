@@ -230,7 +230,7 @@ const syncManager = (() => {
 
             google.accounts.id.initialize({
                 client_id: client_id,
-                use_fedcm_for_prompt: false, // Disabling FedCM to avoid 401: invalid_client on certain origins
+                use_fedcm_for_prompt: true, // Enabled FedCM as required by Google's new policy
                 callback: async (response) => {
                     if (!response.credential) {
                         settleOnce(reject, 'No credential returned');
@@ -278,11 +278,14 @@ const syncManager = (() => {
             google.accounts.id.prompt((notification) => {
                 if (settled) return;
 
-                if (notification.isDismissedMoment?.() && notification.getDismissedReason?.() === 'credential_returned') {
-                    return; // Do not reject, wait for the callback which has the successful token.
+                if (notification.isNotDisplayed?.()) {
+                    console.warn('[Sync] Google One Tap not displayed:', notification.getNotDisplayedReason?.());
+                }
+                if (notification.isSkippedMoment?.()) {
+                    console.warn('[Sync] Google One Tap skipped:', notification.getSkippedReason?.());
                 }
 
-                if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+                if (notification.isDismissedMoment?.() && notification.getDismissedReason?.() === 'credential_returned') {
                     const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
                     settleOnce(reject, 'Google sign-in prompt was closed or skipped. Reason: ' + reason);
                 }
