@@ -1018,6 +1018,9 @@ body::before {
 .user-role {
     font-size: 0.7rem;
     color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ── Main Content ───────────────────────────────────────────────────────────── */
@@ -1324,6 +1327,24 @@ body::before {
 
     .sync-state-label {
         display: none;
+    }
+
+    /* Compact footer action buttons so all fit in one row */
+    .sidebar-footer .footer-actions {
+        gap: 4px;
+    }
+
+    .sidebar-footer .btn-icon,
+    .sidebar-footer .btn-theme-toggle {
+        width: 32px;
+        height: 32px;
+        padding: 6px;
+    }
+
+    .sidebar-footer .btn-icon [data-feather],
+    .sidebar-footer .btn-theme-toggle [data-feather] {
+        width: 16px;
+        height: 16px;
     }
 
 }
