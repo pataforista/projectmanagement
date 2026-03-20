@@ -241,7 +241,7 @@ export class SWUpdater {
             el.innerHTML = `
                 <span>${message}</span>
                 <button
-                    onclick="window.location.reload()"
+                    onclick="window.swUpdater ? window.swUpdater.forceUpdate() : window.location.reload()"
                     style="
                         background: var(--accent-primary);
                         color: #fff;
@@ -268,3 +268,4 @@ export class SWUpdater {
 
 // Export singleton instance
 export const swUpdater = new SWUpdater();
+window.swUpdater = swUpdater;

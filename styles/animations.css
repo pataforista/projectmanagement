@@ -668,6 +668,30 @@ body::after {
     -webkit-backdrop-filter: var(--blur);
 }
 
+#pwa-install-dismiss {
+    color: var(--text-muted);
+    transition: all var(--dur-fast);
+    padding: 8px;
+    margin-right: -4px;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#pwa-install-dismiss:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface-hover);
+    transform: scale(1.1);
+}
+
+#pwa-install-dismiss i {
+    width: 18px;
+    height: 18px;
+}
+
 /* ── 7. Enhanced task checkbox ─────────────────────────────────────────────── */
 @keyframes checkOrbPop {
     0% {
