@@ -2374,3 +2374,243 @@ tr:hover .quick-delete-btn {
 .hover-open-btn:hover {
     background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
 }
+
+/* ── Enhanced Mobile Compatibility ──────────────────────────────────────────── */
+
+/* Extra small devices (320px - 375px) */
+@media (max-width: 375px) {
+    .auth-box {
+        padding: 24px 16px;
+        max-width: 100%;
+    }
+
+    .sidebar {
+        width: 260px !important;
+    }
+
+    .view-inner {
+        padding: 12px 8px !important;
+    }
+
+    .topbar {
+        padding: env(safe-area-inset-top) 8px 0 8px !important;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+    }
+
+    h2 {
+        font-size: 1.1rem;
+    }
+
+    /* Better spacing for extra small screens */
+    .nav-section {
+        gap: 2px;
+    }
+
+    .nav-item span {
+        font-size: 0.85rem;
+    }
+}
+
+/* Small devices (376px - 480px) */
+@media (min-width: 376px) and (max-width: 480px) {
+    .auth-box {
+        padding: 28px 20px;
+        max-width: 100%;
+        margin: 16px;
+    }
+
+    .sidebar {
+        width: 270px;
+    }
+
+    .view-inner {
+        padding: 14px 12px !important;
+    }
+
+    .topbar {
+        padding: env(safe-area-inset-top) 12px 0 12px !important;
+    }
+
+    /* Stack buttons on mobile */
+    .form-group {
+        width: 100%;
+    }
+}
+
+/* Medium mobile (481px - 600px) */
+@media (min-width: 481px) and (max-width: 600px) {
+    .view-inner {
+        padding: 16px 14px !important;
+    }
+
+    /* Better grid for small cards */
+    .task-grid,
+    .card-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* Improved touch targets across all mobile devices */
+@media (hover: none) and (pointer: coarse) {
+    /* Increase touch target sizes */
+    .btn,
+    .nav-item,
+    .task-item,
+    .form-input,
+    .form-select {
+        min-height: 48px;
+    }
+
+    /* Better spacing for touch */
+    .btn {
+        padding: 12px 18px;
+    }
+
+    .nav-item {
+        padding: 12px 16px;
+        gap: 14px;
+    }
+
+    .task-item {
+        padding: 12px 16px;
+    }
+
+    /* Hide hover effects on touch */
+    .card:hover {
+        transform: none !important;
+    }
+
+    .btn:hover {
+        background-color: var(--bg-surface-hover);
+    }
+
+    /* Improve form input usability */
+    .form-input,
+    .form-select {
+        font-size: 16px;
+        padding: 12px 14px;
+    }
+
+    /* Prevent zoom on input focus (iOS) */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select {
+        font-size: 16px;
+    }
+
+    /* Better select dropdown on mobile */
+    select {
+        background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        background-size: 20px;
+        padding-right: 36px;
+    }
+}
+
+/* Landscape orientation optimizations */
+@media (max-height: 600px) and (orientation: landscape) {
+    .topbar {
+        padding: env(safe-area-inset-top) 12px 0 8px !important;
+        min-height: 48px;
+    }
+
+    .auth-box {
+        padding: 20px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .sidebar {
+        width: 240px;
+    }
+
+    h1 {
+        font-size: 1.2rem;
+    }
+
+    /* Reduce padding in landscape */
+    .view-inner {
+        padding: 12px !important;
+    }
+}
+
+/* Optimizations for devices with notch/safe area */
+@media (screen-spanning: single-fold-vertical) {
+    .app-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .sidebar {
+        width: 100%;
+        position: static;
+    }
+
+    .main-content {
+        width: 100%;
+    }
+}
+
+/* Better modal handling on small screens */
+@media (max-height: 500px) {
+    .auth-box,
+    .modal-content,
+    [role="dialog"] {
+        max-height: 95vh;
+        overflow-y: auto;
+    }
+}
+
+/* Optimize scrolling performance */
+@media (max-width: 768px) {
+    * {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    html {
+        scroll-behavior: auto;
+    }
+
+    /* Enable hardware acceleration for better performance */
+    .sidebar,
+    .details-panel,
+    .modal-content {
+        transform: translateZ(0);
+        -webkit-transform: translateZ(0);
+    }
+}
+
+/* Improve icon visibility on mobile */
+@media (max-width: 600px) {
+    [data-feather] {
+        min-width: 20px;
+        min-height: 20px;
+    }
+
+    .btn-icon [data-feather] {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+/* Safe area adjustments for all mobile devices */
+.topbar {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.sidebar {
+    padding-left: max(0, env(safe-area-inset-left));
+    padding-right: max(0, env(safe-area-inset-right));
+}
+
+.main-content {
+    padding-left: max(0, env(safe-area-inset-left));
+    padding-right: max(0, env(safe-area-inset-right));
+}
