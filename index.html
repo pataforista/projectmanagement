@@ -130,12 +130,15 @@
         </div>
 
         <div style="text-align:center; margin-top:4px; display:flex; flex-direction:column; gap:8px;">
+          <button type="button" id="auth-show-manual"
+            style="background:none; border:none; color:var(--text-muted); font-size:0.8rem; cursor:pointer; text-decoration:underline;">Ingresar con contraseña (Nexus Fortress)</button>
+
           <button type="button" id="auth-join-btn"
             style="background:none; border:none; color:var(--accent-primary); font-size:0.8rem; cursor:pointer; text-decoration:underline;">Tengo un Código de Invitación (Unirse a equipo)</button>
           
           <button type="button" id="auth-manual-setup"
             style="background:none; border:none; color:var(--text-muted); font-size:0.8rem; cursor:pointer; text-decoration:underline;">Configuración
-            manual (Solo local)</button>
+            manual (Solo local / Crear cuenta)</button>
         </div>
 
         <!-- auth-join-panel was moved from here -->
@@ -170,8 +173,9 @@
       </div>
 
       <form id="auth-form" style="display:flex; flex-direction:column; gap:16px;">
-        <input type="password" id="auth-password" name="password" class="form-input" placeholder="Contraseña" required autofocus autocomplete="current-password">
+        <input type="password" id="auth-password" name="password" class="form-input" placeholder="Contraseña o Clave Compartida" required autofocus autocomplete="current-password">
         <button type="submit" class="btn btn-primary" style="justify-content:center;">Desbloquear</button>
+        <button type="button" id="auth-show-setup" style="background:none; border:none; color:var(--text-muted); font-size:0.8rem; cursor:pointer; text-decoration:underline; margin-top:8px;">Volver a opciones de inicio / Google</button>
       </form>
 
       <!-- Forgot password link (shown only when recovery hash exists) -->

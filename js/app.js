@@ -202,19 +202,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const driveBtn = document.getElementById('auth-google-drive-link');
         const userNameEl = document.getElementById('auth-user-name');
 
-        const existingClientId = syncManager.getConfig().clientId;
+        const googleIDToken = StorageManager.get('google_id_token', 'session');
+        const hasSession = !!googleIDToken || !!StorageManager.get('workspace_user_email', 'session');
 
-        // If a Client ID exists, we are already "set up". We bypass the overlay
-        // and let sync.js handle the silent token refresh in the background.
-        if (existingClientId || !setupPanel) {
+        // Bypassear el overlay solo si ya estamos autenticados (token presente) 
+        // o si el sistema de crypto ya desbloqueó automáticamente (hasKey).
+        if ((existingClientId && hasSession) || cryptoLayer?.hasKey() || !setupPanel) {
             authOverlay.classList.remove('open');
             return resolve();
         }
 
-        // --- First Run Setup (No Client ID yet) ---
+        // --- First Run / Re-auth Setup ---
         authOverlay.classList.add('open');
-        authForm.style.display = 'none'; // Hide manual password form forever
-        setupPanel.style.display = 'flex';
+        
+        // Mostrar panel de setup por defecto si no hay Client ID
+        if (!existingClientId) {
+            authForm.style.display = 'none';
+            setupPanel.style.display = 'flex';
+        } else {
+            // Si ya hay Client ID pero no hay sesión, mostrar opciones o login
+            authForm.style.display = 'flex'; 
+            setupPanel.style.display = 'none';
+            if (authSubtitle) authSubtitle.textContent = 'Tu sesión ha expirado o necesitas entrar con la clave compartida.';
+        }
 
         if (showClientIdBtn && clientIdContainer) {
             clientIdContainer.style.display = 'flex';
@@ -246,6 +256,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             joinBack.onclick = () => {
                 setupPanel.style.display = 'flex';
                 joinPanel.style.display = 'none';
+            };
+        }
+
+        const showManualBtn = document.getElementById('auth-show-manual');
+        if (showManualBtn) {
+            showManualBtn.onclick = () => {
+                setupPanel.style.display = 'none';
+                authForm.style.display = 'flex';
+                if (authSubtitle) authSubtitle.textContent = 'Ingresa la clave compartida del workspace.';
+            };
+        }
+
+        const showSetupBtn = document.getElementById('auth-show-setup');
+        if (showSetupBtn) {
+            showSetupBtn.onclick = () => {
+                setupPanel.style.display = 'flex';
+                authForm.style.display = 'none';
+                if (authSubtitle) authSubtitle.textContent = 'Configura tu acceso o usa Google.';
             };
         }
         if (joinConfirm) {
