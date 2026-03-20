@@ -17,6 +17,7 @@ import { StorageManager } from './utils/storage-manager.js';
 import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
 import { companion as ollamaCompanion } from './components/ollama-companion.js';
+import { swUpdater } from './utils/sw-updater.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     initGlobalEffects();
@@ -399,55 +400,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('[Boot] Store load failed:', e);
     }
 
-    // ── 3. Register service worker ─────────────────────────────────────────────
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(reg => {
-            reg.onupdatefound = () => {
-                const newSW = reg.installing;
-                newSW.onstatechange = () => {
-                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                        if (window.showToast) showToast('Actualización lista. Reiniciando...', 'info');
-                    }
-                };
-            };
-        }).catch(() => { });
+    // ── 3. Initialize Service Worker Update Manager ──────────────────────────
+    // Handles SW registration, version detection, and forced updates
+    await swUpdater.init();
 
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-            // ✅ FIX: Never reload immediately — the user might have unsaved work.
-            // Show a non-blocking toast and let them decide when to refresh.
-            const reload = () => window.location.reload();
-            if (window.showToast) {
-                // Create an actionable toast with an "Update" button
-                const container = document.getElementById('toast-container');
-                if (container) {
-                    const el = document.createElement('div');
-                    el.className = 'toast toast-info';
-                    el.style.cssText = 'display:flex;align-items:center;gap:10px;';
-                    el.innerHTML = `<span>Nueva versión disponible.</span>
-                        <button onclick="window.location.reload()" style="background:var(--accent-primary);color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:0.8rem;font-weight:600;">Actualizar</button>`;
-                    container.appendChild(el);
-                } else {
-                    showToast('Nueva versión disponible. Recarga para actualizar.', 'info');
-                }
-            } else {
-                // Fallback: confirm dialog if toast system isn't ready yet
-                if (confirm('Nueva versión disponible. ¿Actualizar ahora?')) reload();
-            }
-        });
-    }
+    // Make updater globally available for debugging/testing
+    window.swUpdater = swUpdater;
+
+    // Listen for updates and show notifications
+    swUpdater.onUpdate(({ status, version }) => {
+        console.log(`[App] SW update status: ${status}, version: ${version}`);
+        if (status === 'ready') {
+            // Update is ready - show notification with update button
+            swUpdater.showUpdateNotification('Nueva versión disponible. Actualiza para continuar.');
+        } else if (status === 'applied') {
+            // Update has been applied
+            console.log('[App] SW update applied successfully');
+        }
+    });
 
     // Global reset utility for stuck caches
     window.resetAppCache = async () => {
         if (!confirm('¿Seguro que quieres restablecer la App? Se borrará el caché y la configuración local.')) return;
-        if ('serviceWorker' in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (let reg of regs) await reg.unregister();
+        try {
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (let reg of regs) await reg.unregister();
+            }
+            const cacheNames = await caches.keys();
+            for (let name of cacheNames) await caches.delete(name);
+            localStorage.clear();
+            sessionStorage.clear();
+            console.log('[App] Cache reset complete');
+            window.location.href = window.location.pathname;
+        } catch (err) {
+            console.error('[App] Cache reset error:', err);
+            alert('Error al restablecer. Intenta manualmente borrar datos de la app.');
         }
-        const cacheNames = await caches.keys();
-        for (let name of cacheNames) await caches.delete(name);
-        localStorage.clear();
-        sessionStorage.clear();
-        window.location.href = window.location.pathname;
+    };
+
+    // Global force update utility (for critical updates)
+    window.forceAppUpdate = async (reason = 'manual') => {
+        console.log(`[App] Force update requested: ${reason}`);
+        await swUpdater.forceUpdate(reason);
     };
 
     // ── 4. Register all views with router ──────────────────────────────────────

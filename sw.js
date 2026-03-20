@@ -1,9 +1,12 @@
 /**
- * Service Worker — v11 (Stability + Crash Protection)
- * Caches shell assets and provides an always-responding fetch handler.
+ * Service Worker — v12 (Enhanced Mobile Compatibility + Force Updates)
+ * Caches shell assets, auto-update detection, and crash protection.
  */
 
+// ── VERSION CONTROL FOR FORCED UPDATES ──────────────────────────────────────
+const SW_VERSION = '12.0.1';  // Increment this to force all clients to update
 const CACHE_NAME = 'workspace-v12';
+const VERSION_CACHE = 'workspace-version';
 const SHELL_ASSETS = [
     './',
     'index.html',
@@ -44,9 +47,17 @@ const SHELL_ASSETS = [
 ];
 
 self.addEventListener('install', event => {
+    console.log(`[SW] Installing Service Worker v${SW_VERSION}`);
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => cache.addAll(SHELL_ASSETS))
+            .then(() => {
+                // Store current version for client-side detection
+                return caches.open(VERSION_CACHE).then(cache => {
+                    const versionBlob = new Blob([JSON.stringify({ version: SW_VERSION, timestamp: Date.now() })], { type: 'application/json' });
+                    return cache.put('version.json', new Response(versionBlob));
+                });
+            })
             .then(() => self.skipWaiting())
             .catch(err => {
                 console.warn('[SW] Cache init error:', err);
@@ -56,10 +67,29 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
+    console.log(`[SW] Activating Service Worker v${SW_VERSION}`);
     event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-        ).then(() => self.clients.claim())
+        caches.keys().then(keys => {
+            // Delete old cache versions (keep current + version cache)
+            const toDelete = keys.filter(k => k !== CACHE_NAME && k !== VERSION_CACHE);
+            return Promise.all(toDelete.map(k => {
+                console.log(`[SW] Clearing old cache: ${k}`);
+                return caches.delete(k);
+            }));
+        })
+        .then(() => {
+            // Notify all clients of the update
+            return self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                    client.postMessage({
+                        type: 'SW_ACTIVATED',
+                        version: SW_VERSION,
+                        timestamp: Date.now()
+                    });
+                });
+            });
+        })
+        .then(() => self.clients.claim())
     );
 });
 
@@ -136,4 +166,17 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
     event.notification.close();
     event.waitUntil(clients.openWindow('./'));
+});
+
+// ── MESSAGE HANDLER FOR CLIENT-SERVER COMMUNICATION ──────────────────────────
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'GET_SW_VERSION') {
+        event.ports[0].postMessage({
+            version: SW_VERSION,
+            timestamp: Date.now()
+        });
+    } else if (event.data && event.data.type === 'SKIP_WAITING') {
+        // Allow client to force skip waiting (used during forced updates)
+        self.skipWaiting();
+    }
 });
