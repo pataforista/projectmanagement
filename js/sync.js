@@ -275,21 +275,32 @@ const syncManager = (() => {
                 }
             });
 
-            google.accounts.id.prompt((notification) => {
-                if (settled) return;
+            // BUG FIX: Add a small delay for manual triggers to avoid the click itself 
+            // being counted as a "tap_outside" which immediately skips the prompt.
+            setTimeout(() => {
+                google.accounts.id.prompt((notification) => {
+                    if (settled) return;
 
-                if (notification.isNotDisplayed?.()) {
-                    console.warn('[Sync] Google One Tap not displayed:', notification.getNotDisplayedReason?.());
-                }
-                if (notification.isSkippedMoment?.()) {
-                    console.warn('[Sync] Google One Tap skipped:', notification.getSkippedReason?.());
-                }
+                    if (notification.isNotDisplayed?.()) {
+                        console.warn('[Sync] Google One Tap not displayed:', notification.getNotDisplayedReason?.());
+                    }
+                    if (notification.isSkippedMoment?.()) {
+                        console.warn('[Sync] Google One Tap skipped:', notification.getSkippedReason?.());
+                    }
 
-                if (notification.isDismissedMoment?.() && notification.getDismissedReason?.() === 'credential_returned') {
-                    const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
-                    settleOnce(reject, 'Google sign-in prompt was closed or skipped. Reason: ' + reason);
-                }
-            });
+                    if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+                        const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
+                        
+                        // Special handling for tap_outside: inform the user
+                        let errorMsg = 'Google sign-in prompt was closed or skipped. Reason: ' + reason;
+                        if (reason === 'tap_outside') {
+                            errorMsg = 'El selector de Google se cerró porque se detectó un clic fuera. Por favor, intenta de nuevo sin hacer clic fuera del aviso.';
+                        }
+                        
+                        settleOnce(reject, errorMsg);
+                    }
+                });
+            }, 100);
         });
     }
 

@@ -1,23 +1,29 @@
-# Setting up Ollama for CORS
+# Configuración de Ollama para CORS
 
-To use Ollama from the hosted version of the application (`https://pataforista.github.io`), you must configure the `OLLAMA_ORIGINS` environment variable to permit cross-origin requests.
+Para usar Ollama desde la versión hospedada (`https://pataforista.github.io`), debes configurar la variable de entorno `OLLAMA_ORIGINS`.
 
-## Windows (Your OS)
+> [!IMPORTANT]
+> **Debes cerrar Ollama completamente** (asegúrate en el Administrador de Tareas) antes de reiniciarlo para que tome los cambios.
 
-1. **Quit Ollama**: Locate the Ollama icon in your system tray (bottom-right corner), right-click it, and select **Quit Ollama**.
-2. **Open Environment Variables**:
-   - Press the `Win` key or click the Start menu.
-   - Type **"environment variables"**.
-   - Select **"Edit the system environment variables"**.
-3. **Edit Variables**:
-   - In the "System Properties" window that appears, click the **Environment Variables...** button.
-   - Under **"User variables for [YourUser]"**, click the **New...** button.
-4. **Add New Variable**:
-   - **Variable name**: `OLLAMA_ORIGINS`
-   - **Variable value**: `https://pataforista.github.io`
-5. **Save and Restart**:
-   - Click **OK** on all windows to save the changes.
-   - Restart Ollama by launching it from the Start menu.
+## Windows (Tu sistema)
+
+1. **Cerrar Ollama**: Haz clic derecho en el icono de Ollama en la bandeja del sistema (junto al reloj) y selecciona **Quit Ollama**.
+2. **Forzar cierre**: Presiona `Ctrl + Shift + Esc`, ve a la pestaña **Detalles** y termina cualquier proceso `ollama.exe` que siga vivo.
+3. **Variables de Entorno**:
+   - Pulsa la tecla `Win`, escribe **"variables de entorno"** y elige **"Editar las variables de entorno del sistema"**.
+   - Haz clic en el botón **Variables de entorno...**.
+4. **Agregar Variable (RECOMENDADO: Usar comodín primero)**:
+   - En "Variables de usuario", haz clic en **Nueva...**.
+   - Nombre: `OLLAMA_ORIGINS`
+   - Valor: `*`
+5. **Guardar y Reiniciar**: Acepta todo y vuelve a abrir Ollama desde el menú Inicio.
+
+### Alternativa rápida (PowerShell)
+Si quieres probarlo sin reiniciar Windows, cierra Ollama y ejecuta esto en PowerShell:
+```powershell
+$env:OLLAMA_ORIGINS="*"; ollama serve
+```
+Mantén esa ventana abierta mientras usas la app.
 
 ---
 
