@@ -102,6 +102,16 @@ const syncManager = (() => {
             autoSyncMinutes: Math.max(1, Number(next.autoSyncMinutes) || defaultConfig.autoSyncMinutes),
         };
         
+        // BUG FIX: Parse out valid Google Drive folder ID if the user pasted a full URL
+        if (typeof normalized.sharedFolderId === 'string') {
+            const m = normalized.sharedFolderId.match(/folders\/([a-zA-Z0-9-_]+)/) || 
+                      normalized.sharedFolderId.match(/\/d\/([a-zA-Z0-9-_]+)/) || 
+                      normalized.sharedFolderId.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+            if (m && m[1]) {
+                normalized.sharedFolderId = m[1];
+            }
+        }
+        
         // BUG FIX: If the user changes target folder or file name, we MUST clear the
         // cached Drive IDs from localStorage so the app forcefully searches for or creates
         // the new file in the new location, instead of blindly using the old file ID.

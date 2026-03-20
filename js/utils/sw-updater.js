@@ -56,7 +56,7 @@ export class SWUpdater {
      * Register the Service Worker
      */
     registerServiceWorker() {
-        navigator.serviceWorker.register('sw.js', { scope: '/' })
+        navigator.serviceWorker.register('sw.js', { scope: './' })
             .then(reg => {
                 console.log('[SWUpdater] Service Worker registered');
 
