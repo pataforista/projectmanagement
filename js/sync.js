@@ -230,6 +230,7 @@ const syncManager = (() => {
 
             google.accounts.id.initialize({
                 client_id: client_id,
+                auto_select: false,          // Disabling auto-select to force the account chooser
                 use_fedcm_for_prompt: true, // Enabled FedCM as required by Google's new policy
                 callback: async (response) => {
                     if (!response.credential) {
