@@ -123,3 +123,104 @@
 .details-body::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
+
+/* ── Mobile Details Panel Optimizations ────────────────────────────────────── */
+
+/* Optimized details panel for mobile devices */
+@media (max-width: 768px) {
+    .details-panel {
+        position: fixed;
+        inset: 0;
+        grid-column: unset;
+        width: 100%;
+        height: 100%;
+        transform: translateX(100%);
+        transition: transform 0.3s var(--ease-out);
+        z-index: 1001;
+        border-left: none;
+    }
+
+    .show-details .details-panel {
+        transform: translateX(0);
+    }
+
+    .details-header {
+        padding: env(safe-area-inset-top) 12px 0 12px;
+        height: auto;
+        min-height: 48px;
+    }
+
+    .details-body {
+        padding: 16px 12px;
+        overflow-y: auto;
+    }
+
+    .details-footer {
+        padding: 12px;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .details-title-input {
+        font-size: 1.3rem;
+        margin-bottom: 20px;
+    }
+
+    .details-field-group {
+        margin-bottom: 16px;
+    }
+
+    .details-field-label {
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+    }
+}
+
+/* Extra small details panel on very small devices */
+@media (max-width: 480px) {
+    .details-body {
+        padding: 12px 10px;
+    }
+
+    .details-title-input {
+        font-size: 1.1rem;
+        margin-bottom: 16px;
+    }
+
+    .details-field-group {
+        margin-bottom: 12px;
+    }
+
+    .details-footer {
+        padding: 10px;
+    }
+
+    .details-footer .btn {
+        padding: 10px 12px;
+        font-size: 0.85rem;
+    }
+}
+
+/* Better close button accessibility on mobile */
+@media (max-width: 768px) {
+    .details-close-btn {
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* Landscape orientation details panel */
+@media (max-width: 768px) and (orientation: landscape) {
+    .details-body {
+        max-height: calc(100vh - 60px);
+        padding: 12px 10px;
+    }
+
+    .details-title-input {
+        font-size: 1rem;
+        margin-bottom: 12px;
+    }
+}
