@@ -218,7 +218,7 @@ export const ENCRYPTED_STORES = new Set([
 async function getOrCreateSalt() {
     if (_activeSalt) return _activeSalt;
 
-    const email = localStorage.getItem('workspace_user_email') || '';
+    let email = localStorage.getItem('workspace_user_email') || '';
     if (email) {
         // SECURITY FIX: Validate email before encoding
         let scopedKey;
