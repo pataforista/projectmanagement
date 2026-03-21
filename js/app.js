@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (changeEvent.type === 'account_switched') {
                 console.log(`[Boot] Account switch detected: ${changeEvent.oldEmail} → ${changeEvent.newEmail}`);
                 if (window.syncManager && window.syncManager.handleAccountSwitch) {
-                    await syncManager.handleAccountSwitch(changeEvent.oldEmail, changeEvent.newEmail);
+                    await window.syncManager.handleAccountSwitch(changeEvent.oldEmail, changeEvent.newEmail);
                 }
             } else if (changeEvent.type === 'token_expired') {
                 console.log('[Boot] Google token expired');
@@ -591,7 +591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-integrations')?.addEventListener('click', () => router.navigate('/integrations'));
     document.getElementById('btn-search')?.addEventListener('click', openSearch);
     document.getElementById('btn-new-global')?.addEventListener('click', openQuickAdd);
-    document.getElementById('btn-help')?.addEventListener('click', openHelpModal);
+    document.getElementById('btn-help')?.addEventListener('click', () => { if (window.openHelpModal) window.openHelpModal(); });
     document.getElementById('search-input')?.addEventListener('input', e => handleSearch(e.target.value));
 
     // ── Buttons migrated from inline onclick (CSP prep) ────────────────────────
