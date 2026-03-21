@@ -1325,8 +1325,9 @@ const syncManager = (() => {
         return folderId;
     }
 
-    async function findFolder(name) {
-        const q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    async function findFolder(name, parentId) {
+        let q = `name='${name.replace(/'/g, "\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+        if (parentId) q += ` and '${parentId}' in parents`;
         const resp = await fetchWithTimeout(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -2538,7 +2539,11 @@ const syncManager = (() => {
                                 _chatDecryptBlacklist.add(file.id);
                                 decryptFailures++;
                                 console.error(`[ChatSync] Decryption failed for message ${file.name} (${file.id}). DELETING from Drive for cleanup.`);
-                                deleteChatMessage(file.id).catch(() => {});
+                                fetchWithTimeout(`https://www.googleapis.com/drive/v3/files/${file.id}?supportsAllDrives=true`, {
+                                    method: 'DELETE',
+                                    headers: { Authorization: `Bearer ${accessToken}` },
+                                    timeout: 10000
+                                }).catch(() => {});
                                 
                                 // Advance cursor past this message (we cannot read it, but we shouldn't
                                 // be stuck retrying it forever).
@@ -2601,6 +2606,7 @@ const syncManager = (() => {
     }
 
     let isChatPollingActive = false; // Lock para la red
+    let _chatVisibilityListenerRegistered = false;
     function startChatSync() {
         if (chatSyncTimer) clearTimeout(chatSyncTimer);
 
@@ -2627,11 +2633,13 @@ const syncManager = (() => {
             chatSyncTimer = setTimeout(loop, interval);
         };
 
-        // Listen for visibility changes to adjust polling rate
-        const handleVisibilityChange = () => {
-            console.log('[ChatSync] Visibility changed, poll interval adjusted');
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
+        // Listen for visibility changes to adjust polling rate (only once)
+        if (!_chatVisibilityListenerRegistered) {
+            _chatVisibilityListenerRegistered = true;
+            document.addEventListener('visibilitychange', () => {
+                console.log('[ChatSync] Visibility changed, poll interval adjusted');
+            });
+        }
 
         loop();
     }

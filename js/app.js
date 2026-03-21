@@ -204,8 +204,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const googleIDToken = StorageManager.get('google_id_token', 'session');
         const hasSession = !!googleIDToken || !!StorageManager.get('workspace_user_email', 'session');
+        const existingClientId = window.syncManager?.getConfig?.()?.clientId || '';
 
-        // Bypassear el overlay solo si ya estamos autenticados (token presente) 
+        // Bypassear el overlay solo si ya estamos autenticados (token presente)
         // o si el sistema de crypto ya desbloqueó automáticamente (hasKey).
         if ((existingClientId && hasSession) || cryptoLayer?.hasKey() || !setupPanel) {
             authOverlay.classList.remove('open');
