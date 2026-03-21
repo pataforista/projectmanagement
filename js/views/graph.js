@@ -97,7 +97,7 @@ export const renderGraph = (root) => {
     // 2. Add Documents (including Wiki Pages)
     documents.forEach(d => {
         const isWiki = d.wikiType && d.wikiType.startsWith('wiki-');
-        const nodeColor = isWiki 
+        const nodeColor = isWiki
             ? (d.wikiType === 'wiki-book' ? '#ef4444' : d.wikiType === 'wiki-chapter' ? '#f59e0b' : '#38bdf8')
             : '#14b8a6';
 
@@ -119,7 +119,7 @@ export const renderGraph = (root) => {
         // Networked connections: Wiki-links & Tags
         if (d.content) {
             const contentLow = d.content.toLowerCase();
-            
+
             // Wiki-links [[Doc Title]]
             documents.forEach(other => {
                 if (other.id !== d.id && contentLow.includes(`[[${(other.title || '').toLowerCase()}]]`)) {

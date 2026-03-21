@@ -20,7 +20,7 @@ function renderLibrary(root) {
           <h1>Biblioteca de Recursos</h1>
           <p class="view-subtitle">Gestión del conocimiento e investigación.</p>
         </div>
-        
+
         <div class="view-actions">
            <!-- Tab Switcher -->
            <div class="btn-group" style="background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; display: flex; gap: 4px;">
@@ -194,7 +194,7 @@ async function loadDriveContent(targetFolderId = null) {
 
   let files = [];
   const mobileMode = window.isMobileRuntime?.() || false;
-  
+
   try {
     // If we are at the beginning (null), try to use the shared folder from config as starting point
     let effectiveFolderId = targetFolderId;
@@ -247,17 +247,17 @@ async function loadDriveContent(targetFolderId = null) {
           const isFolder = file.mimeType === 'application/vnd.google-apps.folder';
           const icon = isFolder ? 'folder' : getFileIcon(file.mimeType);
           const fileSizeLabel = isFolder ? 'Carpeta' : `${(Number(file.size || 0) / 1024 / 1024).toFixed(2)} MB`;
-          
+
           const thumbnailLink = safeUrl(file.thumbnailLink);
           const iconLink = safeUrl(file.iconLink);
           const webViewLink = safeUrl(file.webViewLink);
           const ownerLabel = file.owners?.[0]?.displayName || 'Externo';
-          
+
           return `
-            <div class="card glass-panel drive-card ${isFolder ? 'folder-card' : ''}" 
+            <div class="card glass-panel drive-card ${isFolder ? 'folder-card' : ''}"
                  style="padding:12px; display:flex; flex-direction:column; gap:8px; transition: all 0.2s; cursor:${isFolder ? 'pointer' : 'default'};"
                  ${isFolder ? `onclick="navigateToDriveFolder('${file.id}', '${esc(file.name)}', false)"` : ''}>
-              
+
               <div class="drive-thumb" style="height:110px; background:var(--bg-surface-2); border-radius:6px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;">
                 ${(thumbnailLink && !mobileMode && !isFolder)
                   ? `<img src="${thumbnailLink}" alt="Vista previa" style="width:100%; height:100%; object-fit:cover;">`
@@ -536,7 +536,7 @@ function renderLibraryGrid(items) {
             <h4 style="font-size:0.9rem; margin:0 0 4px 0; line-height:1.4; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="${esc(item.title)}">${esc(item.title)}</h4>
             <p style="font-size:0.75rem; color:var(--text-muted); margin:0;">${esc(item.author || '---')}</p>
           </div>
-          
+
           <div style="display:flex; flex-direction:column; gap:4px;">
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
               ${(item.groups || []).map(g => `

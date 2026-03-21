@@ -284,7 +284,7 @@ function _showSaveIndicator() {
 /**
  * Ejecuta una operación IndexedDB manejando los eventos onsuccess y onerror automáticamente,
  * devolviendo una Promesa estándar.
- * 
+ *
  * @param {string} storeName - El nombre del ObjectStore sobre el que operar.
  * @param {IDBTransactionMode} mode - Tipo de transacción ('readonly' o 'readwrite').
  * @param {Function} fn - Callback que recibe el store para ejecutar un request de la IDB.

@@ -215,14 +215,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // --- First Run / Re-auth Setup ---
         authOverlay.classList.add('open');
-        
+
         // Mostrar panel de setup por defecto si no hay Client ID
         if (!existingClientId) {
             authForm.style.display = 'none';
             setupPanel.style.display = 'flex';
         } else {
             // Si ya hay Client ID pero no hay sesión, mostrar opciones o login
-            authForm.style.display = 'flex'; 
+            authForm.style.display = 'flex';
             setupPanel.style.display = 'none';
             if (authSubtitle) authSubtitle.textContent = 'Tu sesión ha expirado o necesitas entrar con la clave compartida.';
         }
@@ -284,11 +284,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                     const data = JSON.parse(decodeURIComponent(escape(atob(code))));
                     if (!data.c || !data.f) throw new Error('Invalid code');
-                    
+
                     setupClientIdInput.value = data.c;
                     const sharedIdInput = document.getElementById('auth-setup-shared-id') || { value: '' };
                     sharedIdInput.value = data.f;
-                    
+
                     // Pre-fill config so syncManager uses it
                     syncManager.saveConfig({
                         ...syncManager.getConfig(),
@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 }
 
                                 await syncManager.authorize(providedClientId);
-                                
+
                                 authOverlay.classList.remove('open');
                                 if (window.showToast) showToast('¡Workspace conectado!', 'success');
                                 resolve();
@@ -408,7 +408,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
     try {
         await initDB();
-        
+
         // ── Initialize Session Manager now that DB is ready ─────────────────
         try {
             if (window.db && window.SessionManager) {
@@ -543,7 +543,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.openInitialSetupModal) openInitialSetupModal();
     } else if (user.email) {
         let member = allMembers.find(m => m.email === user.email || (m.emailHash && m.emailHash === user.emailHash));
-        
+
         // If not a member yet, but has a pending invite role
         if (!member && config.pending_invite_role) {
             const role = config.pending_invite_role;

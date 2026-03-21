@@ -157,7 +157,7 @@ function showDayTasks(root, dateStr) {
 function exportWorkspaceToICS() {
   const tasks = store.get.allTasks();
   const sessions = store.get.sessions();
-  
+
   const events = [];
 
   // Map Tasks

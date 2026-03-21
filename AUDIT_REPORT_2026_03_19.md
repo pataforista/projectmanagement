@@ -9,7 +9,7 @@ La aplicación presenta un estado de madurez técnica elevado, especialmente en 
 
 ## 1. Seguridad y Control de Acceso (RBAC)
 ### Hallazgos Críticos
-- **[CRÍTICO] RBAC Fragmentado:** Aunque la aplicación implementa `RoleManager.canEditContent` en tareas y documentos, **no se aplica** en las acciones de Proyectos, Ciclos y Decisiones. 
+- **[CRÍTICO] RBAC Fragmentado:** Aunque la aplicación implementa `RoleManager.canEditContent` en tareas y documentos, **no se aplica** en las acciones de Proyectos, Ciclos y Decisiones.
   - *Impacto:* Un usuario con rol de "Colaborador" puede eliminar un proyecto completo (y todas sus tareas por cascada) o modificar la visibilidad de compartido a local, rompiendo la integridad del equipo.
 - **Validación de Contraseñas:** Se confirmó la implementación correcta del mínimo de 8 caracteres y el uso de PBKDF2 (600k iteraciones) para el cifrado E2EE.
 

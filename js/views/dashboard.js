@@ -100,7 +100,7 @@ function renderDashboard(root) {
     </div>`;
 
   feather.replace();
-  
+
   // Playful Personalization
   const user = getCurrentWorkspaceUser();
   const greetingEl = root.querySelector('#dash-greeting');

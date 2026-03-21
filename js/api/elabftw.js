@@ -1,7 +1,7 @@
 /**
  * api/elabftw.js — eLabFTW Integration for Research Management
- * 
- * Supports creating experiments and linking manuscript sections to 
+ *
+ * Supports creating experiments and linking manuscript sections to
  * ELN (Electronic Lab Notebook) entries.
  */
 

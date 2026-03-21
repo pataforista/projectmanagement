@@ -220,7 +220,7 @@ window.openImportInterconsultationModal = function () {
         <button class="btn btn-icon" id="imp-close"><i data-feather="x"></i></button>
       </div>
       <div class="modal-body">
-        
+
         <div class="form-group" style="padding:12px; background:var(--bg-surface-2); border-radius:8px; margin-bottom:16px;">
           <h3 style="margin:0 0 12px 0; font-size:1rem; display:flex; align-items:center; gap:6px;"><i data-feather="file-text" style="width:16px;height:16px;"></i> Importar de Google Sheets (Vía API)</h3>
           <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:12px;">
@@ -245,7 +245,7 @@ window.openImportInterconsultationModal = function () {
         </div>
 
         <hr style="border:0; border-top:1px solid var(--border-color); margin:16px 0;">
-        
+
         <div class="form-group">
           <label class="form-label"><i data-feather="user-check" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;"></i>Asignar importaciones a:</label>
           <select class="form-select" id="imp-assignee">
@@ -426,7 +426,7 @@ window.syncInterconsultations = async function() {
     }
     const spreadsheetId = match[1];
     const token = window.syncManager?.getAccessToken?.();
-    
+
     if (!token) {
         root.dataset.syncing = 'false';
         renderMedical(root);

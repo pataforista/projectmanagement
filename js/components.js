@@ -159,7 +159,7 @@ function miniProjectCard(p) {
 // ── Cycle Card (Cycles View, Project Detail) ─────────────────────────────────
 /**
  * Renderiza una tarjeta ampliada y detallada de un Ciclo, enumerando
- * internamente la progresión actual, tareas finalizadas y atajos rápidos. 
+ * internamente la progresión actual, tareas finalizadas y atajos rápidos.
  * @param {Object} c - Entidad de estado "Ciclo".
  * @returns {string} Cadena HTML para inyección.
  */

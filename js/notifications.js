@@ -7,8 +7,8 @@
  */
 const NotificationsManager = {
     /**
-     * Inicializa el sistema de notificaciones. Solicita permiso al usuario si 
-     * aún no lo ha concedido, verifica recordatorios pendientes inmediatamente 
+     * Inicializa el sistema de notificaciones. Solicita permiso al usuario si
+     * aún no lo ha concedido, verifica recordatorios pendientes inmediatamente
      * y configura un intervalo de chequeo horario.
      */
     async init() {
@@ -34,8 +34,8 @@ const NotificationsManager = {
     },
 
     /**
-     * Evalúa todas las tareas locales no terminadas para determinar si hay 
-     * tareas vencidas o por vencer (mañana o hoy) y dispara una alerta 
+     * Evalúa todas las tareas locales no terminadas para determinar si hay
+     * tareas vencidas o por vencer (mañana o hoy) y dispara una alerta
      * agrupada de recordatorio diario.
      */
     checkReminders() {

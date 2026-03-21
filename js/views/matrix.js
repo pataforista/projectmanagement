@@ -35,7 +35,7 @@ function renderMatrix(root) {
 
       <div class="matrix-container">
         <div class="matrix-grid">
-          
+
           <div class="matrix-quadrant q1">
             <div class="quadrant-header">
               <span class="quadrant-number">1</span>

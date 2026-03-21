@@ -1,13 +1,13 @@
 import { store } from './store.js';
-import { 
-  esc, 
-  showToast, 
-  setCurrentMemberId, 
-  fmtDate, 
-  generateUID, 
-  getCurrentWorkspaceUser, 
-  getCurrentWorkspaceMember, 
-  PROJECT_TYPES 
+import {
+  esc,
+  showToast,
+  setCurrentMemberId,
+  fmtDate,
+  generateUID,
+  getCurrentWorkspaceUser,
+  getCurrentWorkspaceMember,
+  PROJECT_TYPES
 } from './utils.js';
 
 /**
@@ -26,7 +26,7 @@ window.TASK_TYPES = TASK_TYPES;
 /**
  * Crea e inyecta dinámicamente un overlay modal con el HTML suministrado.
  * Automáticamente reemplaza los logos SVG correspondientes a "Feather Icons".
- * 
+ *
  * @param {string} html - HTML que contiene la estructura interna (header, body, footer) del modal.
  * @returns {HTMLElement} Elemento DOM activo que representa este modal.
  */
@@ -66,9 +66,9 @@ function refreshCurrentView() {
 
 /**
  * Despliega un formulario modal dinámico para Crear o Editar una tarea.
- * Determina el modo (edición vs creación) basándose en si se recibe un 
+ * Determina el modo (edición vs creación) basándose en si se recibe un
  * objecto tipo Tarea literal o sólo parámetros por defecto.
- * 
+ *
  * @param {Object|string} defaultProjectIdOrTask - Si es objeto Tarea carga modo Edición. Si es string, precarga ese proyecto.
  * @param {string} defaultStatus - Define el estado seleccionado por defecto (opcional).
  */
@@ -182,7 +182,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
         <div class="form-group">
           <label class="form-label">Etiquetas (separadas por coma)</label>
           <input class="form-input" id="task-tags" placeholder="ej. urgente, revisión, campo" value="${isEdit && task.tags ? esc(task.tags.join(', ')) : ''}" style="margin-bottom:8px;">
-          
+
           <label class="form-label">Referencias de Zotero</label>
           <select class="form-select" id="task-refs" multiple style="height:100px;">
             ${store.get.library().map(lib => `
@@ -274,7 +274,7 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
     try {
       const prompt = `Tarea: ${title}\n\nGenera una lista de 4 a 6 subtareas o pasos concretos para completar esta tarea. Responde ÚNICAMENTE con la lista, un paso por línea, sin números ni guiones iniciales.`;
       const result = await window.ollamaApi.generate(prompt, 'Eres un asistente de organización. Responde solo con la lista de pasos, uno por línea.');
-      
+
       const lines = result.split('\n').map(l => l.trim()).filter(l => l && l.length > 2);
       if (lines.length > 0) {
         lines.forEach(line => {
@@ -369,10 +369,10 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Construye el modal de Creación o Edición de Proyectos. 
- * Incluye la renderización de opciones de color, control de estados 
+ * Construye el modal de Creación o Edición de Proyectos.
+ * Incluye la renderización de opciones de color, control de estados
  * y advertencias previas de eliminación de dependencias vinculadas.
- * 
+ *
  * @param {Object} p - El objeto Proyecto en modo edición. Null para modo creación.
  */
 function openProjectModal(p = null) {
@@ -549,9 +549,9 @@ Genera un objetivo claro y conciso (2-3 oraciones) para este proyecto:`;
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
- * Muestra el modal de Ciclos (iteraciones / timeboxing). 
+ * Muestra el modal de Ciclos (iteraciones / timeboxing).
  * Se encarga de mapear automáticamente el proyecto dependiente asociado.
- * 
+ *
  * @param {Object|string} defaultProjectIdOrCycle - ID inicial de proyecto o el Objeto Ciclo propiamente en edición.
  */
 function openCycleModal(defaultProjectIdOrCycle) {
@@ -1351,7 +1351,7 @@ async function openTaskDetail(task) {
     </div>
     <div class="details-body">
       <input type="text" class="details-title-input" id="detail-task-title" value="${esc(task.title)}" placeholder="Título de la tarea...">
-      
+
       <!-- Property Grid -->
       <div class="property-row">
         <div class="property-label"><i data-feather="circle"></i> Estado</div>
@@ -1499,7 +1499,7 @@ async function openTaskDetail(task) {
 
   panel.querySelector('#detail-task-save').addEventListener('click', saveAction);
   panel.querySelector('#details-close').addEventListener('click', closeDetailsPanel);
-  
+
   panel.querySelector('#detail-task-delete').addEventListener('click', async () => {
     if (confirm(`¿Eliminar la tarea "${task.title}"?`)) {
       await store.dispatch('DELETE_TASK', { id: task.id });
@@ -1525,7 +1525,7 @@ function openInitialSetupModal() {
     </div>
     <div class="modal-body">
       <p style="color:var(--text-secondary); margin-bottom:20px;">Parece que eres la primera persona en este entorno. Vamos a configurarlo para que tú y tu equipo puedan trabajar cómodamente.</p>
-      
+
       <div class="form-group">
         <label class="form-label">Nombre del Workspace</label>
         <input class="form-input" id="setup-ws-name" placeholder="ej. Laboratorio de Investigación" value="Mi Workspace">
@@ -1559,7 +1559,7 @@ function openInitialSetupModal() {
     const masterKeyHash = await cryptoLayer.hashPassword(masterKey);
 
     // 1. Save Workspace Metadata in sync config
-    syncManager.saveConfig({ 
+    syncManager.saveConfig({
       ...syncManager.getConfig(),
       workspace_name: wsName,
       admin_setup_completed: true,
@@ -1578,7 +1578,7 @@ function openInitialSetupModal() {
     };
 
     const newMember = await store.dispatch('ADD_MEMBER', adminPayload);
-    
+
     // 3. Link local identity to this new member
     if (newMember && newMember.id) {
       setCurrentMemberId(newMember.id);

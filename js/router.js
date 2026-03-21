@@ -80,8 +80,8 @@ class Router {
         window.location.hash = path;
     }
 
-    /** 
-     * Extrae y normaliza el hash actual de la URL, determinando los 
+    /**
+     * Extrae y normaliza el hash actual de la URL, determinando los
      * parámetros dinámicos (como projectOS ID) e invoca el renderizador.
      */
     _dispatch() {
@@ -124,9 +124,9 @@ class Router {
 
     /**
      * Inyecta la vista en el contenedor raíz del DOM ("app-root").
-     * Gestiona la ejecución segura de las funciones de limpieza (teardown)  
+     * Gestiona la ejecución segura de las funciones de limpieza (teardown)
      * devueltas por la vista anterior para evitar memory leaks (fugas de memoria).
-     * 
+     *
      * @param {string} viewName - Nombre de la vista.
      * @param {Object} params - Filtros/IDs de URL extraídos de la ruta.
      */

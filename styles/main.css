@@ -238,7 +238,7 @@
   --surface-tonal: #e5e0d4;
   --text-primary: #1e1b18;
   --text-secondary: #514b43;
-  --text-muted: #645d54; 
+  --text-muted: #645d54;
   --border-color: #d1ccbf;
   --border-highlight: #bcae95;
     --border-focus: #bc4749;
@@ -512,8 +512,8 @@ body::before {
     backdrop-filter: var(--blur);
     -webkit-backdrop-filter: var(--blur);
     border: 1px solid color-mix(in srgb, var(--border-highlight) 85%, var(--accent-primary) 15%);
-    box-shadow: 
-        0 4px 24px rgba(0, 0, 0, 0.15), 
+    box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.15),
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
     transition: all var(--dur-med) var(--ease);
 }
@@ -532,8 +532,8 @@ body::before {
 
 .card:hover, .project-card:hover, .cycle-card:hover, .decision-card:hover {
     transform: translateY(-5px) scale(1.015);
-    box-shadow: 
-        0 14px 36px rgba(0, 0, 0, 0.25), 
+    box-shadow:
+        0 14px 36px rgba(0, 0, 0, 0.25),
         0 0 15px color-mix(in srgb, var(--accent-primary) 20%, transparent);
     border-color: color-mix(in srgb, var(--border-highlight) 60%, var(--accent-primary) 40%);
     background: var(--bg-surface-hover);

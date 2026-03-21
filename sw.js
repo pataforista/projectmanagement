@@ -103,9 +103,9 @@ self.addEventListener('fetch', event => {
     const isOtherCDN = url.hostname.includes('unpkg.com') || url.hostname.includes('cdnjs.cloudflare.com');
 
     // ── SECURITY/CORS BYPASS ──────────────────────────────────────────────────
-    // Google APIs should be handled directly by the browser to avoid 
+    // Google APIs should be handled directly by the browser to avoid
     // Service Worker CORS interception issues (Error: Failed to fetch).
-    if (isGoogleAPI) return; 
+    if (isGoogleAPI) return;
 
     if (!isLocal && !isOtherCDN) return;
 

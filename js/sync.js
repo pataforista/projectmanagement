@@ -101,17 +101,17 @@ const syncManager = (() => {
             ...next,
             autoSyncMinutes: Math.max(1, Number(next.autoSyncMinutes) || defaultConfig.autoSyncMinutes),
         };
-        
+
         // BUG FIX: Parse out valid Google Drive folder ID if the user pasted a full URL
         if (typeof normalized.sharedFolderId === 'string') {
-            const m = normalized.sharedFolderId.match(/folders\/([a-zA-Z0-9-_]+)/) || 
-                      normalized.sharedFolderId.match(/\/d\/([a-zA-Z0-9-_]+)/) || 
+            const m = normalized.sharedFolderId.match(/folders\/([a-zA-Z0-9-_]+)/) ||
+                      normalized.sharedFolderId.match(/\/d\/([a-zA-Z0-9-_]+)/) ||
                       normalized.sharedFolderId.match(/[?&]id=([a-zA-Z0-9-_]+)/);
             if (m && m[1]) {
                 normalized.sharedFolderId = m[1];
             }
         }
-        
+
         // BUG FIX: If the user changes target folder or file name, we MUST clear the
         // cached Drive IDs from localStorage so the app forcefully searches for or creates
         // the new file in the new location, instead of blindly using the old file ID.
@@ -276,7 +276,7 @@ const syncManager = (() => {
                 }
             });
 
-            // BUG FIX: Add a small delay for manual triggers to avoid the click itself 
+            // BUG FIX: Add a small delay for manual triggers to avoid the click itself
             // being counted as a "tap_outside" which immediately skips the prompt.
             setTimeout(() => {
                 google.accounts.id.prompt((notification) => {
@@ -291,13 +291,13 @@ const syncManager = (() => {
 
                     if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
                         const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
-                        
+
                         // Special handling for tap_outside: inform the user
                         let errorMsg = 'Google sign-in prompt was closed or skipped. Reason: ' + reason;
                         if (reason === 'tap_outside') {
                             errorMsg = 'El selector de Google se cerró porque se detectó un clic fuera. Por favor, intenta de nuevo sin hacer clic fuera del aviso.';
                         }
-                        
+
                         settleOnce(reject, errorMsg);
                     }
                 });
@@ -793,7 +793,7 @@ const syncManager = (() => {
             if (!email) return rest;
             // SHA-256 hash of email for matching.
             const hash = await computeChecksum(email.trim().toLowerCase(), false);
-            return { ...rest, emailHash: hash.slice(0, 16) }; 
+            return { ...rest, emailHash: hash.slice(0, 16) };
         }));
 
         // Plaintext path: compute checksum on unencrypted snapshot.
@@ -1013,7 +1013,7 @@ const syncManager = (() => {
                         computedSorted: await computeChecksum(remoteData, true),
                         computedLegacy: await computeChecksum(remoteData, false)
                     });
-                    
+
                     // Detailed debugging: Log the string differences if mismatch persists
                     console.log('[Sync Integrity Debug] Received Data (Sorted JSON):', JSON.stringify(remoteData, (k, v) => {
                          if (v && typeof v === 'object' && !Array.isArray(v)) {
@@ -1304,7 +1304,7 @@ const syncManager = (() => {
                 if (resp.status === 404) {
                     console.warn(`[Sync] Folder ${folderId} 404 Not Found. Clearing and recreating.`);
                     folderId = null;
-                    if (!cfg.sharedFolderId) localStorage.removeItem('gdrive_folder_id'); 
+                    if (!cfg.sharedFolderId) localStorage.removeItem('gdrive_folder_id');
                 } else if (!resp.ok) {
                     folderId = null; // E.g. 403 or deleted
                 }
@@ -1345,7 +1345,7 @@ const syncManager = (() => {
             body: JSON.stringify(metadata)
         });
         const result = await resp.json();
-        
+
         if (resp.status === 404 && parentId) {
             console.error('[Sync] Parent folder ID 404. Clearing stale IDs.');
             localStorage.removeItem('gdrive_folder_id'); // Main root
@@ -1392,10 +1392,10 @@ const syncManager = (() => {
         }
 
         if (!result.id) throw new Error(`[Sync] createFile failed (${resp.status}): ${result.error?.message || 'no id returned'}`);
-        
+
         // Step 2: Upload the actual content string to the newly created file using existing updateFile
         await updateFile(result.id, content);
-        
+
         return result.id;
     }
 
@@ -1448,7 +1448,7 @@ const syncManager = (() => {
             timeout: 15000
         });
         if (!resp.ok) throw new Error(`File not found or no permissions (${resp.status})`);
-        
+
         const etag = resp.headers.get('ETag');
         if (etag) localStorage.setItem(`gdrive_etag_${id}`, etag);
 
@@ -1618,7 +1618,7 @@ const syncManager = (() => {
         const localSeq = Number(localStorage.getItem('nexus_snapshot_seq') || 0);
         if (data.snapshotSeq !== undefined && data.snapshotSeq < localSeq) {
             // BUG FIX: Removed 'return' to allow field-level merge even if sequence is lower.
-            // This is essential for cross-device sync when one device starts fresh or 
+            // This is essential for cross-device sync when one device starts fresh or
             // the sequence history was reset (Split Brain). LWW timestamps handle the
             // data integrity; snapshotSeq is now just a warning.
             console.warn(`[Sync] Snapshot Seq mismatch: remote (${data.snapshotSeq}) < local (${localSeq}). Proceeding with field-level merge to unify histories.`);
@@ -2155,7 +2155,7 @@ const syncManager = (() => {
             if (effectiveParentId) {
                 q += ` and '${effectiveParentId}' in parents`;
             } else {
-                // If no parentId, we can either show root or all. 
+                // If no parentId, we can either show root or all.
                 // Let's default to all files to maintain compatibility,
                 // OR we can default to shared folder if configured.
                 // For "Hierarchical" mode, we usually want to start somewhere.
@@ -2423,10 +2423,10 @@ const syncManager = (() => {
         if (!accessToken || !networkOnline || isSyncing) return;
         const lastCleanup = Number(localStorage.getItem('gdrive_chat_last_cleanup') || 0);
         const ONE_DAY = 24 * 60 * 60 * 1000;
-        
+
         // Solo ejecutar una vez al día
         if (Date.now() - lastCleanup < ONE_DAY) return;
-        
+
         try {
             const fId = await getChatFolder();
             if (!fId) return;
@@ -2434,17 +2434,17 @@ const syncManager = (() => {
             // Buscar archivos msg_* más viejos de 30 días
             const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000)).toISOString();
             const query = encodeURIComponent(`'${fId}' in parents and name contains 'msg_' and modifiedTime < '${thirtyDaysAgo}' and trashed = false`);
-            
+
             const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=100&supportsAllDrives=true`;
             const res = await fetchWithTimeout(url, {
                 headers: { Authorization: `Bearer ${accessToken}` },
                 timeout: 15000
             });
-            
+
             if (!res.ok) return;
             const data = await res.json();
             const filesToDelete = data.files || [];
-            
+
             if (filesToDelete.length > 0) {
                 console.log(`[ChatSync] Cleaning up ${filesToDelete.length} messages older than 30 days...`);
                 // Eliminar en paralelo (con límite de concurrencia implícito por el navegador)
@@ -2456,7 +2456,7 @@ const syncManager = (() => {
                     }).catch(e => console.warn(`[ChatSync] Failed to delete old message ${file.id}:`, e));
                 }));
             }
-            
+
             localStorage.setItem('gdrive_chat_last_cleanup', String(Date.now()));
         } catch (e) {
             console.error('[ChatSync] Cleanup error:', e);
@@ -2544,7 +2544,7 @@ const syncManager = (() => {
                                     headers: { Authorization: `Bearer ${accessToken}` },
                                     timeout: 10000
                                 }).catch(() => {});
-                                
+
                                 // Advance cursor past this message (we cannot read it, but we shouldn't
                                 // be stuck retrying it forever).
                                 latestProcessedModifiedTime = Math.max(

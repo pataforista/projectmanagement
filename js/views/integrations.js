@@ -17,7 +17,7 @@ function renderIntegrations(root) {
       </div>
 
       <div class="integrations-grid">
-        
+
         <!-- Google Cloud Ecosystem -->
         <div class="card glass-panel integration-card">
           <div class="integration-header">
@@ -35,19 +35,19 @@ function renderIntegrations(root) {
               </p>
               <div class="integration-services">
                 <label class="checkbox-item">
-                  <input type="checkbox" checked disabled> 
+                  <input type="checkbox" checked disabled>
                   <span>Google Drive (Backup & Team)</span>
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}> 
+                  <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}>
                   <span>Google Calendar (Eventos)</span>
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}> 
+                  <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}>
                   <span>Google Tasks (Tareas)</span>
                 </label>
               </div>
-              
+
               <!-- Clarification Note for Drive Uploads -->
               <div style="margin-top:12px; padding:10px; background:rgba(94, 106, 210, 0.05); border-radius:8px; border:1px dashed var(--border-highlight); font-size:0.75rem; color:var(--text-secondary);">
                 <i data-feather="info" style="width:12px; height:12px; margin-right:4px; vertical-align:middle;"></i>

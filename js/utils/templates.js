@@ -82,16 +82,16 @@ format: pdf
 ---
 
 # 1. Identificación del Paciente
-- **Nombre/ID:** 
-- **Edad:** 
+- **Nombre/ID:**
+- **Edad:**
 - **Fecha:** \`r Sys.Date()\`
 
 # 2. Motivo de Consulta y Enfermedad Actual
 [Describir...]
 
 # 3. Antecedentes y Revisión por Sistemas
-- **Médicos:** 
-- **Quirúrgicos:** 
+- **Médicos:**
+- **Quirúrgicos:**
 
 # 4. Evaluación y Hallazgos
 [Examen físico / Resultados críticos]
@@ -101,8 +101,8 @@ format: pdf
 - **Hipótesis B:** [Y%]
 
 # 6. Plan y Recomendaciones
-1. 
-2. 
+1.
+2.
 `
     }
 };

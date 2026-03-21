@@ -113,7 +113,7 @@ function renderWriting(root) {
 
     root.innerHTML = `
       <div class="writing-layout">
-        
+
         <!-- Sidebar: Sections & Goals -->
         <aside class="writing-sidebar glass-panel">
           <div class="writing-sidebar-header">
@@ -121,7 +121,7 @@ function renderWriting(root) {
             <select class="writing-project-select" id="wr-proj-select">
               </select>
           </div>
-          
+
           <div class="tabs" style="padding:0 12px; margin-bottom:12px;">
             <button class="tab-btn active btn-xs" data-writing-tab="sections" style="flex:1;">Secciones</button>
             <button class="tab-btn btn-xs" data-writing-tab="history" style="flex:1;">Historial</button>
@@ -143,7 +143,7 @@ function renderWriting(root) {
               </button>
             </div>
           </div>
-          
+
           <div style="padding:12px; border-top:1px solid var(--border-color); margin-top:auto; display:flex; flex-direction:column; gap:8px;">
             <button class="btn btn-secondary btn-sm" style="width:100%;" id="wr-gen-bib">
               <i data-feather="book"></i> Generar Bibliografía
@@ -152,7 +152,7 @@ function renderWriting(root) {
               <i data-feather="activity"></i> Exportar a eLabFTW
             </button>
           </div>
-          
+
           <div class="writing-goals">
             <div class="goal-header">
               <span>Meta diaria</span>
@@ -595,7 +595,7 @@ ${doc.properties ? (window.jsyaml ? jsyaml.dump(doc.properties) : JSON.stringify
                   <i data-feather="link" style="width:12px; height:12px; margin-right:4px;"></i> ${esc(b.title || 'Doc')}
                 </div>
               `).join('') : '<div style="color:var(--text-muted); font-size:0.75rem; margin-bottom:12px;">Sin enlaces directos.</div>'}
-              
+
               <h4 style="font-size:0.75rem; color:var(--text-muted); margin:15px 0 10px; text-transform:uppercase;">Menciones</h4>
               ${unlinked.length ? unlinked.map(u => `
                 <div class="connection-item" style="padding:8px; border:1px dashed var(--border-color); border-radius:6px; margin-bottom:8px; font-size:0.8rem; color:var(--text-secondary); cursor:pointer;" onclick="app.navigate('writing?project=${u.projectId}')">

@@ -76,7 +76,7 @@ const store = (() => {
 
     // ── Subscription ──────────────────────────────────────────────────────────
     /**
-     * Registra un callback que se llamará automáticamente cada vez que los datos 
+     * Registra un callback que se llamará automáticamente cada vez que los datos
      * en el `key` especificado cambien. Devuelve una función para de-suscribirse.
      * @param {string} key - Clave del estado (ej. 'tasks', 'projects', o '*' para todo).
      * @param {Function} fn - Función a ejecutar con el nuevo estado.
@@ -99,11 +99,11 @@ const store = (() => {
 
     /**
      * Función centralizadora para despachar ('dispatch') mutaciones de estado.
-     * Gestiona 3 pasos para toda acción: 
+     * Gestiona 3 pasos para toda acción:
      * 1) Modificación en IndexedDB
      * 2) Mutación del _state en memoria
      * 3) Disparo de la notificación a suscriptores UI y sincronización con Drive.
-     * 
+     *
      * @param {string} action - Nombre del tipo de evento (ADD_TASK, UPDATE_PROJECT...).
      * @param {Object} payload - Datos de la entidad asociados al tipo de evento.
      * @returns {Promise<any>}
@@ -518,7 +518,7 @@ const store = (() => {
                 storeName = 'documents';
                 const actor = getCurrentWorkspaceActor();
                 const existing = _state.documents.find(d => d.projectId === payload.projectId);
-                
+
                 // Permission check for documents (associated with projects)
                 // If the document doesn't exist yet, we check the project permissions
                 const project = _state.projects.find(p => p.id === payload.projectId);
@@ -789,8 +789,8 @@ const store = (() => {
 
                 if (lastSnap && lastSnap.content) {
                     // Store delta relative to last snapshot if possible
-                    // However, it's safer to store full content for snapshots 
-                    // and use deltas for intermediate saves. 
+                    // However, it's safer to store full content for snapshots
+                    // and use deltas for intermediate saves.
                     // But the user requested "only save the patch".
                     // Let's implement full content for the LATEST and deltas for OLDER ones?
                     // No, usually Git-Lite stores deltas relative to a BASE.
