@@ -339,8 +339,8 @@ export async function renderSessionSwitcher(targetElement) {
  * Show session switcher as modal
  */
 export function showSessionSwitcher() {
-    const overlay = document.createElement('div');
-    renderSessionSwitcher(overlay);
+    // Pass null so renderSessionSwitcher appends directly to document.body
+    renderSessionSwitcher(null);
 }
 
 export default {

@@ -22,8 +22,8 @@ export const SessionManager = (() => {
     async function init(indexedDB) {
         db = indexedDB;
 
-        // Restore current session ID from localStorage
-        currentSessionId = localStorage.getItem(CURRENT_SESSION_KEY);
+        // Restore current session ID from sessionStorage (per-tab isolation)
+        currentSessionId = StorageManager.get(CURRENT_SESSION_KEY, 'session');
 
         console.log('[SessionManager] Initialized');
         return true;
@@ -104,7 +104,7 @@ export const SessionManager = (() => {
      * Get a specific session by ID
      */
     async function getSession(sessionId) {
-        if (!db || !db.sessions) return null;
+        if (!db || !db.objectStoreNames.contains(SESSIONS_STORE)) return null;
 
         try {
             const tx = db.transaction(SESSIONS_STORE, 'readonly');
@@ -152,8 +152,8 @@ export const SessionManager = (() => {
         StorageManager.set('workspace_user_member_id', targetSession.metadata.memberId || '', 'session');
         StorageManager.set('workspace_user_role', targetSession.metadata.role || 'member', 'session');
 
-        // Update current session pointer
-        localStorage.setItem(CURRENT_SESSION_KEY, sessionId);
+        // Update current session pointer (per-tab)
+        StorageManager.set(CURRENT_SESSION_KEY, sessionId, 'session');
         currentSessionId = sessionId;
 
         // Update last active
@@ -180,7 +180,7 @@ export const SessionManager = (() => {
      * End a session (soft delete — mark as inactive)
      */
     async function endSession(sessionId) {
-        if (!db || !db.sessions) return false;
+        if (!db || !db.objectStoreNames.contains(SESSIONS_STORE)) return false;
 
         try {
             const tx = db.transaction(SESSIONS_STORE, 'readwrite');
@@ -226,7 +226,7 @@ export const SessionManager = (() => {
         StorageManager.clearSessionData();
 
         // Clear current session pointer
-        localStorage.removeItem(CURRENT_SESSION_KEY);
+        StorageManager.remove(CURRENT_SESSION_KEY, 'session');
         currentSessionId = null;
 
         // Preserve:
@@ -246,11 +246,13 @@ export const SessionManager = (() => {
     async function logoutFast() {
         console.log('[SessionManager] Fast logout initiated');
 
-        // 1. Clear local session immediately
+        // 1. Save token BEFORE clearing session (logout clears sessionStorage)
+        const token = StorageManager.get('google_id_token', 'session');
+
+        // 2. Clear local session
         await logout();
 
-        // 2. Attempt Google token revocation in background (fire-and-forget)
-        const token = localStorage.getItem('google_id_token');
+        // 3. Attempt Google token revocation in background (fire-and-forget)
         if (token && window.google?.accounts?.oauth2) {
             try {
                 google.accounts.oauth2.revoke(token)
@@ -260,12 +262,12 @@ export const SessionManager = (() => {
             }
         }
 
-        // 3. Show feedback to user
+        // 4. Show feedback to user
         if (window.showToast) {
             showToast('Sesión cerrada', 'success');
         }
 
-        // 4. Reload page after brief delay (allow toast to show)
+        // 5. Reload page after brief delay (allow toast to show)
         setTimeout(() => {
             location.reload();
         }, 300);
@@ -299,7 +301,7 @@ export const SessionManager = (() => {
      * Permanently delete a session (hard delete)
      */
     async function deleteSession(sessionId) {
-        if (!db || !db.sessions) return false;
+        if (!db || !db.objectStoreNames.contains(SESSIONS_STORE)) return false;
 
         try {
             const tx = db.transaction(SESSIONS_STORE, 'readwrite');
