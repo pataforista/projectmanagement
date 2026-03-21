@@ -19,6 +19,6 @@ Este reporte certifica la culminación exitosa de la auditoría de seguridad, si
 - **Mejora Implementada:** Se añadió el **Selector de Visibilidad** en la creación/edición de **Tareas Individuales** directamente en `js/modals.js`. Ahora, los usuarios pueden forzar explícitamente que una tarea huérfana (sin proyecto asociado) se mantenga como "Privada (Solo local)" y **NO** se envíe al Google Drive del equipo, reforzando la promesa de privacidad de la app.
 
 ## Estado del Sistema
-✅ **Estable**. Todas las vulnerabilidades funcionales detectadas en la revisión de código fueron parchadas. El sistema de persistencia (IndexedDB + Google Drive) se encuentra operativo bajo las nuevas reglas. 
+✅ **Estable**. Todas las vulnerabilidades funcionales detectadas en la revisión de código fueron parchadas. El sistema de persistencia (IndexedDB + Google Drive) se encuentra operativo bajo las nuevas reglas.
 
 El producto se considera **listo** para su uso en producción tanto en entornos individuales (off-grid) como en equipos clínicos.

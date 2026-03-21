@@ -41,9 +41,9 @@ const renderCanvas = (root) => {
              <i data-feather="edit-3" style="width:14px;"></i>
           </button>
         </div>
-        
+
         <div class="view-actions" style="display:flex; gap:12px; align-items:center;">
-           
+
            <!-- Toolbar -->
            <div class="btn-group" style="background: var(--bg-surface-2); border-radius: var(--radius-md); padding: 4px; display:flex;">
              <button class="btn btn-ghost btn-sm ${canvasState.mode === 'draw' ? 'active' : ''}" id="btn-draw" style="padding: 4px 8px;" title="Dibujar">
@@ -53,11 +53,11 @@ const renderCanvas = (root) => {
                <i data-feather="trash-2" style="width: 14px; height: 14px;"></i>
              </button>
            </div>
-           
+
            <!-- Color Picker & Actions -->
            <input type="color" id="canvas-color-picker" value="${canvasState.color}" style="border:none; width:32px; height:32px; border-radius:4px; cursor:pointer; background:transparent;">
            <div class="divider" style="width:1px; height:24px; background:var(--border-color);"></div>
-           
+
            <button class="btn btn-secondary btn-sm" id="btn-diagrams" title="Abrir editor de diagramas (diagrams.net)">
              <i data-feather="git-branch"></i> Diagramas
            </button>
@@ -69,7 +69,7 @@ const renderCanvas = (root) => {
            </button>
         </div>
       </div>
-      
+
       <!-- Canvas Area -->
       <div style="flex:1; position:relative; overflow:hidden; background: var(--bg-body); cursor: ${canvasState.mode === 'draw' ? 'crosshair' : 'cell'};" id="canvas-container">
         <canvas id="whiteboard" style="display:block; width:100%; height:100%; touch-action:none;"></canvas>

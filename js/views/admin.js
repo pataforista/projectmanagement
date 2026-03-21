@@ -66,7 +66,7 @@ function renderGeneralTab(container, config, isAdmin) {
           <label class="form-label">Nombre del Equipo / Workspace</label>
           <input type="text" class="form-input" id="admin-ws-name" value="${esc(config.workspace_name || config.teamName || 'Mi Workspace')}" ${!isAdmin ? 'disabled' : ''}>
         </div>
-        
+
         <div class="form-group" style="margin-top:24px; padding:16px; background:var(--bg-surface-2); border-radius:12px; border:1px solid var(--border-color);">
           <label class="form-label" style="display:flex; align-items:center; gap:8px;">
             <i data-feather="shield" style="width:16px; color:var(--accent-primary);"></i> Clave Maestra de Administrador
@@ -138,7 +138,7 @@ function renderInvitesTab(container, config, isAdmin) {
         <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:20px;">
           Genera un código para que nuevos miembros se unan a este workspace sin configuraciones manuales.
         </p>
-        
+
         <div style="display:flex; flex-direction:column; gap:16px;">
           <div style="padding:16px; background:var(--bg-surface-2); border-radius:12px; border:1px solid var(--border-color);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
@@ -198,9 +198,9 @@ function renderSyncTab(container, config, isAdmin) {
 window.saveAdminGeneral = async function() {
   const wsName = document.getElementById('admin-ws-name').value.trim();
   const masterKey = document.getElementById('admin-master-key').value.trim();
-  
+
   const updates = { workspace_name: wsName };
-  
+
   if (masterKey) {
       const cryptoLayer = await import('./utils/crypto.js');
       updates.admin_key_hash = await cryptoLayer.hashPassword(masterKey);
@@ -238,7 +238,7 @@ window.copyInviteCode = function() {
 window.editMemberRoles = async function(id) {
     const member = store.get.members().find(m => m.id === id);
     const config = syncManager.getConfig();
-    
+
     const roleModal = openModal(`
         <div class="modal-header"><h2>Editar Rol de ${esc(member.name)}</h2></div>
         <div class="modal-body">
@@ -262,7 +262,7 @@ window.editMemberRoles = async function(id) {
 
     const select = roleModal.querySelector('#new-role-select');
     const verifyDiv = roleModal.querySelector('#master-key-verify');
-    
+
     select.onchange = () => {
         if (select.value === 'admin' && config.admin_key_hash) {
             verifyDiv.style.display = 'block';
@@ -281,7 +281,7 @@ window.editMemberRoles = async function(id) {
                 return showToast('Clave Maestra incorrecta.', 'error');
             }
         }
-        
+
         await store.dispatch('UPDATE_MEMBER', { id, role: newRole });
         closeModal();
         showToast('Rol actualizado.', 'success');
@@ -292,7 +292,7 @@ window.editMemberRoles = async function(id) {
 window.deleteMemberAdmin = async function(id) {
     const member = store.get.members().find(m => m.id === id);
     if (!confirm(`¿Eliminar a ${member.name} del equipo? Esta acción no se puede deshacer.`)) return;
-    
+
     // Safety check: is there a Master Key?
     const config = syncManager.getConfig();
     if (config.admin_key_hash) {
@@ -360,7 +360,7 @@ window.openAddMemberModalAdmin = function() {
             avatar: name.charAt(0).toUpperCase(),
             joinedAt: new Date().toISOString()
         });
-        
+
         closeModal();
         showToast('Miembro añadido.', 'success');
         renderAdmin(document.getElementById('app-root'));

@@ -356,9 +356,9 @@ export async function injectWorkspaceSalt(saltB64, saltChecksum = null) {
         }
         _activeSalt = base64ToBuffer(saltB64);
         lock();
-        
+
         // BUG FIX: In Frictionless mode, automatically try to re-unlock with the team key.
-        // This ensures that if another device updated the salt (e.g. during a sync or 
+        // This ensures that if another device updated the salt (e.g. during a sync or
         // starting from scratch), this device seamlessly adapts without forcing
         // a manual reload or password prompt.
         try {

@@ -75,7 +75,7 @@
     flex-direction: column;
     box-shadow: 10px 0 30px rgba(0, 0, 0, 0.4);
     transition: left 0.4s cubic-bezier(0.19, 1, 0.22, 1);
-    
+
     /* Force high-contrast dark theme inside, regardless of global theme */
     color: #efefef;
     --text-primary: #efefef;

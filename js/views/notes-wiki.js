@@ -209,7 +209,7 @@ async function wikiDelete(id) {
 
 function renderMarkdown(text) {
   const allPages = wikiGetAll('wiki-page');
-  
+
   return (text || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
@@ -396,7 +396,7 @@ function renderNotesWiki(root) {
                 <div id="wiki-preview-panel" class="wiki-preview content-view"
                      style="${wikiState.previewMode ? 'display:block;' : 'display:none;'}">
                   ${renderMarkdown(activePage?.content || '')}
-                  
+
                   <!-- Backlinks Section -->
                   <div class="backlinks-section">
                     <h5 style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:12px;">Menciones vinculadas</h5>
@@ -406,7 +406,7 @@ function renderNotesWiki(root) {
                         if (!title) return '';
                         const allPages = wikiGetAll('wiki-page');
                         const linking = allPages.filter(p => p.id !== activePage.id && (p.content || '').toLowerCase().includes(`[[${title}]]`));
-                        return linking.length 
+                        return linking.length
                           ? linking.map(p => `
                             <div class="backlink-item" data-id="${p.id}">
                               <i data-feather="link-2" style="width:14px; height:14px;"></i>
@@ -596,7 +596,7 @@ function attachWikiListeners(root, books, chapters, pages) {
       if (!targetTitle) return;
       const allPages = wikiGetAll('wiki-page');
       let target = allPages.find(p => (p.title || '').toLowerCase() === targetTitle.toLowerCase());
-      
+
       if (!target) {
         // Ghost link logic: Create on click
         if (confirm(`La página "${targetTitle}" no existe. ¿Deseas crearla?`)) {
@@ -608,9 +608,9 @@ function attachWikiListeners(root, books, chapters, pages) {
             const firstChapter = firstBook ? wikiGetChildren('wiki-chapter', firstBook.id)[0] : null;
             parentId = firstChapter ? firstChapter.id : null;
           }
-          
+
           if (!parentId) return showToast('Crea un libro y un capítulo primero.', 'warning');
-          
+
           target = { id, wikiType: 'wiki-page', parentId, title: targetTitle, content: '' };
           await wikiSave(target);
           showToast(`Página "${targetTitle}" creada.`, 'success');
@@ -646,7 +646,7 @@ function attachWikiListeners(root, books, chapters, pages) {
         await wikiSave({ id: bid, wikiType: 'wiki-book', title: 'Diario' });
         diarioBook = { id: bid };
       }
-      
+
       let generalChapter = wikiGetChildren('wiki-chapter', diarioBook.id).find(c => c.title.toLowerCase() === 'general');
       if (!generalChapter) {
         const cid = `wiki-chapter-gen-${Date.now()}`;

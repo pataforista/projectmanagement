@@ -1,7 +1,7 @@
 # Auditoría técnica detallada: sincronización, vinculación y cifrado
 
-**Fecha:** 2026-03-15  
-**Alcance revisado:** `js/sync.js`, `js/utils/crypto.js`, `js/utils.js`, `js/app.js`, `js/store.js`, `js/components/chat.js`  
+**Fecha:** 2026-03-15
+**Alcance revisado:** `js/sync.js`, `js/utils/crypto.js`, `js/utils.js`, `js/app.js`, `js/store.js`, `js/components/chat.js`
 **Objetivo:** detectar riesgos reales de pérdida de datos, conflictos de sincronización, fallas de vinculación entre dispositivos/cuentas y debilidades criptográficas.
 
 ---
@@ -19,25 +19,25 @@
 
 ## 1) Riesgo de DoS por `pbkdf2Iterations` remoto sin límite superior
 
-**Severidad:** Alta  
+**Severidad:** Alta
 **Tipo:** Cifrado / disponibilidad
 
 ### Evidencia
-- El snapshot exporta `pbkdf2Iterations` al remoto.  
+- El snapshot exporta `pbkdf2Iterations` al remoto.
 - En pull, cualquier valor remoto mayor al local se acepta y se persiste directo en `localStorage` sin validar un máximo razonable.
 
 ### Impacto
 Un actor con acceso de escritura al archivo compartido podría subir un valor excesivo (p.ej. millones o decenas de millones). El siguiente desbloqueo forzaría derivaciones PBKDF2 extremadamente costosas, congelando la UX o bloqueando dispositivos lentos.
 
 ### Recomendación
-- Definir `MIN_ITER = 310000`, `TARGET = 600000` y `MAX_SAFE_ITER` (ej. 1,200,000 o calibrado por benchmark).  
+- Definir `MIN_ITER = 310000`, `TARGET = 600000` y `MAX_SAFE_ITER` (ej. 1,200,000 o calibrado por benchmark).
 - Al recibir remoto: `nexus_pbkdf2_iterations = clamp(remote, MIN_ITER, MAX_SAFE_ITER)` y registrar alerta si se recorta.
 
 ---
 
 ## 2) Salt global via snapshot compartido facilita “salt poisoning” entre colaboradores
 
-**Severidad:** Media-Alta  
+**Severidad:** Media-Alta
 **Tipo:** Vinculación / cifrado
 
 ### Evidencia
@@ -55,7 +55,7 @@ La sal no es secreta por diseño, pero aquí actúa como parámetro global mutab
 
 ## 3) Polling de chat sin paginación explícita (`nextPageToken`) puede omitir mensajes
 
-**Severidad:** Alta  
+**Severidad:** Alta
 **Tipo:** Sincronización
 
 ### Evidencia
@@ -73,7 +73,7 @@ Si hay más archivos nuevos de los devueltos en la primera página, los restante
 
 ## 4) Outbox de chat trunca en 250 elementos sin señal de pérdida
 
-**Severidad:** Media  
+**Severidad:** Media
 **Tipo:** Sincronización / confiabilidad
 
 ### Evidencia
@@ -90,7 +90,7 @@ En periodos offline largos, mensajes antiguos pueden descartarse sin alertar al 
 
 ## 5) Cobertura E2EE parcial: `members`, `logs` y otros stores siguen en claro
 
-**Severidad:** Media  
+**Severidad:** Media
 **Tipo:** Cifrado / privacidad
 
 ### Evidencia
@@ -101,7 +101,7 @@ En periodos offline largos, mensajes antiguos pueden descartarse sin alertar al 
 Aunque ya se elimina `email` de `members`, todavía se exponen metadatos de identidad/actividad y trazas operativas en el JSON compartido.
 
 ### Recomendación
-- Definir política de clasificación por store (confidencial vs. colaborativo en claro).  
+- Definir política de clasificación por store (confidencial vs. colaborativo en claro).
 - Si no hay razón fuerte para exponer `logs`, cifrarlos también o minimizar su contenido previo a exportación.
 
 ---

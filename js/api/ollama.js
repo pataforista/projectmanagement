@@ -123,7 +123,7 @@ class OllamaAPI {
 
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    
+
                     // Keep the last partial line in the buffer
                     buffer = lines.pop();
 

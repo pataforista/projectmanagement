@@ -103,7 +103,7 @@ function kanbanCard(t) {
   const proj = store.get.projectById(t.projectId);
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Terminado';
   const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
-  
+
   return `
     <div class="kanban-card" draggable="true" data-task-id="${t.id}" data-status="${t.status}">
       ${proj ? `
@@ -111,9 +111,9 @@ function kanbanCard(t) {
           <span class="project-dot" style="background:currentColor;"></span>
           ${esc(proj.name)}
         </div>` : ''}
-      
+
       <div class="kanban-card-title">${esc(t.title)}</div>
-      
+
       <div class="kanban-card-tags">
         <span class="status-pill ${ownershipLabel === 'Mía' ? 'status-terminado' : 'status-definido'}" style="font-size:0.6rem; padding:1px 6px; opacity:0.8;">
           ${ownershipLabel}

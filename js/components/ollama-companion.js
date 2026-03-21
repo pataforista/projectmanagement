@@ -61,7 +61,7 @@ class OllamaCompanion {
     }
 
     setupListeners() {
-        // Close button 
+        // Close button
         const closeBtn = this.el.querySelector('#ollama-close');
         if (closeBtn) {
             closeBtn.addEventListener('click', (e) => {
@@ -188,7 +188,7 @@ class OllamaCompanion {
                         <div style="background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:12px; font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px; text-align:left;">
                             <strong style="color:var(--accent-danger); font-size: 0.85rem; display:block; margin-bottom: 8px;">Cómo solucionar el error CORS:</strong>
                             <p style="margin-bottom: 8px;">Por seguridad, los navegadores bloquean peticiones locales. Debes indicarle a Ollama que permita conexiones.</p>
-                            
+
                             <strong style="color:var(--text-primary); margin-top: 8px; display:block;">Opción A: Terminal (Temporal)</strong>
                             <div style="margin-bottom: 8px; padding-left: 8px; border-left: 2px solid var(--accent-primary);">
                                 <em>Windows (PowerShell):</em><br/>
@@ -207,7 +207,7 @@ class OllamaCompanion {
                                 <li>Valor: <code style="color:var(--accent-teal); user-select: all;">*</code></li>
                                 <li>Acepta todo y vuelve a abrir la app de Ollama.</li>
                             </ol>
-                            
+
                             <strong style="color:var(--text-primary); margin-top: 8px; display:block;">Opción C: Configuración de la App</strong>
                             <p style="margin-top: 4px; margin-bottom: 0;">Ve a <strong>Integraciones</strong> (icono de engranaje en el menú izquierdo abajo) y configura un Proxy CORS.</p>
                         </div>
@@ -262,7 +262,7 @@ class OllamaCompanion {
     renderQuickActions() {
         const actionsContainer = this.el.querySelector('#ollama-quick-actions');
         const view = window.router?.current?.viewName || 'dashboard';
-        
+
         const globalActions = [
             { id: 'summarize-day', label: 'Resumen del día', icon: 'sun', prompt: 'Resume mis tareas pendientes de hoy y mis prioridades actuales de forma motivadora.' },
             { id: 'prioritize', label: 'Priorizar backlog', icon: 'list', prompt: 'Analiza mis tareas actuales y sugiéreme cuáles son las 3 más importantes para atacar ahora mismo.' }
@@ -288,7 +288,7 @@ class OllamaCompanion {
         };
 
         const currentActions = [...globalActions, ...(viewActions[view] || [])];
-        
+
         actionsContainer.innerHTML = currentActions.map(action => `
             <div class="action-pill" data-prompt="${esc(action.prompt)}">
                 <i data-feather="${action.icon}"></i> ${action.label}
@@ -338,7 +338,7 @@ class OllamaCompanion {
                 aiBubble.innerHTML = esc(fullResponse).replace(/\n/g, '<br>');
                 this.scrollToBottom();
             });
-            
+
             this.history.push({ role: 'assistant', content: fullResponse });
             this.saveHistory();
             // Final render to clean up any formatting issues

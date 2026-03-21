@@ -144,7 +144,7 @@ function _applyMode(mode) {
         const label = mode === 'solo' ? 'Individual ✨' : 'Equipo 👥';
         window.showToast(`Modo ${label} activado`, 'info');
     }
-    
+
     // Refresh breadcrumbs when mode changes as it might affect the workspace label
     if (window.updateBreadcrumbs) window.updateBreadcrumbs();
 }
@@ -198,10 +198,10 @@ function handleProjectDragStart(e) {
     this.style.opacity = '0.4';
 }
 
-function handleProjectDragOver(e) { 
-    if (e.preventDefault) e.preventDefault(); 
-    e.dataTransfer.dropEffect = 'move'; 
-    return false; 
+function handleProjectDragOver(e) {
+    if (e.preventDefault) e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return false;
 }
 
 function handleProjectDrop(e) {
@@ -527,11 +527,11 @@ export function initGlobalEffects() {
         const ripple = document.createElement('span');
         ripple.className = 'ripple';
         ripple.style.cssText = `width:${size}px;height:${size}px;left:${x - rect.left - size / 2}px;top:${y - rect.top - size / 2}px;`;
-        
+
         ripple.setAttribute('data-autofill-ignore', 'true');
         ripple.setAttribute('data-lpignore', 'true');
         ripple.setAttribute('data-form-type', 'other');
-        
+
         btn.appendChild(ripple);
         setTimeout(() => ripple.remove(), 600);
     });
@@ -564,7 +564,7 @@ export function updateBreadcrumbs() {
     // 1. Workspace Segment
     const mode = localStorage.getItem('workspace-mode') || 'solo';
     const workspaceName = mode === 'solo' ? 'Mi Workspace' : 'Equipo';
-    
+
     appendCrumb(breadcrumbs, workspaceName, '#/dashboard', 'home');
 
     // 2. Contextual Hierarchy
@@ -639,7 +639,7 @@ export function initCommandPalette() {
     function search(query) {
         query = query.toLowerCase();
         currentResults = [];
-        
+
         // 1. Static Commands
         const commands = [
             { id: 'cmd:today', title: 'Crear o saltar a Nota Diaria (Hoy)', icon: 'calendar', type: 'Comando', action: () => { window.location.hash = '#/notes-wiki'; setTimeout(() => document.getElementById('wiki-today')?.click(), 100); } },
@@ -648,22 +648,22 @@ export function initCommandPalette() {
             { id: 'cmd:dark', title: 'Tema Oscuro', icon: 'moon', type: 'Ajuste', action: () => document.documentElement.setAttribute('data-theme', 'dark') },
             { id: 'cmd:light', title: 'Tema Claro', icon: 'sun', type: 'Ajuste', action: () => document.documentElement.setAttribute('data-theme', 'light') },
         ];
-        
+
         // 2. Projects & Documents from Store
         if (window.store) {
             const projects = window.store.get.projects() || [];
             const docs = window.store.get.documents() || [];
-            
+
             projects.forEach(p => {
                 currentResults.push({
                     id: `proj:${p.id}`, title: p.name, icon: 'folder', type: 'Proyecto', action: () => window.location.hash = `#/board?project=${p.id}`
                 });
             });
-            
+
             docs.forEach(d => {
                 const isWiki = d.wikiType && d.wikiType.startsWith('wiki-');
                 currentResults.push({
-                    id: `doc:${d.id}`, title: d.title || 'Sin título', icon: isWiki ? 'book-open' : 'file-text', type: isWiki ? 'Wiki' : 'Documento', 
+                    id: `doc:${d.id}`, title: d.title || 'Sin título', icon: isWiki ? 'book-open' : 'file-text', type: isWiki ? 'Wiki' : 'Documento',
                     action: () => {
                         if (isWiki) {
                             window.location.hash = '#/notes-wiki';
@@ -746,7 +746,7 @@ export function initCommandPalette() {
     });
 
     input.addEventListener('input', (e) => search(e.target.value));
-    
+
     // Close on click outside
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) closePalette();

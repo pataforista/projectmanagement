@@ -6,7 +6,7 @@
 export const annotationExport = (() => {
     /**
      * Generates and downloads a CSV file with all annotations of a project.
-     * @param {string} projectId 
+     * @param {string} projectId
      */
     function exportToCSV(projectId) {
         const project = store.get.projectById(projectId);

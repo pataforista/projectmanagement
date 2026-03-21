@@ -35,7 +35,7 @@ function esc(str) {
 }
 
 /**
- * Parsea un documento en formato CSV manejando correctamente las comillas 
+ * Parsea un documento en formato CSV manejando correctamente las comillas
  * y los saltos de línea internos en cada celda.
  * @param {string} text - Contenido crudo del archivo CSV.
  * @returns {Array<Array<string>>} Matriz bidimensional con los datos parseados.
@@ -237,11 +237,11 @@ function getCurrentWorkspaceMember() {
     // 4. Fallback to Name (Fragile - only if name is specific enough)
     const genericNames = new Set(['usuario', 'admin', 'administrator', 'miembro', 'guest']);
     const normalizedLocalName = normalizeWorkspaceName(user.name || '');
-    
+
     if (genericNames.has(normalizedLocalName)) {
-        // DO NOT fallback by name if it is a generic default; this is the 
+        // DO NOT fallback by name if it is a generic default; this is the
         // root cause of the "everyone is the first user" overwrite bug.
-        return null; 
+        return null;
     }
 
     return members.find(m => normalizeWorkspaceName(m.name) === normalizedLocalName)
@@ -256,7 +256,7 @@ function isTaskAssignedToCurrentUser(task) {
 
 // ── Network Fetch with Timeout ────────────────────────────────────────────────
 /**
- * Ejecuta fetch() con un límite de tiempo para evitar que la UI se cuelgue 
+ * Ejecuta fetch() con un límite de tiempo para evitar que la UI se cuelgue
  * si la red es muy lenta o inestable (ej. portales cautivos).
  * @param {string} url - URL destino
  * @param {object} options - Opciones de fetch, incluyendo 'timeout' (en ms)
@@ -336,7 +336,7 @@ function emptyState(icon, text) {
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 /**
- * Genera y muestra un elemento visual "Toast" temporal en la interfaz 
+ * Genera y muestra un elemento visual "Toast" temporal en la interfaz
  * para dar retroalimentación de las acciones del usuario.
  * @param {string} message - Texto principal a mostrar.
  * @param {string} type - Variantes de estilo ('info', 'success', 'warning', 'error').
@@ -546,15 +546,15 @@ export function generateICS(events) {
     events.forEach(event => {
         const uid = event.id || generateUID();
         const dtstamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-        
+
         ics.push('BEGIN:VEVENT');
         ics.push(`UID:${uid}`);
         ics.push(`DTSTAMP:${dtstamp}`);
-        
+
         if (event.start && event.isAllDay) {
             // All-day uses VALUE=DATE
             ics.push(`DTSTART;VALUE=DATE:${formatDate(event.start)}`);
-            // ICS ends are exclusive for all-day, add 1 day if we had an end date, 
+            // ICS ends are exclusive for all-day, add 1 day if we had an end date,
             // but for simplicity (one-day tasks), we just use one date.
         } else if (event.start) {
             ics.push(`DTSTART:${formatDate(event.start, event.startTime)}`);
@@ -570,7 +570,7 @@ export function generateICS(events) {
         if (event.location) {
             ics.push(foldLine(`LOCATION:${escapeICS(event.location)}`));
         }
-        
+
         ics.push('END:VEVENT');
     });
 
