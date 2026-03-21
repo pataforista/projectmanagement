@@ -227,9 +227,7 @@ export const StorageManager = (() => {
         for (const key of SESSION_KEYS) {
             sessionStorage.removeItem(key);
             // Also clear from localStorage if it exists (for backward compat)
-            if (SESSION_KEYS.has(key)) {
-                localStorage.removeItem(key);
-            }
+            localStorage.removeItem(key);
         }
 
         // Preserve: GLOBAL_KEYS (config, settings, etc.)

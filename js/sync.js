@@ -174,10 +174,10 @@ const syncManager = (() => {
     function bindNetworkListeners() {
         window.addEventListener('online', () => {
             networkOnline = true;
-            updateSyncUI(localStorage.getItem(STATUS_KEY) === 'true' ? 'online' : 'offline');
+            updateSyncUI(StorageManager.get(STATUS_KEY, 'session') === 'true' ? 'online' : 'offline');
             if (window.showToast) showToast('Conexión restablecida', 'success');
             // FIX: Fast Reconnect - trigger immediate queue flush
-            if (accessToken && localStorage.getItem(STATUS_KEY) === 'true') {
+            if (accessToken && StorageManager.get(STATUS_KEY, 'session') === 'true') {
                 pull().then(() => { if (!isSyncing) push(); });
             }
         });
@@ -262,7 +262,7 @@ const syncManager = (() => {
                                 }
                             );
                             if (sessionId) {
-                                localStorage.setItem('nexus_current_session_id', sessionId);
+                                StorageManager.set('nexus_current_session_id', sessionId, 'session');
                             }
                         } catch (e) {
                             console.warn('[Sync] Session creation failed:', e);
@@ -592,10 +592,10 @@ const syncManager = (() => {
                 // If the user was previously connected, attempt a silent token refresh.
                 // This restores the accessToken after a page reload without interrupting the user.
                 // The prompt:'' in authorize() ensures no UI is shown if permission still exists.
-                if (localStorage.getItem(STATUS_KEY) === 'true') {
+                if (StorageManager.get(STATUS_KEY, 'session') === 'true') {
                     authorize(cfg.clientId).catch(() => {
                         // Silent refresh failed (e.g. user revoked access) — reset status.
-                        localStorage.setItem(STATUS_KEY, 'false');
+                        StorageManager.set(STATUS_KEY, 'false', 'session');
                         updateSyncUI('offline');
                     });
                 }
@@ -633,7 +633,7 @@ const syncManager = (() => {
         accessToken = null;
         tokenClient = null;
         clearStoredIdentity();
-        localStorage.setItem(STATUS_KEY, 'false');
+        StorageManager.set(STATUS_KEY, 'false', 'session');
         updateSyncUI('offline');
     }
 

@@ -6,6 +6,8 @@
  * when the user switches accounts.
  */
 
+import { StorageManager } from './storage-manager.js';
+
 export const AccountChangeDetector = (() => {
     // Configuration
     const ACCOUNT_HISTORY_KEY = 'nexus_account_history';
@@ -116,9 +118,9 @@ export const AccountChangeDetector = (() => {
         }
 
         // Check 2: Subject ID (sub) changed — different account
-        const storedSub = localStorage.getItem(STORED_SUB_KEY);
+        const storedSub = StorageManager.get(STORED_SUB_KEY, 'session');
         if (storedSub && decoded.sub !== storedSub) {
-            const oldEmail = localStorage.getItem('workspace_user_email') || 'unknown';
+            const oldEmail = StorageManager.get('workspace_user_email', 'session') || 'unknown';
             return {
                 changed: true,
                 reason: 'account_switched',
@@ -130,19 +132,19 @@ export const AccountChangeDetector = (() => {
         }
 
         // Check 3: Audience (aud) changed — possible security issue
-        const storedAud = localStorage.getItem(STORED_AUD_KEY);
+        const storedAud = StorageManager.get(STORED_AUD_KEY, 'session');
         if (storedAud && decoded.aud !== storedAud) {
             return {
                 changed: true,
                 reason: 'aud_mismatch',
-                oldEmail: localStorage.getItem('workspace_user_email'),
+                oldEmail: StorageManager.get('workspace_user_email', 'session'),
                 newEmail: decoded.email,
                 security: 'CRITICAL',
             };
         }
 
         // Check 4: Email changed within same account
-        const storedEmail = localStorage.getItem('workspace_user_email');
+        const storedEmail = StorageManager.get('workspace_user_email', 'session');
         if (storedEmail && decoded.email !== storedEmail) {
             // Email can change (e.g., alias), so just log it
             return {
@@ -163,9 +165,9 @@ export const AccountChangeDetector = (() => {
         const decoded = decodeIdToken(idToken);
         if (!decoded) return false;
 
-        localStorage.setItem(STORED_SUB_KEY, decoded.sub);
-        localStorage.setItem(STORED_AUD_KEY, decoded.aud);
-        localStorage.setItem(LAST_VERIFIED_KEY, String(Date.now()));
+        StorageManager.set(STORED_SUB_KEY, decoded.sub, 'session');
+        StorageManager.set(STORED_AUD_KEY, decoded.aud, 'session');
+        StorageManager.set(LAST_VERIFIED_KEY, String(Date.now()), 'session');
 
         recordAccountInHistory(decoded.email, decoded.sub, decoded.iat);
 
@@ -185,7 +187,7 @@ export const AccountChangeDetector = (() => {
 
         lastVerifiedAt = now;
 
-        const storedIdToken = localStorage.getItem('google_id_token');
+        const storedIdToken = StorageManager.get('google_id_token', 'session');
         if (!storedIdToken) return;
 
         const comparison = compareWithStored(storedIdToken);
@@ -246,7 +248,7 @@ export const AccountChangeDetector = (() => {
          */
         init(callback) {
             changeCallback = callback;
-            storeCurrentSession(localStorage.getItem('google_id_token'));
+            storeCurrentSession(StorageManager.get('google_id_token', 'session'));
             startVerification();
             console.log('[AccountChangeDetector] Initialized');
         },
@@ -264,7 +266,7 @@ export const AccountChangeDetector = (() => {
          * Get current account information from stored token
          */
         getCurrentAccount() {
-            const token = localStorage.getItem('google_id_token');
+            const token = StorageManager.get('google_id_token', 'session');
             if (!token) return null;
 
             const decoded = decodeIdToken(token);
