@@ -471,6 +471,12 @@ const syncManager = (() => {
                     StorageManager.set(STATUS_KEY, 'true', 'session');
                     updateSyncUI('online');
                     startChatSync(); // BUG FIX: Start the background chat polling loop
+
+                    // Initialize Google Calendar and Tasks APIs
+                    if (window.googleSyncOrchestrator?.initialize) {
+                        window.googleSyncOrchestrator.initialize(accessToken);
+                    }
+
                     resolve(accessToken);
                 },
             });
