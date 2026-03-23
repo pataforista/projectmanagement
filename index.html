@@ -112,7 +112,7 @@
         <div id="auth-drive-connect-step"
           style="display:none; flex-direction:column; gap:12px; padding:12px; background:var(--bg-accent); border-radius:8px; border:1px solid var(--accent-primary);">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary);">Paso 3: Conectar Drive</span>
+            <span style="font-size:0.8rem; font-weight:700; color:var(--text-primary);">Paso 3: Sincronizar</span>
             <span style="font-size:0.75rem; color:var(--text-muted);">¡Hola, <span
                 id="auth-user-name">Usuario</span>!</span>
           </div>
@@ -125,7 +125,7 @@
           </div>
           <button type="button" id="auth-google-drive-link" class="btn btn-primary"
             style="justify-content:center; gap:8px;">
-            <i data-feather="cloud"></i> Conectar Google Drive
+            <i data-feather="cloud"></i> Completar Conexión
           </button>
         </div>
 
@@ -364,13 +364,13 @@
             <i data-feather="sun" class="sun-icon"></i>
             <i data-feather="moon" class="moon-icon"></i>
           </button>
-          <button class="btn btn-icon" id="btn-sync-toggle" title="Configurar Google Drive"
-            aria-label="Configurar sincronización con Google Drive" style="position:relative;">
+          <button class="btn btn-icon" id="btn-sync-toggle" title="Configurar Servidor y Sync"
+            aria-label="Configurar sincronización con el Servidor" style="position:relative;">
             <i data-feather="cloud"></i>
             <span class="status-indicator status-offline" id="sync-indicator"></span>
           </button>
           <button class="btn btn-icon" id="btn-sync-now" title="Sincronizar Ahora"
-            aria-label="Sincronizar ahora con Google Drive">
+            aria-label="Sincronizar ahora con el Servidor">
             <i data-feather="refresh-cw"></i>
           </button>
           <span class="sync-state-label status-offline" id="sync-state-label" aria-live="polite">Offline</span>

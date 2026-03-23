@@ -18,8 +18,10 @@ import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
 import { companion as ollamaCompanion } from './components/ollama-companion.js';
 import { swUpdater } from './utils/sw-updater.js';
+import { BackendClient } from './api/backend-client.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
+    window.BackendClient = BackendClient;
     initGlobalEffects();
     initCommandPalette();
     ollamaCompanion.init();
@@ -333,7 +335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                         driveBtn.onclick = async () => {
                             driveBtn.disabled = true;
-                            driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Autorizando Drive...';
+                            driveBtn.innerHTML = '<i data-feather="loader" class="spin"></i> Finalizando conexión...';
                             if (window.feather) feather.replace();
 
                             try {
@@ -346,12 +348,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 await syncManager.authorize(providedClientId);
 
                                 authOverlay.classList.remove('open');
-                                if (window.showToast) showToast('¡Workspace conectado!', 'success');
+                                if (window.showToast) showToast('¡Conectado al Servidor y sincronizado!', 'success');
                                 resolve();
                             } catch (err) {
-                                console.error('[Auth] Drive auth failed:', err);
+                                console.error('[Auth] Authorization failed:', err);
                                 driveBtn.disabled = false;
-                                driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Google Drive';
+                                driveBtn.innerHTML = '<i data-feather="cloud"></i> Conectar Sync';
                                 if (window.feather) feather.replace();
                             }
                         };

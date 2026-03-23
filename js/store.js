@@ -186,6 +186,7 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'project', record.id, record);
                 _state.projects.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Proyecto "${record.name}" creado.`, 'success');
@@ -216,6 +217,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.projects[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'project', updated.id, payload);
                     _state.projects[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Proyecto actualizado.', 'success');
@@ -235,6 +237,7 @@ const store = (() => {
                             order: _now,
                         };
                         await dbAPI.put(storeName, _state.projects[idx]);
+                        if (!payload._sync) await dbAPI.queueSync('UPDATE', 'project', update.id, { order: update.order });
                     }
                 }
                 _notify(storeName);
@@ -260,6 +263,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'project', tombstone.id, null);
                     _state.projects[pIdx] = tombstone;
                 }
 
@@ -311,6 +315,7 @@ const store = (() => {
                     updatedById: actor.id,
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'task', record.id, record);
                 _state.tasks.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Tarea "${record.title}" creada.`, 'success');
@@ -341,6 +346,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.tasks[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'task', updated.id, payload);
                     _state.tasks[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Tarea actualizada.', 'success');
@@ -357,6 +363,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'task', tombstone.id, null);
                     _state.tasks[tIdx] = tombstone;
                     _notify(storeName);
                     if (window.showToast) showToast('Tarea eliminada.', 'info');
@@ -377,6 +384,7 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'cycle', record.id, record);
                 _state.cycles.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Ciclo "${record.name}" creado.`, 'success');
@@ -407,6 +415,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.cycles[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'cycle', updated.id, payload);
                     _state.cycles[idx] = updated;
                     _notify(storeName);
                 }
@@ -432,6 +441,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'cycle', tombstone.id, null);
                     _state.cycles[cIdx] = tombstone;
                     _notify(storeName);
                     if (window.showToast) showToast('Ciclo eliminado.', 'info');
@@ -452,6 +462,7 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'decision', record.id, record);
                 _state.decisions.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Decisión "${record.title}" registrada.`, 'success');
@@ -482,6 +493,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.decisions[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'decision', updated.id, payload);
                     _state.decisions[idx] = updated;
                     _notify(storeName);
                 }
@@ -507,6 +519,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'decision', tombstone.id, null);
                     _state.decisions[dIdx] = tombstone;
                     _notify(storeName);
                     if (window.showToast) showToast('Decisión eliminada.', 'info');
@@ -531,6 +544,7 @@ const store = (() => {
 
                 const record = { id: `doc-${payload.projectId}`, updatedAt: monotonicNow(), ...existing, ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('UPDATE', 'document', record.id, record);
                 const idx = _state.documents.findIndex(d => d.projectId === payload.projectId);
                 if (idx !== -1) _state.documents[idx] = record;
                 else _state.documents.push(record);
@@ -544,6 +558,7 @@ const store = (() => {
                 if (!_state.logs) _state.logs = [];
                 const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'log', record.id, record);
                 _state.logs.push(record);
                 _notify(storeName);
                 result = record;
@@ -557,6 +572,7 @@ const store = (() => {
                 const avatar = payload.avatar || (payload.name ? payload.name.charAt(0).toUpperCase() : '?');
                 const record = { id: _uid, createdAt: monotonicNow(), avatar, ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'member', record.id, record);
                 _state.members.push(record);
                 _notify(storeName);
                 result = record;
@@ -569,6 +585,7 @@ const store = (() => {
                 if (!existing) throw new Error(`Member ${payload.id} not found`);
                 const updated = { ...existing, ...payload, updatedAt: monotonicNow() };
                 await dbAPI.put(storeName, updated);
+                if (!payload._sync) await dbAPI.queueSync('UPDATE', 'member', updated.id, payload);
                 Object.assign(existing, updated);
                 _notify(storeName);
                 result = updated;
@@ -585,6 +602,7 @@ const store = (() => {
                     updatedAt: monotonicNow()
                 };
                 await dbAPI.put(storeName, tombstone);
+                if (!payload._sync) await dbAPI.queueSync('DELETE', 'member', tombstone.id, null);
                 _state.members[index] = tombstone;
                 _notify(storeName);
                 result = tombstone;

@@ -479,9 +479,13 @@ export const dbAPI = {
   },
 
   /** Queue an operation for background sync. */
-  queueSync(operation, storeName, payload) {
+  queueSync(action, entityType, entityId, payload) {
     return tx('syncQueue', 'readwrite', s => s.add({
-      operation, storeName, payload, createdAt: Date.now()
+      action, 
+      entityType, 
+      entityId, 
+      payload, 
+      createdAt: Date.now()
     }));
   },
 
