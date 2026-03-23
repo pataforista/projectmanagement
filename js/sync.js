@@ -341,21 +341,29 @@ const syncManager = (() => {
     /**
      * OPCIÓN 1 & 3: Handle account switch from different Google session or session manager
      * Triggered when AccountChangeDetector or SessionManager detects a change
+     * EMAIL IS PRIMARY KEY — coordinates with SessionManager
      */
-    async function handleAccountSwitch(oldEmail, newEmail) {
-        console.log(`[Sync] Account switch detected: ${oldEmail || 'unknown'} → ${newEmail}`);
+    async function handleAccountSwitch(oldEmail, newEmail, isSameAccount = false) {
+        console.log(`[Sync] Account switch detected: ${oldEmail || 'unknown'} → ${newEmail} (same account: ${isSameAccount})`);
+
+        // Validate email is set (PRIMARY KEY)
+        if (!newEmail) {
+            console.error('[Sync] Cannot handle account switch: newEmail is required');
+            return;
+        }
 
         // 1. Pause sync temporarily
         const wasSyncing = isSyncing;
         isSyncing = true;
 
-        // 2. Record account switch
+        // 2. Record account switch/email update
         const idToken = StorageManager.get(ID_TOKEN_KEY, 'session');
         if (idToken && AccountChangeDetector) {
             AccountChangeDetector.recordAccountSwitch(newEmail, idToken);
         }
 
         // 3. Update account scope in IDB if needed
+        // For email-only changes (same sub), this might just update the key
         if (window.IDBScopedStorage && window.IDBScopedStorage.switchAccount) {
             try {
                 await window.IDBScopedStorage.switchAccount(newEmail);
@@ -366,14 +374,19 @@ const syncManager = (() => {
 
         // 4. Emit event for UI to react
         window.dispatchEvent(new CustomEvent('account:switched', {
-            detail: { oldEmail, newEmail }
+            detail: { oldEmail, newEmail, isSameAccount }
         }));
 
-        // 5. Reset sync state for new account
-        _remoteChecked = false;
-        _dirtyLocalChanges = false;
-        accessToken = null;
-        pushPending = false;
+        // 5. Reset sync state for new account (only if different account)
+        if (!isSameAccount) {
+            _remoteChecked = false;
+            _dirtyLocalChanges = false;
+            accessToken = null;
+            pushPending = false;
+        } else {
+            // Same account, just email changed — keep sync state
+            console.log('[Sync] Email alias updated, maintaining sync state');
+        }
 
         // 6. Try to resume if it was syncing
         if (wasSyncing) {
@@ -381,9 +394,17 @@ const syncManager = (() => {
             // Give UI time to refresh
             setTimeout(async () => {
                 try {
-                    await pull();
-                    if (!isSyncing) {
-                        await push();
+                    if (!isSameAccount) {
+                        // Different account — full sync cycle
+                        await pull();
+                        if (!isSyncing) {
+                            await push();
+                        }
+                    } else {
+                        // Same account — lighter refresh
+                        if (!isSyncing) {
+                            await push();
+                        }
                     }
                 } catch (e) {
                     console.warn('[Sync] Auto-sync after account switch failed:', e);

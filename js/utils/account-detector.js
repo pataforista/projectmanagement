@@ -4,6 +4,11 @@
  *
  * Monitors Google session for account changes and emits events
  * when the user switches accounts.
+ *
+ * EMAIL IS PRIMARY KEY — all account coordination uses email
+ * - Detects account switches via Google 'sub' (secondary)
+ * - Tracks email changes within same account (alias)
+ * - Maintains account history indexed by email
  */
 
 import { StorageManager } from './storage-manager.js';
@@ -75,18 +80,30 @@ export const AccountChangeDetector = (() => {
     }
 
     /**
-     * Add account to history (deduped by email)
+     * Add account to history (deduped by EMAIL as PRIMARY KEY)
      */
     function recordAccountInHistory(email, subject, issuedAt) {
         loadAccountHistory();
 
+        if (!email) {
+            console.warn('[AccountChangeDetector] Cannot record account history: email is required');
+            return;
+        }
+
         const existing = accountHistoryCache.find(a => a.email === email);
         if (existing) {
+            // Update existing entry — email is PRIMARY KEY
             existing.lastSeen = Date.now();
             existing.count = (existing.count || 1) + 1;
+            // If subject changed (alias or account update), update it
+            if (subject && subject !== existing.subject) {
+                existing.previousSubjects = existing.previousSubjects || [];
+                existing.previousSubjects.push(existing.subject);
+                existing.subject = subject;
+            }
         } else {
             accountHistoryCache.push({
-                email,
+                email,      // PRIMARY KEY for account coordination
                 subject,
                 createdAt: Date.now(),
                 lastSeen: Date.now(),
@@ -94,7 +111,7 @@ export const AccountChangeDetector = (() => {
             });
         }
 
-        // Keep only last 20 accounts
+        // Keep only last 20 accounts (by lastSeen)
         if (accountHistoryCache.length > 20) {
             accountHistoryCache = accountHistoryCache.sort((a, b) => b.lastSeen - a.lastSeen).slice(0, 20);
         }
@@ -117,14 +134,15 @@ export const AccountChangeDetector = (() => {
             return { changed: true, reason: 'token_expired', oldEmail: null, newEmail: decoded.email };
         }
 
-        // Check 2: Subject ID (sub) changed — different account
+        // Check 2: Subject ID (sub) changed — different account (PRIMARY KEY)
         const storedSub = StorageManager.get(STORED_SUB_KEY, 'session');
+        const storedEmail = StorageManager.get('workspace_user_email', 'session');
+
         if (storedSub && decoded.sub !== storedSub) {
-            const oldEmail = StorageManager.get('workspace_user_email', 'session') || 'unknown';
             return {
                 changed: true,
                 reason: 'account_switched',
-                oldEmail,
+                oldEmail: storedEmail || 'unknown',
                 newEmail: decoded.email,
                 oldSub: storedSub,
                 newSub: decoded.sub,
@@ -137,21 +155,22 @@ export const AccountChangeDetector = (() => {
             return {
                 changed: true,
                 reason: 'aud_mismatch',
-                oldEmail: StorageManager.get('workspace_user_email', 'session'),
+                oldEmail: storedEmail,
                 newEmail: decoded.email,
                 security: 'CRITICAL',
             };
         }
 
-        // Check 4: Email changed within same account
-        const storedEmail = StorageManager.get('workspace_user_email', 'session');
-        if (storedEmail && decoded.email !== storedEmail) {
-            // Email can change (e.g., alias), so just log it
+        // Check 4: Email changed within same account (sub matches, email differs)
+        // This is valid — email can be alias or recovery address
+        if (storedEmail && storedSub && decoded.sub === storedSub && decoded.email !== storedEmail) {
+            // Email is PRIMARY KEY for account coordination — sync to SessionManager
             return {
-                changed: false,
-                reason: 'email_alias_change',
+                changed: true,
+                reason: 'email_updated',
                 oldEmail: storedEmail,
                 newEmail: decoded.email,
+                sameSub: true, // Same account (sub matches), just email changed
             };
         }
 
@@ -194,11 +213,20 @@ export const AccountChangeDetector = (() => {
 
         if (comparison.changed) {
             if (changeCallback) {
+                // Normalize event type based on reason
+                let eventType = 'token_expired';
+                if (comparison.reason === 'account_switched') {
+                    eventType = 'account_switched';
+                } else if (comparison.reason === 'email_updated') {
+                    eventType = 'email_updated';
+                }
+
                 const event = {
-                    type: comparison.reason === 'account_switched' ? 'account_switched' : 'token_expired',
+                    type: eventType,
                     reason: comparison.reason,
                     oldEmail: comparison.oldEmail,
                     newEmail: comparison.newEmail,
+                    sameSub: comparison.sameSub || false, // EMAIL CHANGED but same account
                     timestamp: now,
                 };
 
@@ -206,6 +234,11 @@ export const AccountChangeDetector = (() => {
                 if (comparison.reason === 'aud_mismatch') {
                     console.error('[AccountChangeDetector] SECURITY: Token audience mismatch!');
                     event.security = 'CRITICAL';
+                }
+
+                // Log email updates (PRIMARY KEY changes)
+                if (comparison.reason === 'email_updated') {
+                    console.log(`[AccountChangeDetector] Email updated for account ${comparison.oldSub}: ${comparison.oldEmail} -> ${comparison.newEmail}`);
                 }
 
                 changeCallback(event);
