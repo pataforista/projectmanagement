@@ -1593,8 +1593,149 @@ function openInitialSetupModal() {
   feather.replace();
 }
 
+/**
+ * Modal de selección de miembro para vincular identidad local.
+ * Se muestra en el inicio cuando hay miembros pero no hay memberId configurado.
+ */
+function openMemberSelectModal() {
+  const members = store.get.members ? store.get.members() : [];
+  if (!members.length) return;
+
+  const memberRows = members.map(m => `
+    <button class="btn btn-secondary member-select-btn" data-member-id="${esc(m.id)}"
+      style="display:flex;justify-content:space-between;align-items:center;width:100%;padding:10px 14px;margin-bottom:8px;text-align:left;">
+      <span style="font-weight:600;">${esc(m.name)}</span>
+      <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${esc(m.role || 'Miembro')}</span>
+    </button>
+  `).join('');
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="user-check"></i> ¿Quién eres tú?</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;color:var(--text-secondary);">
+        Vincula tu sesión a un miembro del equipo para que tus cambios queden correctamente atribuidos.
+      </p>
+      <div style="max-height:280px;overflow-y:auto;">
+        ${memberRows}
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="modal-skip">Configurar después</button>
+    </div>
+  `);
+
+  modal.querySelectorAll('.member-select-btn').forEach(btn => {
+    btn.onclick = () => {
+      const memberId = btn.dataset.memberId;
+      const selected = members.find(m => m.id === memberId);
+      if (selected) {
+        setCurrentMemberId(selected.id);
+        closeModal();
+        showToast(`✓ Vinculado como ${selected.name}`, 'success');
+        if (window.updateUserProfileUI) updateUserProfileUI();
+        if (window.refreshCurrentView) refreshCurrentView();
+      }
+    };
+  });
+
+  modal.querySelector('#modal-skip')?.addEventListener('click', closeModal);
+  modal.querySelector('#modal-close')?.addEventListener('click', closeModal);
+
+  feather.replace();
+}
+
+/**
+ * Modal de resolución de conflictos de edición simultánea.
+ * Se muestra tras un pull cuando fieldLevelMerge detecta timestamps iguales con valores distintos.
+ *
+ * @param {Object} conflicts - Mapa { recordId: { storeName, fields: [{field, local, remote}] } }
+ */
+function openConflictModal(conflicts) {
+  const records = Object.entries(conflicts);
+  if (!records.length) return;
+
+  const formatValue = v => {
+    if (v === null || v === undefined) return '(vacío)';
+    const s = String(v);
+    return esc(s.length > 100 ? s.slice(0, 100) + '…' : s);
+  };
+
+  const conflictList = records.map(([recordId, data]) => `
+    <div style="border:1px solid var(--border-color);border-radius:8px;padding:12px;margin-bottom:12px;">
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">
+        <strong>${esc(data.storeName || 'registro')}</strong> · ${esc(recordId)}
+      </div>
+      ${(data.fields || []).map(f => `
+        <div style="margin-bottom:6px;">
+          <span style="font-weight:600;font-size:0.85rem;">${esc(f.field)}</span><br>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+            <div style="background:var(--bg-base);padding:6px 8px;border-radius:4px;font-size:0.78rem;">
+              <span style="color:var(--text-muted);display:block;margin-bottom:2px;">Local</span>
+              ${formatValue(f.local)}
+            </div>
+            <div style="background:var(--bg-base);padding:6px 8px;border-radius:4px;font-size:0.78rem;">
+              <span style="color:var(--text-muted);display:block;margin-bottom:2px;">Drive</span>
+              ${formatValue(f.remote)}
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  const modal = openModal(`
+    <div class="modal-header">
+      <h2><i data-feather="alert-triangle"></i> Conflictos de edición</h2>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px;color:var(--text-secondary);">
+        ${records.length} registro(s) fueron editados simultáneamente por varios usuarios.
+        Se mantuvieron tus cambios locales. Puedes revertir a la versión de Drive si lo prefieres.
+      </p>
+      <div style="max-height:320px;overflow-y:auto;">
+        ${conflictList}
+      </div>
+    </div>
+    <div class="modal-footer" style="gap:8px;">
+      <button class="btn" id="conflict-keep-local">Mantener mis cambios</button>
+      <button class="btn btn-danger" id="conflict-use-remote">Usar versión de Drive</button>
+    </div>
+  `);
+
+  modal.querySelector('#conflict-keep-local')?.addEventListener('click', () => {
+    closeModal();
+    showToast('Cambios locales mantenidos', 'success');
+  });
+
+  modal.querySelector('#conflict-use-remote')?.addEventListener('click', async () => {
+    closeModal();
+    showToast('Aplicando versión de Drive…', 'info');
+    try {
+      if (window.syncManager?.forceRemotePull) {
+        await window.syncManager.forceRemotePull();
+        showToast('Versión de Drive aplicada', 'success');
+      } else {
+        showToast('No se pudo conectar con Drive', 'error');
+      }
+    } catch (e) {
+      console.error('[ConflictModal] forceRemotePull failed:', e);
+      showToast('Error al aplicar versión de Drive', 'error');
+    }
+  });
+
+  modal.querySelector('#modal-close')?.addEventListener('click', closeModal);
+
+  feather.replace();
+}
+
 window.openInitialSetupModal = openInitialSetupModal;
 window.openTaskDetail = openTaskDetail;
 window.closeDetailsPanel = closeDetailsPanel;
 window.openSessionModal = openSessionModal;
+window.openMemberSelectModal = openMemberSelectModal;
+window.openConflictModal = openConflictModal;
 

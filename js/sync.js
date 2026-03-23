@@ -1522,42 +1522,36 @@ const syncManager = (() => {
      * @param {Object} remote - Record received from the Drive snapshot.
      * @returns {Object}        The merged record.
      */
-    // Detected conflicts: { recordId: [{ field, local, remote, timestamp }] }
+    // Detected conflicts: { recordId: { storeName, fields: [{field, local, remote, timestamp}] } }
     let _detectedConflicts = {};
+    // When true, conflicts resolve in favor of remote (used by forceRemotePull).
+    let _forceRemoteOnConflict = false;
 
     /**
      * Detect conflicts during merge: when local and remote have different values
      * for the same field with equal timestamps. This requires user intervention.
      *
+     * @param {string} storeName - Name of the IDB store (for UI display)
      * @param {string} recordId - ID of the record (for logging)
      * @param {string} field - Field name where conflict was detected
      * @param {*} localValue - Local value
      * @param {*} remoteValue - Remote value
      * @param {number} timestamp - Timestamp of the conflict (local === remote timestamp)
      */
-    function recordConflict(recordId, field, localValue, remoteValue, timestamp) {
+    function recordConflict(storeName, recordId, field, localValue, remoteValue, timestamp) {
         if (!_detectedConflicts[recordId]) {
-            _detectedConflicts[recordId] = [];
+            _detectedConflicts[recordId] = { storeName, fields: [] };
         }
-        _detectedConflicts[recordId].push({
+        _detectedConflicts[recordId].fields.push({
             field,
             local: localValue,
             remote: remoteValue,
             timestamp,
-            decision: null // Will be set by user via UI
         });
-
-        // BUG FIX #2: Show toast warning when conflict detected
-        console.warn(`[Merge] Conflicto detectado en ${recordId}.${field} (mismo timestamp)`);
-        if (window.showToast) {
-            window.showToast(
-                `⚠️ Cambio conflictivo detectado en ${field}. Se mantuvo versión local.`,
-                'warning'
-            );
-        }
+        console.warn(`[Merge] Conflicto detectado en ${storeName}/${recordId}.${field} (mismo timestamp)`);
     }
 
-    function fieldLevelMerge(local, remote) {
+    function fieldLevelMerge(local, remote, storeName) {
         // If one side is absent, the other wins unconditionally.
         if (!local) return remote;
         if (!remote) return local;
@@ -1591,9 +1585,9 @@ const syncManager = (() => {
                     // No real change, just same timestamp. Remote wins (redundant).
                     merged[key] = remote[key];
                 } else {
-                    recordConflict(local.id, key, local[key], remote[key], localTime);
-                    // For now: keep local (user has priority in their own device)
-                    merged[key] = local[key];
+                    recordConflict(storeName || 'unknown', local.id, key, local[key], remote[key], localTime);
+                    // forceRemoteOnConflict: used by forceRemotePull to apply Drive version
+                    merged[key] = _forceRemoteOnConflict ? remote[key] : local[key];
                 }
             } else {
                 // LWW: last-write-wins by timestamp
@@ -1762,7 +1756,7 @@ const syncManager = (() => {
 
                 mergedStores[storeName] = remoteRecords.map(remoteRec => {
                     const localRec = localMap.get(remoteRec.id);
-                    return fieldLevelMerge(localRec, remoteRec);
+                    return fieldLevelMerge(localRec, remoteRec, storeName);
                 });
 
                 // Append local-only records (created offline, not yet in Drive snapshot).
@@ -1786,19 +1780,19 @@ const syncManager = (() => {
         // CONFLICT RESOLUTION: Notify user if there were simultaneous edits
         if (Object.keys(_detectedConflicts).length > 0) {
             const conflictCount = Object.keys(_detectedConflicts).length;
-            const msg = `⚠️ Se detectaron ${conflictCount} conflicto(s) de edición simultánea. Se mantuvieron los cambios locales.`;
-            console.warn(`[Sync] ${msg}`, _detectedConflicts);
-            if (window.showToast) {
-                showToast(msg, 'warning', true); // persistent=true
-            }
+            console.warn(`[Sync] ${conflictCount} conflicto(s) detectados`, _detectedConflicts);
             // Log conflict details for audit trail
             if (store.dispatch) {
                 await store.dispatch('ADD_LOG', {
                     type: 'conflict',
                     timestamp: Date.now(),
-                    message: `Conflictos detectados: ${JSON.stringify(_detectedConflicts)}`
+                    message: `Conflictos detectados: ${conflictCount} registros con edición simultánea`
                 });
             }
+            // Emit event so the UI can show a conflict resolution modal
+            window.dispatchEvent(new CustomEvent('sync:conflicts-detected', {
+                detail: { conflicts: _detectedConflicts }
+            }));
         }
         // Clear conflicts for next sync
         _detectedConflicts = {};
@@ -2674,6 +2668,19 @@ const syncManager = (() => {
         };
     }
 
+    /**
+     * Pull from Drive with conflicts resolving in favor of the remote version.
+     * Used by the conflict resolution modal when the user chooses "Usar versión de Drive".
+     */
+    async function forceRemotePull() {
+        _forceRemoteOnConflict = true;
+        try {
+            await pull();
+        } finally {
+            _forceRemoteOnConflict = false;
+        }
+    }
+
     return {
         init,
         signIn,
@@ -2684,6 +2691,7 @@ const syncManager = (() => {
         disconnect,
         push,
         pull,
+        forceRemotePull,
         syncNow,
         openPanel,
         getConfig,

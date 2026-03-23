@@ -12,7 +12,7 @@ import {
     updateTopbarSyncWidget,
     initCommandPalette
 } from './ui.js';
-import { setCurrentMemberId, getCurrentWorkspaceUser, getCurrentWorkspaceMember, showToast } from './utils.js';
+import { setCurrentMemberId, getCurrentWorkspaceUser, getCurrentWorkspaceMember, showToast, hasMemberId } from './utils.js';
 import { StorageManager } from './utils/storage-manager.js';
 import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
@@ -585,7 +585,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             setCurrentMemberId(member.id);
             if (window.updateUserProfileUI) updateUserProfileUI();
         }
+
+        // If there are members but still no memberId linked (no email match, no invite),
+        // prompt the user to manually select themselves. Shown once per session.
+        if (!hasMemberId() && allMembers.length > 0 && !sessionStorage.getItem('nexus_member_select_shown')) {
+            sessionStorage.setItem('nexus_member_select_shown', '1');
+            setTimeout(() => {
+                if (window.openMemberSelectModal) openMemberSelectModal();
+            }, 1500);
+        }
     }
+
+    // ── 9.2. Conflict resolution listener ──────────────────────────────────────
+    window.addEventListener('sync:conflicts-detected', (e) => {
+        if (e.detail?.conflicts && window.openConflictModal) {
+            openConflictModal(e.detail.conflicts);
+        }
+    });
 
     // ── 10. Global Action Listeners ────────────────────────────────────────────
     document.getElementById('btn-integrations')?.addEventListener('click', () => router.navigate('/integrations'));
