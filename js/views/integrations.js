@@ -42,10 +42,18 @@ function renderIntegrations(root) {
                   <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}>
                   <span>Google Calendar (Eventos)</span>
                 </label>
-                <label class="checkbox-item">
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-left:24px; margin-top:-4px;">
+                  <span data-sync-type="calendar" class="sync-status-indicator">Pendiente</span>
+                  <span class="sync-item-count" style="margin-left:8px;"></span>
+                </div>
+                <label class="checkbox-item" style="margin-top:8px;">
                   <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}>
                   <span>Google Tasks (Tareas)</span>
                 </label>
+                <div style="font-size:0.75rem; color:var(--text-muted); margin-left:24px; margin-top:-4px;">
+                  <span data-sync-type="tasks" class="sync-status-indicator">Pendiente</span>
+                  <span class="sync-item-count" style="margin-left:8px;"></span>
+                </div>
               </div>
 
               <!-- Clarification Note for Drive Uploads -->
@@ -282,14 +290,27 @@ function renderIntegrations(root) {
   });
 
   root.querySelector('#sync-google-calendar')?.addEventListener('change', (e) => {
-    localStorage.setItem('sync_gcal', e.target.checked);
-    showToast(`Google Calendar ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
+    if (window.googleIntegrationHandler?.handleCalendarToggle) {
+      window.googleIntegrationHandler.handleCalendarToggle(e);
+    } else {
+      localStorage.setItem('sync_gcal', e.target.checked);
+      showToast(`Google Calendar ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
+    }
   });
 
   root.querySelector('#sync-google-tasks')?.addEventListener('change', (e) => {
-    localStorage.setItem('sync_gtasks', e.target.checked);
-    showToast(`Google Tasks ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
+    if (window.googleIntegrationHandler?.handleTasksToggle) {
+      window.googleIntegrationHandler.handleTasksToggle(e);
+    } else {
+      localStorage.setItem('sync_gtasks', e.target.checked);
+      showToast(`Google Tasks ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
+    }
   });
+
+  // Initialize Google integration handler
+  if (window.googleIntegrationHandler?.initialize) {
+    window.googleIntegrationHandler.initialize();
+  }
 
   root.querySelector('#btn-save-todoist')?.addEventListener('click', () => {
     const token = root.querySelector('#int-todoist-token').value.trim();
