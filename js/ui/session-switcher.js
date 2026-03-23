@@ -318,11 +318,12 @@ export async function renderSessionSwitcher(targetElement) {
     panel.style.position = 'relative';
     panel.appendChild(closeBtn);
 
+    // Remove any existing session switcher modal to prevent duplicates
+    document.querySelectorAll('.session-switcher-modal-overlay').forEach(el => el.remove());
+
     // Replace or append
     if (targetElement && targetElement.parentNode) {
         targetElement.parentNode.replaceChild(container, targetElement);
-    } else if (targetElement) {
-        targetElement.appendChild(container);
     } else {
         document.body.appendChild(container);
     }

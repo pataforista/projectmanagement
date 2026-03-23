@@ -284,7 +284,6 @@ const store = (() => {
                 await cascadeDeletes('annotations', a => a.projectId === payload.id);
                 await cascadeDeletes('messages', m => m.projectId === payload.id);
                 await cascadeDeletes('interconsultations', i => i.projectId === payload.id);
-                await cascadeDeletes('sessions', s => s.projectId === payload.id);
 
                 _notify(storeName);
                 if (window.showToast) showToast('Proyecto y dependencias eliminados.', 'info');
@@ -295,19 +294,21 @@ const store = (() => {
             case 'ADD_TASK': {
                 storeName = 'tasks';
                 const actor = getCurrentWorkspaceActor();
+                const _taskNow = monotonicNow();
                 const record = {
                     id: _uid,
-                    createdAt: monotonicNow(),
-                    createdBy: actor.label,
-                    createdById: actor.id,
-                    updatedAt: monotonicNow(),
-                    updatedBy: actor.label,
-                    updatedById: actor.id,
                     cycleId: null,
                     subtasks: [],
                     tags: [],
-                    visibility: payload.visibility || 'shared',
-                    ...payload
+                    visibility: 'shared',
+                    ...payload,
+                    // These must not be overridden by payload on creation
+                    createdAt: _taskNow,
+                    createdBy: actor.label,
+                    createdById: actor.id,
+                    updatedAt: _taskNow,
+                    updatedBy: actor.label,
+                    updatedById: actor.id,
                 };
                 await dbAPI.put(storeName, record);
                 _state.tasks.push(record);
