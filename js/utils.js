@@ -212,7 +212,7 @@ function setCurrentMemberId(memberId) {
 
 function getCurrentWorkspaceMember() {
     if (!window.store || !store.get || !store.get.members) return null;
-    const members = store.get.members();
+    const members = store.get.members().filter(m => !m._deleted);
     const user = getCurrentWorkspaceUser();
     if (!members.length) return null;
 

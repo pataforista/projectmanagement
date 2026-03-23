@@ -290,10 +290,14 @@ export const SessionManager = (() => {
         await logout();
 
         // 3. Attempt Google token revocation in background (fire-and-forget)
+        // Note: google.accounts.oauth2.revoke() is callback-based, not a Promise
         if (token && window.google?.accounts?.oauth2) {
             try {
-                google.accounts.oauth2.revoke(token)
-                    .catch(e => console.warn('[SessionManager] Google revocation failed:', e));
+                google.accounts.oauth2.revoke(token, (response) => {
+                    if (response?.error) {
+                        console.warn('[SessionManager] Google revocation failed:', response.error);
+                    }
+                });
             } catch (e) {
                 console.warn('[SessionManager] Could not revoke token:', e);
             }

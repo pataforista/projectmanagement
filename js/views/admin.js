@@ -3,7 +3,7 @@
  */
 
 async function renderAdmin(root) {
-  const members = store.get.members();
+  const members = store.get.members().filter(m => !m._deleted);
   const config = syncManager.getConfig();
   const currentUser = getCurrentWorkspaceUser();
   const linkedMember = getCurrentWorkspaceMember();
@@ -228,11 +228,16 @@ window.generateInvite = function(role) {
   feather.replace();
 };
 
-window.copyInviteCode = function() {
+window.copyInviteCode = async function() {
   const input = document.getElementById('invite-code-input');
-  input.select();
-  document.execCommand('copy');
-  showToast('Código copiado al portapapeles.', 'success');
+  try {
+    await navigator.clipboard.writeText(input.value);
+    showToast('Código copiado al portapapeles.', 'success');
+  } catch {
+    input.select();
+    document.execCommand('copy');
+    showToast('Código copiado al portapapeles.', 'success');
+  }
 };
 
 window.editMemberRoles = async function(id) {
