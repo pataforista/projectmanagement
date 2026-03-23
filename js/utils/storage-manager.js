@@ -220,6 +220,7 @@ export const StorageManager = (() => {
 
     /**
      * Clear all session data (for logout)
+     * WARNING: Only call this when explicitly logging out — not on account switch!
      */
     function clearSessionData() {
         console.log('[StorageManager] Clearing session data...');
@@ -231,6 +232,21 @@ export const StorageManager = (() => {
         }
 
         // Preserve: GLOBAL_KEYS (config, settings, etc.)
+    }
+
+    /**
+     * Validate that email (PRIMARY KEY) is set when other session keys exist
+     */
+    function validateEmailAsKey() {
+        const email = get('workspace_user_email', 'session');
+        if (!email) {
+            const token = get('google_id_token', 'session');
+            if (token) {
+                console.error('[StorageManager] CRITICAL: Session has token but no email (primary key)!');
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -314,6 +330,7 @@ export const StorageManager = (() => {
         migrateSessionKeys,
         cleanupOldStorage,
         validateSecurityBoundaries,
+        validateEmailAsKey,
         clearSessionData,
         clearAll,
         getAllKeys,
