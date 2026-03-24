@@ -202,7 +202,7 @@ window.saveAdminGeneral = async function() {
   const updates = { workspace_name: wsName };
 
   if (masterKey) {
-      const cryptoLayer = await import('./utils/crypto.js');
+      const cryptoLayer = await import('../utils/crypto.js');
       updates.admin_key_hash = await cryptoLayer.hashPassword(masterKey);
   }
 
@@ -280,7 +280,7 @@ window.editMemberRoles = async function(id) {
         const newRole = select.value;
         if (newRole === 'admin' && config.admin_key_hash) {
             const key = roleModal.querySelector('#verify-master-key').value;
-            const cryptoLayer = await import('./utils/crypto.js');
+            const cryptoLayer = await import('../utils/crypto.js');
             const hash = await cryptoLayer.hashPassword(key);
             if (hash !== config.admin_key_hash) {
                 return showToast('Clave Maestra incorrecta.', 'error');
@@ -303,7 +303,7 @@ window.deleteMemberAdmin = async function(id) {
     if (config.admin_key_hash) {
         const key = prompt('Ingresa la Clave Maestra de Administrador para confirmar la eliminación de un miembro:');
         if (!key) return;
-        const cryptoLayer = await import('./utils/crypto.js');
+        const cryptoLayer = await import('../utils/crypto.js');
         const hash = await cryptoLayer.hashPassword(key);
         if (hash !== config.admin_key_hash) return showToast('Clave Maestra incorrecta.', 'error');
     }
@@ -353,7 +353,7 @@ window.openAddMemberModalAdmin = function() {
         if (role === 'admin' && config.admin_key_hash) {
             const key = prompt('Ingresa la Clave Maestra de Administrador para crear un nuevo Administrador:');
             if (!key) return;
-            const cryptoLayer = await import('./utils/crypto.js');
+            const cryptoLayer = await import('../utils/crypto.js');
             const hash = await cryptoLayer.hashPassword(key);
             if (hash !== config.admin_key_hash) return showToast('Clave Maestra incorrecta.', 'error');
         }
