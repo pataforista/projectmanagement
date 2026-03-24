@@ -85,7 +85,10 @@ export const BackendClient = {
         try {
             const res = await fetch(`${API_BASE_URL}/auth/google`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-device-id': getDeviceId()
+                },
                 body: JSON.stringify({ idToken: idToken })
             });
 

@@ -617,6 +617,7 @@ const store = (() => {
 
                 for (const item of items) {
                     await dbAPI.put(storeName, item);
+                    if (!payload._sync) await dbAPI.queueSync('CREATE', 'library_item', item.id, item);
                     count++;
                 }
 
@@ -632,6 +633,7 @@ const store = (() => {
                 const items = payload; // Array of mapped zotero items
                 for (const item of items) {
                     await dbAPI.put(storeName, item);
+                    if (!payload._sync) await dbAPI.queueSync('CREATE', 'library_item', item.id, item);
                 }
 
                 _state.library = await dbAPI.getAll(storeName);
@@ -650,7 +652,33 @@ const store = (() => {
                         _timestamps: stampFields(_state.library[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'library_item', updated.id, payload);
                     _state.library[idx] = updated;
+                    _notify(storeName);
+                }
+                break;
+            }
+            case 'ADD_LIBRARY_ITEM': {
+                storeName = 'library';
+                const record = { id: _uid, createdAt: monotonicNow(), ...payload };
+                await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'library_item', record.id, record);
+                _state.library.push(record);
+                _notify(storeName);
+                break;
+            }
+            case 'DELETE_LIBRARY_ITEM': {
+                storeName = 'library';
+                const libIdx = _state.library.findIndex(i => i.id === payload.id);
+                if (libIdx !== -1) {
+                    const tombstone = {
+                        ..._state.library[libIdx],
+                        _deleted: true,
+                        updatedAt: monotonicNow()
+                    };
+                    await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'library_item', tombstone.id, null);
+                    _state.library[libIdx] = tombstone;
                     _notify(storeName);
                 }
                 break;
@@ -671,6 +699,7 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'interconsultation', record.id, record);
                 _state.interconsultations.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Interconsulta creada.`, 'success');
@@ -692,6 +721,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.interconsultations[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'interconsultation', updated.id, payload);
                     _state.interconsultations[idx] = updated;
                     _notify(storeName);
                 }
@@ -707,6 +737,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'interconsultation', tombstone.id, null);
                     _state.interconsultations[iIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -726,6 +757,7 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'calendar_event', record.id, record);
                 _state.sessions.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`${payload.type} registrada.`, 'success');
@@ -744,6 +776,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.sessions[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'calendar_event', updated.id, payload);
                     _state.sessions[idx] = updated;
                     _notify(storeName);
                 }
@@ -759,6 +792,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'calendar_event', tombstone.id, null);
                     _state.sessions[sIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -770,6 +804,7 @@ const store = (() => {
                 storeName = 'timeLogs';
                 const record = { id: _uid, createdAt: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'time_log', record.id, record);
                 _state.timeLogs.push(record);
                 _notify(storeName);
                 result = record;
@@ -785,6 +820,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'time_log', tombstone.id, null);
                     _state.timeLogs[tlIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -821,6 +857,7 @@ const store = (() => {
                 }
 
                 await dbAPI.put(storeName, snapshotRecord);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'snapshot', snapshotRecord.id, snapshotRecord);
                 _state.snapshots.push(snapshotRecord);
                 _notify(storeName);
                 if (window.showToast) showToast('Versión guardada (delta).', 'success');
@@ -837,6 +874,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'snapshot', tombstone.id, null);
                     _state.snapshots[snIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -848,6 +886,7 @@ const store = (() => {
                 storeName = 'annotations';
                 const record = { id: _uid, createdAt: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'annotation', record.id, record);
                 _state.annotations.push(record);
                 _notify(storeName);
                 result = record;
@@ -863,6 +902,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'annotation', tombstone.id, null);
                     _state.annotations[aIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -874,6 +914,7 @@ const store = (() => {
                 storeName = 'messages';
                 const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'message', record.id, record);
                 _state.messages.push(record);
                 _notify(storeName);
 
@@ -907,6 +948,7 @@ const store = (() => {
                         updatedAt: monotonicNow()
                     };
                     await dbAPI.put(storeName, tombstone);
+                    if (!payload._sync) await dbAPI.queueSync('DELETE', 'message', tombstone.id, null);
                     _state.messages[msgIdx] = tombstone;
                     _notify(storeName);
                 }
@@ -920,6 +962,7 @@ const store = (() => {
                     if (idx !== -1) {
                         const tombstone = { ...m, _deleted: true, updatedAt: monotonicNow() };
                         await dbAPI.put(storeName, tombstone);
+                        if (!payload._sync) await dbAPI.queueSync('DELETE', 'message', tombstone.id, null);
                         _state.messages[idx] = tombstone;
                     }
                 }
@@ -930,6 +973,7 @@ const store = (() => {
                 storeName = 'notifications';
                 const record = { id: _uid, timestamp: monotonicNow(), ...payload };
                 await dbAPI.put(storeName, record);
+                if (!payload._sync) await dbAPI.queueSync('CREATE', 'notification', record.id, record);
                 _state.notifications.push(record);
                 _notify(storeName);
                 result = record;

@@ -34,6 +34,17 @@ export class DatabaseInit {
     this.createLogs();
     this.createSyncQueue();
     this.createSyncCursor();
+    
+    // Novas tablas de sincronizacion
+    this.createMessages();
+    this.createAnnotations();
+    this.createSnapshots();
+    this.createInterconsultations();
+    this.createCalendarEvents();
+    this.createTimeLogs();
+    this.createLibraryItems();
+    this.createNotifications();
+
     this.createIndexes();
 
     logger.info('✓ Database initialized');
@@ -136,6 +147,7 @@ export class DatabaseInit {
         visibility TEXT DEFAULT 'shared',
         'order' INTEGER DEFAULT 0,
         metadata TEXT,
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -162,6 +174,7 @@ export class DatabaseInit {
         estimate INTEGER,
         due_date DATETIME,
         visibility TEXT DEFAULT 'shared',
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -181,6 +194,7 @@ export class DatabaseInit {
         status TEXT,
         start_date DATETIME,
         end_date DATETIME,
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -200,6 +214,7 @@ export class DatabaseInit {
         status TEXT,
         tags TEXT,
         related_task_ids TEXT,
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -218,6 +233,7 @@ export class DatabaseInit {
         content TEXT,
         type TEXT,
         metadata TEXT,
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -236,6 +252,7 @@ export class DatabaseInit {
         role TEXT,
         avatar TEXT,
         status TEXT,
+        _deleted BOOLEAN DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -284,6 +301,7 @@ export class DatabaseInit {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_by TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        _deleted BOOLEAN DEFAULT 0,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
@@ -294,17 +312,12 @@ export class DatabaseInit {
       CREATE TABLE IF NOT EXISTS sync_queue (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        device_id TEXT NOT NULL DEFAULT 'unknown',
         action TEXT NOT NULL,
         entity_type TEXT NOT NULL,
         entity_id TEXT NOT NULL,
         payload TEXT NOT NULL,
-        old_payload TEXT,
-        status TEXT DEFAULT 'PENDING',
-        retry_count INTEGER DEFAULT 0,
-        max_retries INTEGER DEFAULT 3,
-        last_error TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        synced_at DATETIME,
+        created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `);
@@ -339,9 +352,163 @@ export class DatabaseInit {
       CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
       CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
       CREATE INDEX IF NOT EXISTS idx_notes_user_synced ON notes(user_id, synced_at);
-      CREATE INDEX IF NOT EXISTS idx_sync_queue_user_status ON sync_queue(user_id, status);
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_user_device ON sync_queue(user_id, device_id, created_at);
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_entity ON sync_queue(entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS idx_account_history_user_id ON account_history(user_id);
       CREATE INDEX IF NOT EXISTS idx_logs_user_timestamp ON logs(user_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id, _deleted);
+      CREATE INDEX IF NOT EXISTS idx_annotations_project ON annotations(project_id);
+      CREATE INDEX IF NOT EXISTS idx_calendar_events_project ON calendar_events(project_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
+    `);
+  }
+
+  createMessages() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        text TEXT,
+        sender TEXT,
+        visibility TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createAnnotations() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS annotations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        element_id TEXT,
+        content TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createSnapshots() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS snapshots (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        title TEXT,
+        content TEXT,
+        delta TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createInterconsultations() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS interconsultations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        owner_id TEXT,
+        status TEXT,
+        visibility TEXT,
+        department TEXT,
+        reason TEXT,
+        response TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createCalendarEvents() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        owner_id TEXT,
+        title TEXT,
+        date TEXT,
+        type TEXT,
+        description TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createTimeLogs() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS time_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        task_id TEXT,
+        minutes INTEGER,
+        description TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createLibraryItems() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS library_items (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT,
+        type TEXT,
+        authors TEXT,
+        url TEXT,
+        metadata TEXT,
+        _deleted BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+  }
+
+  createNotifications() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        project_id TEXT,
+        type TEXT,
+        title TEXT,
+        text TEXT,
+        read BOOLEAN DEFAULT 0,
+        _deleted BOOLEAN DEFAULT 0,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
     `);
   }
 

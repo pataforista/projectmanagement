@@ -926,6 +926,7 @@ const syncManager = (() => {
         }
 
         // --- OLD GDRIVE LOGIC (Legacy) ---
+        return; // PHASE 2 ENFORCEMENT: Disabled Google Drive sync to ensure Backend Sync is exclusively used.
         if (!accessToken) return;
         // ... (original GDrive push logic would continue here, but we are prioritizing the new backend)
         // For now, I'll keep the GDrive logic as a fallback if Backend is NOT authenticated.
@@ -968,7 +969,15 @@ const syncManager = (() => {
                         'decision':{ 'CREATE': 'ADD_DECISION','UPDATE': 'UPDATE_DECISION','DELETE': 'DELETE_DECISION' },
                         'document':{ 'UPDATE': 'UPDATE_DOCUMENT' },
                         'member':  { 'CREATE': 'ADD_MEMBER',  'UPDATE': 'UPDATE_MEMBER',  'DELETE': 'DELETE_MEMBER' },
-                        'log':     { 'CREATE': 'ADD_LOG' }
+                        'log':     { 'CREATE': 'ADD_LOG' },
+                        'message':           { 'CREATE': 'ADD_MESSAGE', 'DELETE': 'DELETE_MESSAGE' },
+                        'annotation':        { 'CREATE': 'ADD_ANNOTATION', 'DELETE': 'DELETE_ANNOTATION' },
+                        'snapshot':          { 'CREATE': 'ADD_SNAPSHOT', 'DELETE': 'DELETE_SNAPSHOT' },
+                        'interconsultation': { 'CREATE': 'ADD_INTERCONSULTATION', 'UPDATE': 'UPDATE_INTERCONSULTATION', 'DELETE': 'DELETE_INTERCONSULTATION' },
+                        'calendar_event':    { 'CREATE': 'ADD_SESSION', 'UPDATE': 'UPDATE_SESSION', 'DELETE': 'DELETE_SESSION' },
+                        'time_log':          { 'CREATE': 'ADD_TIME_LOG', 'DELETE': 'DELETE_TIME_LOG' },
+                        'library_item':      { 'CREATE': 'ADD_LIBRARY_ITEM', 'UPDATE': 'UPDATE_LIBRARY_ITEM', 'DELETE': 'DELETE_LIBRARY_ITEM' },
+                        'notification':      { 'CREATE': 'ADD_NOTIFICATION' }
                     };
 
                     for (const change of changes) {
@@ -996,6 +1005,7 @@ const syncManager = (() => {
         }
 
         // --- OLD GDRIVE LOGIC (Legacy) ---
+        return; // PHASE 2 ENFORCEMENT: Disabled Google Drive sync to ensure Backend Sync is exclusively used.
         if (!accessToken) return;
         // ... (original GDrive pull logic)
     }
@@ -1011,7 +1021,11 @@ const syncManager = (() => {
             // When hidden, skip the tick entirely — the visibilitychange handler below
             // fires an immediate pull() the moment the user returns to the tab.
             if (document.visibilityState === 'hidden') return;
-            if (accessToken && !isSyncing && networkOnline) {
+            // BUG FIX: Use BackendClient.isAuthenticated() instead of the legacy GDrive
+            // `accessToken` variable. In backend-only mode, `accessToken` is always null,
+            // so the auto-sync timer never fire even when the user is logged in.
+            const isReady = BackendClient.isAuthenticated() || (accessToken && !isLocked());
+            if (isReady && !isSyncing && networkOnline) {
                 // Auto-sync sequence: Try to pull new changes first, then push our own changes
                 await pull();
                 if (!isSyncing) await push();
@@ -1024,7 +1038,8 @@ const syncManager = (() => {
         if (!_visibilityListenerRegistered) {
             _visibilityListenerRegistered = true;
             document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible' && accessToken && !isSyncing && networkOnline) {
+                const isReady = BackendClient.isAuthenticated() || (accessToken && !isLocked());
+                if (document.visibilityState === 'visible' && isReady && !isSyncing && networkOnline) {
                     console.log('[Sync] Tab became visible — triggering immediate pull.');
                     pull().then(() => { if (!isSyncing) push(); }).catch(() => {});
                 }

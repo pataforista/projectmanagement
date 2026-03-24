@@ -8,12 +8,28 @@ export class SyncService {
       'decision': 'decisions',
       'document': 'documents',
       'member': 'members',
-      'log': 'logs'
+      'log': 'logs',
+      'message': 'messages',
+      'annotation': 'annotations',
+      'snapshot': 'snapshots',
+      'interconsultation': 'interconsultations',
+      'calendar_event': 'calendar_events',
+      'time_log': 'time_logs',
+      'library_item': 'library_items',
+      'notification': 'notifications'
     };
 
     // Tables that have a user_id column for ownership scoping.
-    // tasks, cycles, decisions, documents belong to a project (not directly to a user).
-    this.tablesWithUserId = new Set(['projects', 'notes', 'members', 'logs']);
+    // tasks, cycles, decisions, documents, messages, annotations, snapshots,
+    // interconsultations, calendar_events belong to a project (not directly to a user).
+    // members also gets a user_id for the workspace owner who created them.
+    this.tablesWithUserId = new Set([
+      'projects', 'notes', 'members', 'logs',
+      'time_logs', 'library_items', 'notifications'
+    ]);
+
+    // For members: we allow deletion by the workspace owner (user_id on the member record)
+    this.tablesWithUserIdOwner = new Set(['members']);
 
     // Schema metadata: defines the owner column and available timestamp columns
     // per table so the generic UPSERT builds correct SQL for each table shape.
@@ -26,6 +42,16 @@ export class SyncService {
       'members':   { ownerCol: null,         hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
       'logs':      { ownerCol: 'user_id',    hasCreatedAt: false, hasUpdatedAt: false, hasDeleted: false },
       'notes':     { ownerCol: 'user_id',    hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      
+      // Nuevas tablas
+      'messages':           { ownerCol: 'project_id', hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'annotations':        { ownerCol: 'project_id', hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'snapshots':          { ownerCol: 'project_id', hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'interconsultations': { ownerCol: 'project_id', hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'calendar_events':    { ownerCol: 'project_id', hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'time_logs':          { ownerCol: 'user_id',    hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'library_items':      { ownerCol: 'user_id',    hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true },
+      'notifications':      { ownerCol: 'user_id',    hasCreatedAt: true, hasUpdatedAt: true, hasDeleted: true }
     };
   }
 
@@ -59,9 +85,15 @@ export class SyncService {
       if (results.length === 0) return false;
       const projectId = results[0].project_id;
       return this.validateProjectOwnership(db, userId, projectId);
+    } else if (schema.ownerCol === null && this.tablesWithUserIdOwner.has(tableName)) {
+      // members: the user_id column tracks who created the member record
+      const { results } = await db.prepare(`
+        SELECT user_id FROM ${tableName} WHERE id = ?
+      `).bind(entityId).all();
+      return results.length > 0 && results[0].user_id === userId;
     }
 
-    // For tables without owner col (members), no validation possible
+    // Tables with no owner column and no user_id — deny deletion
     return false;
   }
 
@@ -89,11 +121,12 @@ export class SyncService {
           continue;
         }
 
-        // 1. Prepare sync_queue statement
+        // 1. Prepare sync_queue statement (id pk required, use device_id column)
         const queueStmt = db.prepare(`
-          INSERT INTO sync_queue (user_id, client_id, action, entity_type, entity_id, payload, timestamp)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO sync_queue (id, user_id, device_id, action, entity_type, entity_id, payload, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
+          crypto.randomUUID(),
           userId,
           deviceId,
           change.action,
@@ -200,6 +233,16 @@ export class SyncService {
 
       cols.push('project_id');
       vals.push(projectId);
+
+      // Also store user_id so we can verify workspace membership later, if table has it
+      if (this.tablesWithUserId.has(tableName) || this.tablesWithUserIdOwner.has(tableName)) {
+        cols.push('user_id');
+        vals.push(userId);
+      }
+    } else if (schema.ownerCol === null && this.tablesWithUserIdOwner.has(tableName)) {
+      // members: null-ownerCol tables that still have a user_id FK for the creator
+      cols.push('user_id');
+      vals.push(userId);
     }
 
     if (schema.hasCreatedAt) {
@@ -211,21 +254,53 @@ export class SyncService {
       vals.push(now);
     }
 
-    // Add data columns
-    cols.push(...columns);
-    vals.push(...columns.map(col => {
-      const val = payload[col];
-      return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
-    }));
+    // --- SECURITY: Only allow valid SQL identifier-safe column names ---
+    // Reject payload keys with camelCase, spaces, or SQL keywords.
+    // camelCase keys from the frontend (e.g. `projectId`) are accepted only if
+    // they match an expected alias and are translated to their snake_case DB column.
+    const camelToSnake = {
+      projectId: 'project_id', userId: 'user_id', createdAt: 'created_at',
+      updatedAt: 'updated_at', taskId: 'task_id', cycleId: 'cycle_id',
+      parentId: 'parent_id', ownerId: 'owner_id', assigneeId: 'assignee_id',
+      dueDate: 'due_date', viewType: 'view_type', relatedTaskIds: 'related_task_ids',
+      elementId: 'element_id', isOpen: 'is_open', emailHash: 'email_hash',
+    };
+    // Columns already handled above and system keys to skip
+    const skipKeys = new Set([
+      'id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted',
+      'createdAt', 'updatedAt', 'projectId', 'userId',
+    ]);
+    const SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+    const dataColumns = [];
+    const dataValues = [];
+    for (const [rawKey, val] of Object.entries(payload)) {
+      if (skipKeys.has(rawKey)) continue;
+      const colName = camelToSnake[rawKey] || rawKey;
+      if (!SQL_IDENTIFIER.test(colName)) {
+        console.warn(`[SyncService] Skipping unsafe field name: ${rawKey}`);
+        continue;
+      }
+      dataColumns.push(colName);
+      dataValues.push(
+        (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val
+      );
+    }
+
+    cols.push(...dataColumns);
+    vals.push(...dataValues);
 
     const placeHolders = cols.map(() => '?').join(', ');
-    const updateAssigns = columns.map(col => `${col} = EXCLUDED.${col}`).join(', ');
+    const updateAssigns = dataColumns.map(col => `${col} = EXCLUDED.${col}`).join(', ');
 
     // Build ON CONFLICT update clause
+    // IMPORTANT: Do NOT reset _deleted = 0 on conflict, as this would resurrect
+    // soft-deleted records if a CREATE/UPDATE races with a DELETE.
+    // Instead, preserve the existing _deleted value — the DELETE action will set it
+    // explicitly via the dedicated UPDATE path above.
     const updateParts = [];
     if (updateAssigns) updateParts.push(updateAssigns);
     if (schema.hasUpdatedAt) updateParts.push('updated_at = EXCLUDED.updated_at');
-    if (schema.hasDeleted) updateParts.push('_deleted = 0');
 
     if (updateParts.length === 0) {
       // Nothing to update on conflict — just INSERT OR IGNORE
@@ -245,17 +320,17 @@ export class SyncService {
 
   async processPull(db, userId, deviceId, lastSyncTime) {
     // Fetch all changes from sync_queue after lastSyncTime
-    // Skip changes originating from the same deviceId
+    // Skip changes that originated from the same device (no echo)
     const time = lastSyncTime ? (parseInt(lastSyncTime) || 0) : 0;
 
     const { results } = await db.prepare(`
       SELECT * FROM sync_queue
-      WHERE user_id = ? AND client_id != ? AND timestamp > ?
-      ORDER BY timestamp ASC
-      LIMIT 1000
+      WHERE user_id = ? AND device_id != ? AND created_at > ?
+      ORDER BY created_at ASC
+      LIMIT 500
     `).bind(userId, deviceId, time).all();
 
-    const maxTimestamp = results.length > 0 ? results[results.length - 1].timestamp : time;
+    const maxTimestamp = results.length > 0 ? results[results.length - 1].created_at : time;
 
     return {
       lastSyncTime: maxTimestamp,
@@ -264,7 +339,7 @@ export class SyncService {
         entityType: c.entity_type,
         entityId: c.entity_id,
         payload: JSON.parse(c.payload),
-        timestamp: c.timestamp
+        timestamp: c.created_at
       }))
     };
   }
@@ -272,9 +347,9 @@ export class SyncService {
   async updateCursor(db, userId, deviceId) {
     const now = Date.now();
     await db.prepare(`
-      INSERT INTO sync_cursor (user_id, client_id, last_sync_time)
-      VALUES (?, ?, ?)
-      ON CONFLICT(user_id, client_id) DO UPDATE SET last_sync_time = EXCLUDED.last_sync_time
-    `).bind(userId, deviceId, now).run();
+      INSERT INTO sync_cursor (id, user_id, device_id, last_sync_time)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, device_id) DO UPDATE SET last_sync_time = EXCLUDED.last_sync_time
+    `).bind(crypto.randomUUID(), userId, deviceId, now).run();
   }
 }
