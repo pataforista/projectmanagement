@@ -484,7 +484,7 @@ const syncManager = (() => {
                     // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
                     StorageManager.set(STATUS_KEY, 'true', 'session');
                     updateSyncUI('online');
-                    startChatSync(); // BUG FIX: Start the background chat polling loop
+                    // startChatSync(); // DEPRECATED: Chat now uses the granular backend sync via the 'messages' table.
 
                     // Initialize Google Calendar and Tasks APIs
                     if (window.googleSyncOrchestrator?.initialize) {
@@ -556,7 +556,7 @@ const syncManager = (() => {
                 // OPCIÓN 2: Store connected status in sessionStorage (per-tab)
                 StorageManager.set(STATUS_KEY, 'true', 'session');
                 updateSyncUI('online');
-                startChatSync(); // BUG FIX: Start background chat sync loop after initTokenClient auth
+                // startChatSync(); // DEPRECATED: Start background chat sync loop after initTokenClient auth
                 await pull();
                 if (!isSyncing) await push();
             },
