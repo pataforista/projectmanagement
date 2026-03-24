@@ -229,9 +229,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (authSubtitle) authSubtitle.textContent = 'Tu sesión ha expirado o necesitas entrar con la clave compartida.';
         }
 
-        if (showClientIdBtn && clientIdContainer) {
-            clientIdContainer.style.display = 'flex';
-            showClientIdBtn.style.display = 'none';
+        if (setupClientIdInput) {
+            setupClientIdInput.value = existingClientId;
         }
 
         const manualBtn = document.getElementById('auth-manual-setup');

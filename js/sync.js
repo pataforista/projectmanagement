@@ -302,6 +302,10 @@ const syncManager = (() => {
                     if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
                         const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
 
+                        // FIX: 'credential_returned' is a success state (the callback was triggered).
+                        // Do not reject if this is the reason.
+                        if (reason === 'credential_returned') return;
+
                         // Special handling for tap_outside: inform the user
                         let errorMsg = 'Google sign-in prompt was closed or skipped. Reason: ' + reason;
                         if (reason === 'tap_outside') {
