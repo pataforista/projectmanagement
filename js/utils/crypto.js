@@ -218,7 +218,11 @@ export const ENCRYPTED_STORES = new Set([
 async function getOrCreateSalt() {
     if (_activeSalt) return _activeSalt;
 
-    let email = localStorage.getItem('workspace_user_email') || '';
+    // Read email from sessionStorage (per-tab, set by StorageManager) with
+    // localStorage fallback for pre-migration installs.
+    let email = sessionStorage.getItem('workspace_user_email')
+             || localStorage.getItem('workspace_user_email')
+             || '';
     if (email) {
         // SECURITY FIX: Validate email before encoding
         let scopedKey;
@@ -333,7 +337,9 @@ export async function validateSaltChecksum(saltB64, checksum, email) {
 export async function injectWorkspaceSalt(saltB64, saltChecksum = null) {
     if (!saltB64) return { locked: false, rejected: false };
 
-    const email = localStorage.getItem('workspace_user_email') || '';
+    const email = sessionStorage.getItem('workspace_user_email')
+                || localStorage.getItem('workspace_user_email')
+                || '';
 
     // SECURITY FIX: Validate checksum if provided
     // BUG FIX: Disabled this validation because it relies on the local user's email,

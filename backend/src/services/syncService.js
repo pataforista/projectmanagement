@@ -14,6 +14,19 @@ export class SyncService {
     // Tables that have a user_id column for ownership scoping.
     // tasks, cycles, decisions, documents belong to a project (not directly to a user).
     this.tablesWithUserId = new Set(['projects', 'notes', 'members', 'logs']);
+
+    // Schema metadata: defines the owner column and available timestamp columns
+    // per table so the generic UPSERT builds correct SQL for each table shape.
+    this.tableSchema = {
+      'projects':  { ownerCol: 'user_id',    hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'tasks':     { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'cycles':    { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'decisions': { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'documents': { ownerCol: 'project_id', hasCreatedAt: false, hasUpdatedAt: true,  hasDeleted: true  },
+      'members':   { ownerCol: null,         hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'logs':      { ownerCol: 'user_id',    hasCreatedAt: false, hasUpdatedAt: false, hasDeleted: false },
+      'notes':     { ownerCol: 'user_id',    hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+    };
   }
 
   /**
@@ -22,7 +35,7 @@ export class SyncService {
    */
   async processPush(db, userId, deviceId, changes) {
     if (!changes || !Array.isArray(changes)) return [];
-    
+
     const results = [];
     const statements = [];
 
@@ -51,7 +64,7 @@ export class SyncService {
         // 2. Prepare table application statement
         const applyStmt = this.prepareApplyStatement(db, userId, tableName, change);
         if (applyStmt) statements.push(applyStmt);
-        
+
         results.push({ entityId: change.entityId, status: 'success' });
       } catch (error) {
         console.error(`[SyncService] Error preparing change ${change.entityId}:`, error);
@@ -71,10 +84,36 @@ export class SyncService {
   prepareApplyStatement(db, userId, tableName, change) {
     const payload = change.payload || {};
     const entityId = change.entityId;
+    const schema = this.tableSchema[tableName];
 
+    if (!schema) {
+      console.warn(`[SyncService] No schema metadata for table ${tableName}, skipping apply.`);
+      return null;
+    }
+
+    // --- Special handling for 'logs' table (no _deleted, no updated_at, no created_at) ---
+    if (tableName === 'logs') {
+      if (change.action === 'DELETE') {
+        // logs table has no _deleted column — skip
+        return null;
+      }
+      // logs: INSERT OR IGNORE (id, user_id, type, message, timestamp)
+      return db.prepare(`
+        INSERT OR IGNORE INTO logs (id, user_id, type, message, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(
+        entityId,
+        userId,
+        payload.type || 'sync',
+        payload.message || '',
+        payload.timestamp || Date.now()
+      );
+    }
+
+    // --- DELETE ---
     if (change.action === 'DELETE') {
-      // Only tables that have a user_id column can be scoped by it.
-      // Tables like tasks, cycles, decisions, documents belong to a project instead.
+      if (!schema.hasDeleted) return null;
+
       if (this.tablesWithUserId.has(tableName)) {
         return db.prepare(`UPDATE ${tableName} SET _deleted = 1, updated_at = ? WHERE id = ? AND user_id = ?`)
                  .bind(Date.now(), entityId, userId);
@@ -83,48 +122,77 @@ export class SyncService {
                .bind(Date.now(), entityId);
     }
 
-    // Generic UPSERT for D1
-    // Filter out internal fields from payload
-    const columns = Object.keys(payload).filter(col => !['id', 'user_id', 'created_at', 'updated_at', '_deleted'].includes(col));
-    
-    // Cloudflare D1 supports ON CONFLICT
+    // --- CREATE / UPDATE: Schema-aware UPSERT ---
+    // Filter out internal/system fields from payload
+    const systemFields = new Set(['id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted']);
+    const columns = Object.keys(payload).filter(col => !systemFields.has(col));
+
     const now = Date.now();
-    const cols = ['id', 'user_id', 'created_at', 'updated_at', ...columns];
+
+    // Build column list based on actual table schema
+    const cols = ['id'];
+    const vals = [entityId];
+
+    // Owner column: user_id for user-owned tables, project_id for project-owned tables
+    if (schema.ownerCol === 'user_id') {
+      cols.push('user_id');
+      vals.push(userId);
+    } else if (schema.ownerCol === 'project_id') {
+      cols.push('project_id');
+      // project_id comes from the payload (the client knows which project this belongs to)
+      vals.push(payload.project_id || payload.projectId || '');
+    }
+
+    if (schema.hasCreatedAt) {
+      cols.push('created_at');
+      vals.push(payload.createdAt || now);
+    }
+    if (schema.hasUpdatedAt) {
+      cols.push('updated_at');
+      vals.push(now);
+    }
+
+    // Add data columns
+    cols.push(...columns);
+    vals.push(...columns.map(col => {
+      const val = payload[col];
+      return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
+    }));
+
     const placeHolders = cols.map(() => '?').join(', ');
     const updateAssigns = columns.map(col => `${col} = EXCLUDED.${col}`).join(', ');
-    
+
+    // Build ON CONFLICT update clause
+    const updateParts = [];
+    if (updateAssigns) updateParts.push(updateAssigns);
+    if (schema.hasUpdatedAt) updateParts.push('updated_at = EXCLUDED.updated_at');
+    if (schema.hasDeleted) updateParts.push('_deleted = 0');
+
+    if (updateParts.length === 0) {
+      // Nothing to update on conflict — just INSERT OR IGNORE
+      const sql = `INSERT OR IGNORE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeHolders})`;
+      return db.prepare(sql).bind(...vals);
+    }
+
     const sql = `
       INSERT INTO ${tableName} (${cols.join(', ')})
       VALUES (${placeHolders})
-      ON CONFLICT(id) DO UPDATE SET 
-        ${updateAssigns},
-        updated_at = EXCLUDED.updated_at,
-        _deleted = 0
+      ON CONFLICT(id) DO UPDATE SET
+        ${updateParts.join(', ')}
     `;
 
-    const values = [
-        entityId, 
-        userId, 
-        payload.createdAt || now, 
-        now, 
-        ...columns.map(col => {
-            const val = payload[col];
-            return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
-        })
-    ];
-
-    return db.prepare(sql).bind(...values);
+    return db.prepare(sql).bind(...vals);
   }
 
   async processPull(db, userId, deviceId, lastSyncTime) {
     // Fetch all changes from sync_queue after lastSyncTime
     // Skip changes originating from the same deviceId
     const time = lastSyncTime ? (parseInt(lastSyncTime) || 0) : 0;
-    
+
     const { results } = await db.prepare(`
-      SELECT * FROM sync_queue 
-      WHERE user_id = ? AND client_id != ? AND timestamp > ? 
-      ORDER BY timestamp ASC 
+      SELECT * FROM sync_queue
+      WHERE user_id = ? AND client_id != ? AND timestamp > ?
+      ORDER BY timestamp ASC
       LIMIT 1000
     `).bind(userId, deviceId, time).all();
 

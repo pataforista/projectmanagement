@@ -947,7 +947,11 @@ const syncManager = (() => {
             isSyncing = true;
             updateSyncUI('syncing');
             try {
-                const lastSync = localStorage.getItem('last_sync_server') || '0';
+                // Per-account sync cursor: prevents cross-account cursor contamination
+                // when multiple accounts are used in different tabs.
+                const email = StorageManager.get('workspace_user_email', 'session') || '';
+                const cursorKey = email ? `last_sync_server_${email}` : 'last_sync_server';
+                const lastSync = localStorage.getItem(cursorKey) || '0';
                 console.log(`[Sync] Pulling deltas since ${lastSync}...`);
                 const res = await BackendClient.fetch(`/api/sync/pull?lastSyncTime=${lastSync}`);
                 if (!res.ok) throw new Error('Pull failed: ' + res.status);
@@ -979,7 +983,7 @@ const syncManager = (() => {
                     showToast(`Sincronizados ${changes.length} cambios remotos`, 'success');
                 }
 
-                localStorage.setItem('last_sync_server', lastSyncTime);
+                localStorage.setItem(cursorKey, lastSyncTime);
                 _remoteChecked = true;
                 updateSyncUI('online');
             } catch (err) {
