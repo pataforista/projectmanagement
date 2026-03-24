@@ -15,7 +15,7 @@ async function getCrypto() {
 
 
 const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 11; // v11: added assigneeId to interconsultations
+const DB_VERSION = 12; // v12: added sync_push_queue for optimized sync flow
 
 let db;
 
@@ -35,7 +35,8 @@ const STORES = {
   snapshots: 'snapshots',
   annotations: 'annotations',
   messages: 'messages',
-  notifications: 'notifications'
+  notifications: 'notifications',
+  sync_push_queue: 'sync_push_queue'
 };
 
 /**
@@ -226,6 +227,11 @@ export const initDB = () => new Promise(async (resolve, reject) => {
         s.createIndex('read', 'read', { unique: false });
         s.createIndex('timestamp', 'timestamp', { unique: false });
         s.createIndex('type', 'type', { unique: false });
+      }
+
+      // Sync Push Queue (v12)
+      if (!d.objectStoreNames.contains('sync_push_queue')) {
+        d.createObjectStore('sync_push_queue', { keyPath: 'id', autoIncrement: true });
       }
     };
   });

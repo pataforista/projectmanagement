@@ -54,7 +54,7 @@ export const BackendClient = {
             
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Autenticación en el servidor fallida');
+                throw new Error(errorData.message || 'Autenticación en el servidor fallida');
             }
 
             const data = await res.json();
