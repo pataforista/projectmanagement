@@ -11,11 +11,22 @@ class OllamaAPI {
         this.model = localStorage.getItem('ollama_model') || 'llama3';
         this.corsProxyUrl = localStorage.getItem('ollama_cors_proxy') || '';
 
+        // We will evaluate the proxy dynamically in _getActiveProxy()
+    }
+
+    /**
+     * Dynamically determines the active CORS proxy to use.
+     * @private
+     */
+    _getActiveProxy() {
+        if (this.corsProxyUrl) return this.corsProxyUrl;
+        
         // AUTO-CONFIG: If using BackendClient, we can use it as a proxy to bypass CORS
-        if (!this.corsProxyUrl && typeof BackendClient !== 'undefined' && BackendClient.isAuthenticated()) {
+        if (typeof BackendClient !== 'undefined' && BackendClient.isAuthenticated()) {
             const apiBase = BackendClient.getApiBaseUrl(); // e.g. https://.../api
-            this.corsProxyUrl = `${apiBase}/ai/ollama`;
+            return `${apiBase}/ai/ollama`;
         }
+        return '';
     }
 
     setSettings(url, model, corsProxy = '') {
@@ -60,16 +71,17 @@ class OllamaAPI {
      */
     _buildFetchUrl(endpoint) {
         const fullUrl = `${this.baseUrl}${endpoint}`;
+        const activeProxy = this._getActiveProxy();
 
         // If CORS proxy is configured, route through it
-        if (this.corsProxyUrl) {
+        if (activeProxy) {
             try {
                 // If it's our backend proxy, we use a specific pattern
-                if (this.corsProxyUrl.includes('/api/ai/ollama')) {
-                    return `${this.corsProxyUrl}${endpoint}`;
+                if (activeProxy.includes('/api/ai/ollama')) {
+                    return `${activeProxy}${endpoint}`;
                 }
                 // Generic proxy fallback
-                const proxyUrl = new URL(this.corsProxyUrl);
+                const proxyUrl = new URL(activeProxy);
                 proxyUrl.searchParams.set('url', fullUrl);
                 return proxyUrl.toString();
             } catch (e) {
@@ -109,7 +121,8 @@ class OllamaAPI {
         try {
             const fetchUrl = this._buildFetchUrl('/api/generate');
             const headers = { 'Content-Type': 'application/json' };
-            if (this.corsProxyUrl && this.corsProxyUrl.includes('/api/ai/ollama')) {
+            const activeProxy = this._getActiveProxy();
+            if (activeProxy && activeProxy.includes('/api/ai/ollama')) {
                 headers['x-ollama-url'] = this.baseUrl;
             }
 
@@ -201,7 +214,8 @@ class OllamaAPI {
         try {
             const fetchUrl = this._buildFetchUrl('/api/tags');
             const headers = {};
-            if (this.corsProxyUrl && this.corsProxyUrl.includes('/api/ai/ollama')) {
+            const activeProxy = this._getActiveProxy();
+            if (activeProxy && activeProxy.includes('/api/ai/ollama')) {
                 headers['x-ollama-url'] = this.baseUrl;
             }
 

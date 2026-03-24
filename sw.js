@@ -4,8 +4,8 @@
  */
 
 // ── VERSION CONTROL FOR FORCED UPDATES ──────────────────────────────────────
-const SW_VERSION = '12.0.3';  // Increment this to force all clients to update
-const CACHE_NAME = 'workspace-v12.3';
+const SW_VERSION = '12.0.4';  // Increment this to force all clients to update
+const CACHE_NAME = 'workspace-v12.4';
 const VERSION_CACHE = 'workspace-version';
 const SHELL_ASSETS = [
     './',
