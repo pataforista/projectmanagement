@@ -27,45 +27,57 @@ export class TokenService {
   }
 
   /**
-   * Generar refresh token (string aleatorio)
+   * Genera un refresh token de alta entropía (texto plano, para el cliente).
    */
   generateRefreshToken() {
     return crypto.randomUUID().replace(/-/g, '') + Date.now().toString(16);
   }
 
   /**
-   * Guardar refresh token en BD
+   * Devuelve el SHA-256 hex del token (lo que se almacena en BD, nunca el token en crudo).
    */
-  async saveRefreshToken(db, sessionId, userId, token) {
-    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-    await db.prepare(`
-      INSERT INTO refresh_tokens (id, session_id, user_id, token_hash, expires_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(crypto.randomUUID(), sessionId, userId, token, expiresAt).run();
+  async hashToken(token) {
+    const data = new TextEncoder().encode(token);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   /**
-   * Obtener refresh token de BD
+   * Guardar refresh token en BD (solo se guarda el hash, nunca el token en crudo).
+   */
+  async saveRefreshToken(db, sessionId, userId, token) {
+    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const hash = await this.hashToken(token);
+    await db.prepare(`
+      INSERT INTO refresh_tokens (id, session_id, user_id, token_hash, expires_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(crypto.randomUUID(), sessionId, userId, hash, expiresAt).run();
+  }
+
+  /**
+   * Obtener refresh token de BD (busca por hash del token recibido).
    */
   async getRefreshToken(db, token) {
     const now = Date.now();
+    const hash = await this.hashToken(token);
     const { results } = await db.prepare(`
       SELECT * FROM refresh_tokens
       WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > ?
-    `).bind(token, now).all();
+    `).bind(hash, now).all();
 
     return results[0];
   }
 
   /**
-   * Revocar refresh token
+   * Revocar refresh token (busca por hash del token recibido).
    */
   async revokeRefreshToken(db, token) {
+    const hash = await this.hashToken(token);
     await db.prepare(`
       UPDATE refresh_tokens
       SET revoked_at = ?
       WHERE token_hash = ?
-    `).bind(Date.now(), token).run();
+    `).bind(Date.now(), hash).run();
   }
 
   /**

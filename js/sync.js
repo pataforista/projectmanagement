@@ -890,11 +890,29 @@ const syncManager = (() => {
                 });
 
                 if (!res.ok) throw new Error('Push failed: ' + res.status);
-                
-                // Clear the queue for the items we just pushed
-                await dbAPI.clear('sync_push_queue');
-                _dirtyLocalChanges = false;
-                localStorage.removeItem('nexus_dirty_flag');
+
+                const data = await res.json();
+                // Only remove items that the server confirmed as successful.
+                // Failed items stay in the queue and will be retried on the next push cycle.
+                const failedEntityIds = new Set(
+                    (data.results || [])
+                        .filter(r => r.status !== 'success')
+                        .map(r => r.entityId)
+                );
+                if (failedEntityIds.size === 0) {
+                    // All items succeeded — fast path: clear entire queue
+                    await dbAPI.clear('sync_push_queue');
+                } else {
+                    // Partial success — delete only the succeeded items by their IndexedDB key
+                    for (const item of changes) {
+                        if (!failedEntityIds.has(item.entityId)) {
+                            await dbAPI.delete('sync_push_queue', item.id);
+                        }
+                    }
+                    console.warn(`[Sync] ${failedEntityIds.size} change(s) failed on server and will be retried.`);
+                }
+                _dirtyLocalChanges = failedEntityIds.size > 0;
+                if (!_dirtyLocalChanges) localStorage.removeItem('nexus_dirty_flag');
                 updateSyncUI('online');
                 console.log('[Sync] Push successful.');
             } catch (err) {

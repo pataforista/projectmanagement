@@ -6,12 +6,25 @@
 import { StorageManager } from '../utils/storage-manager.js';
 
 // Cambia esto a la URL de tu Cloudflare Worker después de desplegar
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? 'http://localhost:8787' 
-    : 'https://workspace-backend.cesaraugustocelada.workers.dev'; 
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8787'
+    : 'https://workspace-backend.cesaraugustocelada.workers.dev';
 
 let currentAccessToken = null; // JWT stored in memory for security
 let refreshTokenPromise = null; // Prevents parallel refresh token calls
+
+/**
+ * Returns a stable device UUID, generating one on first use.
+ * Stored in localStorage so it persists across sessions on the same device.
+ */
+function getDeviceId() {
+    let id = localStorage.getItem('nexus_device_id');
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem('nexus_device_id', id);
+    }
+    return id;
+}
 
 export const BackendClient = {
     /**
@@ -110,7 +123,8 @@ export const BackendClient = {
         if (currentAccessToken) {
             headers.set('Authorization', `Bearer ${currentAccessToken}`);
         }
-        
+        headers.set('x-device-id', getDeviceId());
+
         if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
              headers.set('Content-Type', 'application/json');
         }
@@ -144,23 +158,26 @@ export const BackendClient = {
     },
 
     /**
-     * Logout from the backend
+     * Logout from the backend.
+     * Revokes the session on the server BEFORE clearing local tokens,
+     * so the Authorization header is still valid when the request is sent.
      */
     async logout() {
         const token = localStorage.getItem('nexus_refresh_token');
-        this.clearTokens(); // Always clear locally
 
         if (token) {
             try {
-                await fetch(`${API_BASE_URL}/auth/logout`, {
+                // Use this.fetch() so the Bearer token is injected automatically
+                await this.fetch('/auth/logout', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ refreshToken: token })
                 });
             } catch (err) {
                 console.error('[BackendClient] Falla al notificar logout al servidor', err);
             }
         }
+
+        this.clearTokens(); // Clear locally after notifying the server
     }
 };
 

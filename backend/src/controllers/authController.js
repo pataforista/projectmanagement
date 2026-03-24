@@ -107,6 +107,11 @@ export class AuthController {
         return c.json({ status: 'error', message: 'User not found' }, 401);
       }
 
+      // Rotate: revoke old token and issue a new one
+      await this.tokenService.revokeRefreshToken(c.env.DB, refreshToken);
+      const newRefreshToken = this.tokenService.generateRefreshToken();
+      await this.tokenService.saveRefreshToken(c.env.DB, record.session_id, user.id, newRefreshToken);
+
       const newAccessToken = await this.tokenService.generateAccessToken(
         c.env,
         user.id,
@@ -117,6 +122,7 @@ export class AuthController {
       return c.json({
         status: 'success',
         accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
         expiresIn: 900,
       });
 
