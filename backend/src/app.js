@@ -2,6 +2,10 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
 import { csrfMiddleware } from './middleware/csrf.js';
+import { createAuthRoutes } from './routes/authRoutes.js';
+import { createSyncRoutes } from './routes/syncRoutes.js';
+import { createAdminRoutes } from './routes/adminRoutes.js';
+import { createAIRoutes } from './routes/aiRoutes.js';
 
 export function createApp() {
   const app = new Hono();

@@ -981,13 +981,19 @@ const syncManager = (() => {
                     };
 
                     for (const change of changes) {
-                        const typeActions = actionMap[change.entityType];
-                        if (!typeActions) continue;
-                        const action = typeActions[change.action];
-                        if (!action) continue;
-
-                        // Apply to store with _sync flag to prevent re-queuing
-                        await store.dispatch(action, { ...change.payload, id: change.entityId, _sync: true });
+                        const action = actionMap[change.entityType]?.[change.action];
+                        if (action) {
+                            let payload = change.payload;
+                            // If payload is encrypted, decrypt it before store dispatch
+                            if (payload && payload.__encrypted) {
+                                const crypto = await import('./utils/crypto.js');
+                                if (crypto.hasKey()) {
+                                    const decrypted = await crypto.decryptRecord(payload);
+                                    if (decrypted) payload = decrypted;
+                                }
+                            }
+                            await store.dispatch(action, { ...payload, id: change.entityId, _sync: true });
+                        }
                     }
                     showToast(`Sincronizados ${changes.length} cambios remotos`, 'success');
                 }
@@ -1047,7 +1053,7 @@ const syncManager = (() => {
         }
 
         // Start the micro-polling Chat Engine
-        startChatSync();
+        // startChatSync(); // DEPRECATED: Chat now uses the granular backend sync via the 'messages' table.
     }
 
     function isSyncPaused() {

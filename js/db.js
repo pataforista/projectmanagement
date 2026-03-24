@@ -485,12 +485,39 @@ export const dbAPI = {
   },
 
   /** Queue an operation for background sync. */
-  queueSync(action, entityType, entityId, payload) {
-    return tx('syncQueue', 'readwrite', s => s.add({
-      action, 
-      entityType, 
-      entityId, 
-      payload, 
+  async queueSync(action, entityType, entityId, payload) {
+    if (action === 'DELETE') {
+      return tx('sync_push_queue', 'readwrite', s => s.add({
+        action, entityType, entityId, payload: null, createdAt: Date.now()
+      }));
+    }
+
+    let dataToSync = payload;
+    try {
+      const crypto = await getCrypto();
+      // Map entityType (singular) to storeName (plural)
+      const typeToStore = {
+        'project': 'projects', 'task': 'tasks', 'cycle': 'cycles',
+        'decision': 'decisions', 'document': 'documents', 'member': 'members',
+        'note': 'notes', 'message': 'messages', 'annotation': 'annotations',
+        'snapshot': 'snapshots', 'interconsultation': 'interconsultations',
+        'calendar_event': 'sessions', 'time_log': 'timeLogs',
+        'library_item': 'library', 'notification': 'notifications'
+      };
+      const storeName = typeToStore[entityType];
+
+      if (storeName && crypto.ENCRYPTED_STORES.has(storeName) && crypto.hasKey()) {
+        dataToSync = await crypto.encryptRecord(payload);
+      }
+    } catch (e) {
+      console.warn('[DB] queueSync encryption skipped or failed:', e);
+    }
+
+    return tx('sync_push_queue', 'readwrite', s => s.add({
+      action,
+      entityType,
+      entityId,
+      payload: dataToSync,
       createdAt: Date.now()
     }));
   },

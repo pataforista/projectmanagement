@@ -10,6 +10,12 @@ class OllamaAPI {
         this.baseUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
         this.model = localStorage.getItem('ollama_model') || 'llama3';
         this.corsProxyUrl = localStorage.getItem('ollama_cors_proxy') || '';
+
+        // AUTO-CONFIG: If using BackendClient, we can use it as a proxy to bypass CORS
+        if (!this.corsProxyUrl && typeof BackendClient !== 'undefined' && BackendClient.isAuthenticated()) {
+            const apiBase = BackendClient.getApiBaseUrl(); // e.g. https://.../api
+            this.corsProxyUrl = `${apiBase}/ai/ollama`;
+        }
     }
 
     setSettings(url, model, corsProxy = '') {
@@ -58,7 +64,11 @@ class OllamaAPI {
         // If CORS proxy is configured, route through it
         if (this.corsProxyUrl) {
             try {
-                // URL encode the target URL for the proxy
+                // If it's our backend proxy, we use a specific pattern
+                if (this.corsProxyUrl.includes('/api/ai/ollama')) {
+                    return `${this.corsProxyUrl}${endpoint}`;
+                }
+                // Generic proxy fallback
                 const proxyUrl = new URL(this.corsProxyUrl);
                 proxyUrl.searchParams.set('url', fullUrl);
                 return proxyUrl.toString();
@@ -98,9 +108,14 @@ class OllamaAPI {
     async generate(prompt, systemPrompt = '', onChunk = null) {
         try {
             const fetchUrl = this._buildFetchUrl('/api/generate');
+            const headers = { 'Content-Type': 'application/json' };
+            if (this.corsProxyUrl && this.corsProxyUrl.includes('/api/ai/ollama')) {
+                headers['x-ollama-url'] = this.baseUrl;
+            }
+
             const response = await fetch(fetchUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: headers,
                 body: JSON.stringify({
                     model: this.model,
                     prompt: prompt,
@@ -185,7 +200,12 @@ class OllamaAPI {
     async healthCheck() {
         try {
             const fetchUrl = this._buildFetchUrl('/api/tags');
-            const response = await fetchWithTimeout(fetchUrl);
+            const headers = {};
+            if (this.corsProxyUrl && this.corsProxyUrl.includes('/api/ai/ollama')) {
+                headers['x-ollama-url'] = this.baseUrl;
+            }
+
+            const response = await fetchWithTimeout(fetchUrl, { headers });
             if (!response.ok) {
                 // Only warn about CORS if it's a non-connection-refused server error
                 this._handleCorsError(new Error(`HTTP ${response.status}`));
