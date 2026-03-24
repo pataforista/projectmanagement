@@ -26,6 +26,17 @@ function getDeviceId() {
     return id;
 }
 
+/**
+ * Returns a per-account storage key for the refresh token.
+ * Uses the current session email to scope tokens, preventing cross-account
+ * contamination when multiple accounts are used in different tabs.
+ * Falls back to the legacy key if no email is available.
+ */
+function getRefreshTokenKey() {
+    const email = StorageManager.get('workspace_user_email', 'session');
+    return email ? `nexus_refresh_token_${email}` : 'nexus_refresh_token';
+}
+
 export const BackendClient = {
     /**
      * Replaces the local access token and persists the refresh token.
@@ -33,9 +44,12 @@ export const BackendClient = {
     setTokens(accessToken, refreshToken) {
         currentAccessToken = accessToken;
         if (refreshToken) {
+            const key = getRefreshTokenKey();
+            localStorage.setItem(key, refreshToken);
+            // Also set legacy key for backward compat during migration
             localStorage.setItem('nexus_refresh_token', refreshToken);
         } else {
-            localStorage.removeItem('nexus_refresh_token');
+            this.clearTokens();
         }
     },
 
@@ -44,14 +58,24 @@ export const BackendClient = {
      */
     clearTokens() {
         currentAccessToken = null;
+        const key = getRefreshTokenKey();
+        localStorage.removeItem(key);
         localStorage.removeItem('nexus_refresh_token');
     },
 
     /**
-     * Returns true if there might be a sessions (we have an access or refresh token)
+     * Returns true if there might be a session (we have an access or refresh token)
      */
     isAuthenticated() {
-        return !!currentAccessToken || !!localStorage.getItem('nexus_refresh_token');
+        return !!currentAccessToken || !!this._getStoredRefreshToken();
+    },
+
+    /**
+     * Reads the refresh token from storage, preferring per-account key.
+     */
+    _getStoredRefreshToken() {
+        const key = getRefreshTokenKey();
+        return localStorage.getItem(key) || localStorage.getItem('nexus_refresh_token');
     },
 
     /**
@@ -64,7 +88,7 @@ export const BackendClient = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ idToken: idToken })
             });
-            
+
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({}));
                 throw new Error(errorData.message || 'Autenticación en el servidor fallida');
@@ -81,10 +105,10 @@ export const BackendClient = {
     },
 
     /**
-     * Attempt to refresh the JWT using the localStorage refresh token
+     * Attempt to refresh the JWT using the stored refresh token
      */
     async refreshToken() {
-        const token = localStorage.getItem('nexus_refresh_token');
+        const token = this._getStoredRefreshToken();
         if (!token) throw new Error('No hay refresh token disponible');
 
         try {
@@ -112,7 +136,7 @@ export const BackendClient = {
      */
     async fetch(endpoint, options = {}) {
         // 1. Ensure we have an access token (or try to get one if we only have a refresh token)
-        if (!currentAccessToken && localStorage.getItem('nexus_refresh_token')) {
+        if (!currentAccessToken && this._getStoredRefreshToken()) {
              if (!refreshTokenPromise) {
                  refreshTokenPromise = this.refreshToken().finally(() => { refreshTokenPromise = null; });
              }
@@ -137,14 +161,14 @@ export const BackendClient = {
         let response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
         // 2. Handle 401 Unauthorized (Token expired)
-        if (response.status === 401 && localStorage.getItem('nexus_refresh_token')) {
+        if (response.status === 401 && this._getStoredRefreshToken()) {
             console.log('[BackendClient] Token expirado, intentando refrescar...');
             try {
                 if (!refreshTokenPromise) {
                     refreshTokenPromise = this.refreshToken().finally(() => { refreshTokenPromise = null; });
                 }
                 const newToken = await refreshTokenPromise;
-                
+
                 // Retry requested fetch
                 headers.set('Authorization', `Bearer ${newToken}`);
                 response = await fetch(`${API_BASE_URL}${endpoint}`, { ...config, headers });
@@ -163,7 +187,7 @@ export const BackendClient = {
      * so the Authorization header is still valid when the request is sent.
      */
     async logout() {
-        const token = localStorage.getItem('nexus_refresh_token');
+        const token = this._getStoredRefreshToken();
 
         if (token) {
             try {

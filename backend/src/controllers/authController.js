@@ -102,6 +102,14 @@ export class AuthController {
         return c.json({ status: 'error', message: 'Invalid or expired refresh token' }, 401);
       }
 
+      // Verify the session is still active (not revoked by admin or logout)
+      const session = await this.sessionService.getSession(c.env.DB, record.session_id);
+      if (!session) {
+        // Session was revoked — also revoke the refresh token to prevent further attempts
+        await this.tokenService.revokeRefreshToken(c.env.DB, refreshToken);
+        return c.json({ status: 'error', message: 'Session has been revoked' }, 401);
+      }
+
       const user = await this.userService.getUserById(c.env.DB, record.user_id);
       if (!user) {
         return c.json({ status: 'error', message: 'User not found' }, 401);
