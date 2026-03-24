@@ -10,6 +10,10 @@ export class SyncService {
       'member': 'members',
       'log': 'logs'
     };
+
+    // Tables that have a user_id column for ownership scoping.
+    // tasks, cycles, decisions, documents belong to a project (not directly to a user).
+    this.tablesWithUserId = new Set(['projects', 'notes', 'members', 'logs']);
   }
 
   /**
@@ -69,8 +73,14 @@ export class SyncService {
     const entityId = change.entityId;
 
     if (change.action === 'DELETE') {
-      return db.prepare(`UPDATE ${tableName} SET _deleted = 1, updated_at = ? WHERE id = ? AND user_id = ?`)
-               .bind(Date.now(), entityId, userId);
+      // Only tables that have a user_id column can be scoped by it.
+      // Tables like tasks, cycles, decisions, documents belong to a project instead.
+      if (this.tablesWithUserId.has(tableName)) {
+        return db.prepare(`UPDATE ${tableName} SET _deleted = 1, updated_at = ? WHERE id = ? AND user_id = ?`)
+                 .bind(Date.now(), entityId, userId);
+      }
+      return db.prepare(`UPDATE ${tableName} SET _deleted = 1, updated_at = ? WHERE id = ?`)
+               .bind(Date.now(), entityId);
     }
 
     // Generic UPSERT for D1

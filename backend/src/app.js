@@ -12,7 +12,7 @@ export function createApp() {
     return cors({
       origin: origin.split(','),
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization'],
+      allowHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
       exposeHeaders: ['Content-Length'],
       maxAge: 600,
       credentials: true,
