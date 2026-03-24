@@ -8,7 +8,7 @@ import { StorageManager } from '../utils/storage-manager.js';
 // Cambia esto a la URL de tu Cloudflare Worker después de desplegar
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
     ? 'http://localhost:8787' 
-    : 'https://workspace-backend.YOUR_SUBDOMAIN.workers.dev'; 
+    : 'https://workspace-backend.cesaraugustocelada.workers.dev'; 
 
 let currentAccessToken = null; // JWT stored in memory for security
 let refreshTokenPromise = null; // Prevents parallel refresh token calls

@@ -19,6 +19,15 @@ export function createApp() {
     })(c, next);
   });
 
+  // Root route
+  app.get('/', (c) => {
+    return c.json({
+      message: 'Workspace Backend - Cloudflare Worker',
+      status: 'running',
+      health: '/health'
+    });
+  });
+
   // Health check
   app.get('/health', (c) => {
     return c.json({
