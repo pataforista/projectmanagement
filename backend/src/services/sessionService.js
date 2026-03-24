@@ -4,16 +4,17 @@ export class SessionService {
   /**
    * Crear nueva sesión
    */
-  async createSession(db, userId, email, googleSub, userAgent, ipAddress) {
+  async createSession(db, userId, email, googleSub, userAgent, ipAddress, deviceId) {
     const sessionId = crypto.randomUUID();
     const deviceName = this.parseDeviceName(userAgent);
     const now = Date.now();
 
+    // SECURITY: Include device_id to prevent spoofing later
     await db.prepare(`
       INSERT INTO sessions (
-        id, user_id, email, google_sub, user_agent, ip_address, device_name, is_active, created_at, last_activity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `).bind(sessionId, userId, email, googleSub, userAgent, ipAddress, deviceName, now, now).run();
+        id, user_id, email, google_sub, user_agent, ip_address, device_name, device_id, is_active, created_at, last_activity
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).bind(sessionId, userId, email, googleSub, userAgent, ipAddress, deviceName, deviceId || 'unknown', now, now).run();
 
     return {
       id: sessionId,
@@ -53,11 +54,22 @@ export class SessionService {
    * Revocar sesión
    */
   async revokeSession(db, sessionId) {
+    // SECURITY: Cascade revocation to refresh tokens
+    const now = Date.now();
+
+    // 1. Revoke session
     await db.prepare(`
       UPDATE sessions
       SET is_active = 0, revoked_at = ?
       WHERE id = ?
-    `).bind(Date.now(), sessionId).run();
+    `).bind(now, sessionId).run();
+
+    // 2. Revoke all refresh tokens for this session
+    await db.prepare(`
+      UPDATE refresh_tokens
+      SET revoked_at = ?
+      WHERE session_id = ? AND revoked_at IS NULL
+    `).bind(now, sessionId).run();
   }
 
   /**

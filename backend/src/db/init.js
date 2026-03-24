@@ -71,6 +71,7 @@ export class DatabaseInit {
         user_agent TEXT,
         ip_address TEXT,
         device_name TEXT,
+        device_id TEXT,
         access_token_hash TEXT,
         access_token_expires_at DATETIME,
         is_active BOOLEAN DEFAULT 1,
