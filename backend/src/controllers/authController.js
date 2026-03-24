@@ -40,6 +40,7 @@ export class AuthController {
       // 3. Crear sesión
       const userAgent = c.req.header('user-agent');
       const ipAddress = c.req.header('cf-connecting-ip') || 'unknown';
+      const deviceId = c.req.header('x-device-id') || 'unknown'; // SECURITY: Capture device ID
 
       const session = await this.sessionService.createSession(
         c.env.DB,
@@ -47,7 +48,8 @@ export class AuthController {
         user.email,
         googleClaims.sub,
         userAgent,
-        ipAddress
+        ipAddress,
+        deviceId
       );
 
       // 4. Generar tokens

@@ -30,6 +30,42 @@ export class SyncService {
   }
 
   /**
+   * Validates that user owns a project (SECURITY: Must validate project_id)
+   */
+  async validateProjectOwnership(db, userId, projectId) {
+    if (!projectId) return false;
+    const { results } = await db.prepare(`
+      SELECT user_id FROM projects WHERE id = ?
+    `).bind(projectId).all();
+    return results.length > 0 && results[0].user_id === userId;
+  }
+
+  /**
+   * Validates that user owns an entity in a table (for DELETE operations)
+   */
+  async validateEntityOwnership(db, userId, tableName, entityId) {
+    const schema = this.tableSchema[tableName];
+    if (!schema) return false;
+
+    if (schema.ownerCol === 'user_id') {
+      const { results } = await db.prepare(`
+        SELECT user_id FROM ${tableName} WHERE id = ?
+      `).bind(entityId).all();
+      return results.length > 0 && results[0].user_id === userId;
+    } else if (schema.ownerCol === 'project_id') {
+      const { results } = await db.prepare(`
+        SELECT project_id FROM ${tableName} WHERE id = ?
+      `).bind(entityId).all();
+      if (results.length === 0) return false;
+      const projectId = results[0].project_id;
+      return this.validateProjectOwnership(db, userId, projectId);
+    }
+
+    // For tables without owner col (members), no validation possible
+    return false;
+  }
+
+  /**
    * Processes a batch of granular changes from a client.
    * In Cloudflare D1, we use db.batch() for atomic transactions.
    */
@@ -44,6 +80,13 @@ export class SyncService {
         const tableName = this.entityTables[change.entityType];
         if (!tableName) {
           throw new Error(`Unsupported entity type: ${change.entityType}`);
+        }
+
+        // SECURITY: Validate ownership before processing
+        const applyStmt = await this.prepareApplyStatement(db, userId, tableName, change);
+        if (!applyStmt) {
+          results.push({ entityId: change.entityId, status: 'error', error: 'Authorization denied or invalid' });
+          continue;
         }
 
         // 1. Prepare sync_queue statement
@@ -61,9 +104,8 @@ export class SyncService {
         );
         statements.push(queueStmt);
 
-        // 2. Prepare table application statement
-        const applyStmt = this.prepareApplyStatement(db, userId, tableName, change);
-        if (applyStmt) statements.push(applyStmt);
+        // 2. Add table application statement
+        statements.push(applyStmt);
 
         results.push({ entityId: change.entityId, status: 'success' });
       } catch (error) {
@@ -81,7 +123,7 @@ export class SyncService {
     return results;
   }
 
-  prepareApplyStatement(db, userId, tableName, change) {
+  async prepareApplyStatement(db, userId, tableName, change) {
     const payload = change.payload || {};
     const entityId = change.entityId;
     const schema = this.tableSchema[tableName];
@@ -114,6 +156,12 @@ export class SyncService {
     if (change.action === 'DELETE') {
       if (!schema.hasDeleted) return null;
 
+      // SECURITY: Validate ownership before DELETE
+      const hasOwnership = await this.validateEntityOwnership(db, userId, tableName, entityId);
+      if (!hasOwnership) {
+        throw new Error(`User ${userId} does not own ${tableName}#${entityId}`);
+      }
+
       if (this.tablesWithUserId.has(tableName)) {
         return db.prepare(`UPDATE ${tableName} SET _deleted = 1, updated_at = ? WHERE id = ? AND user_id = ?`)
                  .bind(Date.now(), entityId, userId);
@@ -138,9 +186,20 @@ export class SyncService {
       cols.push('user_id');
       vals.push(userId);
     } else if (schema.ownerCol === 'project_id') {
+      // SECURITY: Validate that user owns the project before allowing assignment
+      const projectId = payload.project_id || payload.projectId;
+
+      if (!projectId) {
+        throw new Error(`project_id is required for ${tableName}`);
+      }
+
+      const ownsProject = await this.validateProjectOwnership(db, userId, projectId);
+      if (!ownsProject) {
+        throw new Error(`User ${userId} does not own project ${projectId}`);
+      }
+
       cols.push('project_id');
-      // project_id comes from the payload (the client knows which project this belongs to)
-      vals.push(payload.project_id || payload.projectId || '');
+      vals.push(projectId);
     }
 
     if (schema.hasCreatedAt) {
