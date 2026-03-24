@@ -32,7 +32,7 @@ export class GoogleAuthService {
 
     } catch (error) {
       console.error(`[GoogleAuth] Verification failed: ${error.message}`);
-      throw new Error('INVALID_GOOGLE_TOKEN');
+      throw new Error('INVALID_TOKEN');
     }
   }
 }

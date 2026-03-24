@@ -21,6 +21,16 @@ export class AuthController {
         return c.json({ status: 'error', message: 'idToken is required' }, 400);
       }
 
+      // 0. Verificar configuración del servidor
+      if (!c.env.GOOGLE_CLIENT_ID) {
+        console.error('[AuthController] GOOGLE_CLIENT_ID is not configured in Workers environment.');
+        return c.json({ status: 'error', message: 'Configuración del servidor incompleta (GOOGLE_CLIENT_ID)' }, 500);
+      }
+      if (!c.env.JWT_SECRET) {
+        console.error('[AuthController] JWT_SECRET is not configured in Workers environment.');
+        return c.json({ status: 'error', message: 'Configuración del servidor incompleta (JWT_SECRET)' }, 500);
+      }
+
       // 1. Validar Google ID Token (ahora requiere env para Client ID)
       const googleClaims = await this.googleAuth.verifyIdToken(c.env, idToken);
 
