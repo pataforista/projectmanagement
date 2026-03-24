@@ -151,8 +151,11 @@ function getCurrentWorkspaceActor() {
 function isMobileRuntime() {
     const touchPoints = navigator.maxTouchPoints || 0;
     const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
-    const narrowViewport = window.matchMedia?.('(max-width: 900px)').matches;
-    return !!(coarsePointer || touchPoints > 1 || narrowViewport);
+    const narrowViewport = window.matchMedia?.('(max-width: 768px)').matches;
+    // Consider mobile only if it's a narrow viewport AND has touch capabilities,
+    // or if the viewport is extremely narrow (phone portrait).
+    const isVeryNarrow = window.matchMedia?.('(max-width: 500px)').matches;
+    return isVeryNarrow || (narrowViewport && (coarsePointer || touchPoints > 1));
 }
 
 function renderCompatibilityNotice({

@@ -77,66 +77,23 @@
 }
 
 [data-theme="light"] {
-
-/* ── Notion-Style Breadcrumbs ────────────────────────────────────────────── */
-.breadcrumbs {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    font-size: 0.88rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.breadcrumb-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all var(--dur-fast);
-}
-
-.breadcrumb-item:hover {
-    background: var(--bg-surface-hover);
-    color: var(--text-primary);
-}
-
-.breadcrumb-sep {
-    color: var(--text-muted);
-    opacity: 0.6;
-    padding: 0 4px;
-    font-weight: 300;
-}
-
-.breadcrumb-item i {
-    width: 14px;
-    height: 14px;
-    color: var(--text-muted);
-}
-/* ──────────────────────────────────────────────────────────────────────────── */
-
     --bg-base: #f8f9fa;
-    --bg-surface: rgba(255, 255, 255, 0.85);
-  /* ── Light Theme ── */
-  --bg-base: #ffffff;
-  --bg-surface: #f8f9fa;
-  --bg-surface-2: #ffffff;
-  --surface-tonal: #f1f3f5;
-  --text-primary: #0f172a; /* Deeper slate for primary */
-  --text-secondary: #334155; /* Refined secondary slate */
-  --text-muted: #475569; /* Better contrast for muted text */
-  --border-color: #e2e8f0;
-  --border-highlight: #cbd5e1;
-    --border-focus: rgba(94, 106, 210, 0.7);
-    --bg-panel: rgba(255, 255, 255, 0.6);
-    --bg-input: rgba(0, 0, 0, 0.04);
+    --bg-surface: #ffffff;
+    --bg-surface-2: #f1f5f9;
+    --surface-tonal: #e2e8f0;
+    --surface-tonal-soft: #f8fafc;
+    --text-primary: #0f172a; 
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --border-color: #cbd5e1;
+    --border-highlight: #94a3b8;
+    --border-focus: #5e6ad2;
+    --bg-panel: rgba(255, 255, 255, 0.7);
+    --bg-input: #ffffff;
     --bg-overlay: rgba(0, 0, 0, 0.4);
-    --bg-surface-hover: rgba(233, 236, 239, 1);
-
+    --bg-surface-hover: #f1f5f9;
     --accent-primary: #5e6ad2;
-    --accent-primary-glow: rgba(94, 106, 210, 0.15);
+    --accent-primary-glow: rgba(94, 106, 210, 0.1);
 }
 
 [data-theme="rosel"] {
@@ -183,38 +140,40 @@
 }
 
 [data-theme="celada"] {
-    --bg-base: #2d1b2e;
-    --bg-surface: rgba(45, 27, 46, 0.85);
-    --bg-surface-2: rgba(60, 35, 61, 0.9);
-    --bg-surface-hover: rgba(75, 45, 76, 0.95);
-    --bg-panel: rgba(30, 15, 30, 0.7);
-    --bg-input: rgba(255, 255, 255, 0.08);
-    --bg-overlay: rgba(20, 10, 20, 0.85);
+    --bg-base: #1c121e;
+    --bg-surface: rgba(36, 24, 40, 0.85);
+    --bg-surface-2: rgba(50, 34, 55, 0.9);
+    --bg-surface-hover: rgba(65, 44, 71, 0.95);
+    --bg-panel: rgba(28, 16, 32, 0.75);
+    --bg-input: rgba(255, 255, 255, 0.06);
+    --bg-overlay: rgba(18, 10, 20, 0.9);
 
-    --border-color: rgba(167, 139, 250, 0.3);
-    --border-highlight: rgba(167, 139, 250, 0.6);
-    --border-focus: rgba(244, 114, 182, 0.8);
+    --border-color: rgba(255, 121, 198, 0.25);
+    --border-highlight: rgba(255, 121, 198, 0.5);
+    --border-focus: #ff79c6;
 
-    --text-primary: #fdf4ff;
-    --text-secondary: #fbcfe8;
-    --text-muted: #d8b4fe;
-    /* Improved contrast from #c084fc */
+    --text-primary: #fffaff;
+    --text-secondary: #fdbaed;
+    --text-muted: #e0b0ff;
 
-    --accent-primary: #f472b6;
-    --accent-primary-glow: rgba(244, 114, 182, 0.4);
-    --accent-primary-hover: #fb7185;
-    --accent-teal: #34d399;
+    --accent-primary: #ff79c6;
+    --accent-primary-glow: rgba(255, 121, 198, 0.35);
+    --accent-primary-hover: #ff92d0;
+    --accent-teal: #50fa7b;
 
     --font-family: 'Nunito', sans-serif;
-    --radius-sm: 10px 20px 10px 20px / 20px 10px 20px 10px;
-    --radius-md: 20px 30px 20px 30px / 30px 20px 30px 20px;
-    --radius-lg: 30px 40px 30px 40px / 40px 30px 40px 30px;
-    --radius-xl: 40px 50px 40px 50px / 50px 40px 50px 40px;
+    --radius-sm: 12px;
+    --radius-md: 20px;
+    --radius-lg: 28px;
+    --radius-xl: 36px;
 
-    --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.5);
-    --shadow-md: 4px 4px 0 rgba(0, 0, 0, 0.5);
-    --shadow-lg: 6px 6px 0 rgba(0, 0, 0, 0.5);
-    --shadow-xl: 8px 8px 0 rgba(0, 0, 0, 0.6);
+    --surface-tonal: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-surface-2));
+    --surface-tonal-soft: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-surface));
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
+    --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 
 /* Organic magic background for Celada */
@@ -231,32 +190,27 @@
 }
 
 [data-theme="zen"] {
-  /* ── Zen Theme (Low Contrast Beige) ── */
-  --bg-base: #f4f1ea;
+  /* ── Zen Theme (M3 Relaxed) ── */
+  --bg-base: #f5f2eb;
   --bg-surface: #efebe3;
-  --bg-surface-2: #f4f1ea;
-  --surface-tonal: #e5e0d4;
-  --text-primary: #1e1b18;
-  --text-secondary: #514b43;
+  --bg-surface-2: #fcfaf5;
+  --surface-tonal: #e8e4d9;
+  --surface-tonal-soft: #f1eee6;
+  --text-primary: #1a1a1a; /* Full contrast slate-black */
+  --text-secondary: #423f3b; /* Readable dark grey */
   --text-muted: #645d54;
-  --border-color: #d1ccbf;
-  --border-highlight: #bcae95;
-    --border-focus: #bc4749;
-    --bg-panel: rgba(244, 238, 224, 0.7);
-    --bg-input: rgba(0, 0, 0, 0.05);
-    --bg-overlay: rgba(26, 26, 26, 0.4);
-    --bg-surface-hover: rgba(210, 200, 180, 0.95);
-
-    --accent-primary: #bc4749;
-    /* Cinnabar Red */
-    --accent-primary-glow: rgba(188, 71, 73, 0.2);
-    --accent-primary-hover: #a23c3e;
-    --accent-teal: #2a6f97;
-    /* Indigo wash */
-
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --border-color: #d8d3c7;
+  --border-highlight: #c4bcae;
+  --border-focus: #bc4749;
+  --bg-panel: rgba(244, 238, 224, 0.8);
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(26, 26, 26, 0.45);
+  --bg-surface-hover: #e5e0d4;
+  --accent-primary: #bc4749;
+  --accent-primary-glow: rgba(188, 71, 73, 0.15);
+  --accent-primary-hover: #a23c3e;
+  --accent-teal: #2a6f97;
+  --radius-lg: 28px;
 }
 
 /* Sumi-e Background for Zen */
