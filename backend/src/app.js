@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
+import { csrfMiddleware } from './middleware/csrf.js';
 
 export function createApp() {
   const app = new Hono();
@@ -11,13 +12,16 @@ export function createApp() {
     const origin = c.env?.CORS_ORIGIN || 'http://localhost:5173';
     return cors({
       origin: origin.split(','),
-      allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-admin-key'],
       exposeHeaders: ['Content-Length'],
       maxAge: 600,
       credentials: true,
     })(c, next);
   });
+
+  // CSRF protection for all state-changing requests
+  app.use('*', csrfMiddleware);
 
   // Root route
   app.get('/', (c) => {
