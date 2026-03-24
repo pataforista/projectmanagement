@@ -77,52 +77,64 @@
 }
 
 [data-theme="light"] {
-    --bg-base: #f8f9fa;
+    /* M3 Light — Blue-violet seed, WCAG AA compliant */
+    --bg-base: #f2f2f7;
     --bg-surface: #ffffff;
-    --bg-surface-2: #f1f5f9;
-    --surface-tonal: #e2e8f0;
-    --surface-tonal-soft: #f8fafc;
-    --text-primary: #0f172a; 
-    --text-secondary: #334155;
-    --text-muted: #64748b;
-    --border-color: #cbd5e1;
-    --border-highlight: #94a3b8;
-    --border-focus: #5e6ad2;
-    --bg-panel: rgba(255, 255, 255, 0.7);
+    --bg-surface-2: #f7f7fc;
+    --surface-tonal: #e8e7f5;
+    --surface-tonal-soft: #f0eff9;
+    --bg-surface-hover: #eeedf8;
+    --bg-panel: rgba(255, 255, 255, 0.85);
     --bg-input: #ffffff;
-    --bg-overlay: rgba(0, 0, 0, 0.4);
-    --bg-surface-hover: #f1f5f9;
+    --bg-overlay: rgba(20, 20, 40, 0.45);
+
+    --border-color: #d9d8ef;
+    --border-highlight: #b9b7df;
+    --border-focus: #5e6ad2;
+
+    /* WCAG AA: 7:1 contrast on white */
+    --text-primary: #1a1a2e;
+    --text-secondary: #3d3a5c;
+    --text-muted: #6b6894;
+
     --accent-primary: #5e6ad2;
-    --accent-primary-glow: rgba(94, 106, 210, 0.1);
+    --accent-primary-glow: rgba(94, 106, 210, 0.15);
+    --accent-primary-hover: #4a54ab;
+    --accent-teal: #0d9488;
+
+    --shadow-sm: 0 1px 3px rgba(30, 27, 80, 0.08);
+    --shadow-md: 0 4px 12px rgba(30, 27, 80, 0.1);
+    --shadow-lg: 0 8px 24px rgba(30, 27, 80, 0.13);
 }
 
 [data-theme="rosel"] {
-    --bg-base: #050510;
-    --bg-surface: rgba(10, 10, 25, 0.85);
-    --bg-surface-2: rgba(20, 20, 45, 0.9);
-    --bg-surface-hover: rgba(30, 30, 60, 0.95);
-    --bg-panel: rgba(5, 5, 20, 0.7);
-    --bg-input: rgba(255, 0, 255, 0.05);
-    --bg-overlay: rgba(0, 0, 0, 0.85);
+    /* Outrun/Synthwave — deep space, neon grid */
+    --bg-base: #07050f;
+    --bg-surface: #110d1e;
+    --bg-surface-2: #18122b;
+    --bg-surface-hover: #221a38;
+    --bg-panel: #0b0915;
+    --bg-input: rgba(255, 0, 255, 0.06);
+    --bg-overlay: rgba(0, 0, 0, 0.9);
 
-    --border-color: rgba(0, 255, 255, 0.3);
-    --border-highlight: rgba(255, 0, 255, 0.5);
-    --border-focus: rgba(0, 255, 255, 0.8);
+    --border-color: rgba(0, 229, 255, 0.2);
+    --border-highlight: rgba(255, 0, 255, 0.4);
+    --border-focus: #00e5ff;
 
-    --text-primary: #00FFFF;
-    /* Standard Outrun Cyan */
-    --text-secondary: #ff71ff; /* Softer magenta for readability */
-    --text-muted: #d845d8; /* Refined muted purple */
+    /* Readable neon: not pure #00FFFF, slightly softened for eye comfort */
+    --text-primary: #e0f7ff;
+    --text-secondary: #ff8fff;
+    --text-muted: #9d7fbf;
 
-    --accent-primary: #FF00FF;
-    --accent-primary-glow: rgba(255, 0, 255, 0.6);
-    --accent-primary-hover: #ff33ff;
-    --accent-teal: #00FFFF;
+    --accent-primary: #f000ff;
+    --accent-primary-glow: rgba(240, 0, 255, 0.45);
+    --accent-primary-hover: #cc00dd;
+    --accent-teal: #00e5ff;
 
     --font-family: 'Orbitron', var(--font-mono);
-    --shadow-md: 0 0 10px rgba(0, 255, 255, 0.2);
-    --shadow-lg: 0 0 20px rgba(255, 0, 255, 0.3);
-    --shadow-xl: 0 0 30px rgba(0, 255, 255, 0.4);
+    --shadow-md: 0 0 12px rgba(0, 229, 255, 0.25), 0 0 4px rgba(240, 0, 255, 0.2);
+    --shadow-lg: 0 0 24px rgba(240, 0, 255, 0.3), 0 0 8px rgba(0, 229, 255, 0.2);
+    --shadow-xl: 0 0 40px rgba(240, 0, 255, 0.35), 0 0 16px rgba(0, 229, 255, 0.25);
 }
 
 /* CRT Scanlines and Perspective Grid for Rosel */
@@ -140,40 +152,51 @@
 }
 
 [data-theme="celada"] {
-    --bg-base: #1c121e;
-    --bg-surface: rgba(36, 24, 40, 0.85);
-    --bg-surface-2: rgba(50, 34, 55, 0.9);
-    --bg-surface-hover: rgba(65, 44, 71, 0.95);
-    --bg-panel: rgba(28, 16, 32, 0.75);
-    --bg-input: rgba(255, 255, 255, 0.06);
-    --bg-overlay: rgba(18, 10, 20, 0.9);
+    /* Adventure Time "Nightosphere/Lumpy Space" — Dark, bouncy, vibrant */
+    --bg-base: #160f1e;
+    --bg-surface: #22182e;
+    --bg-surface-2: #2d203d;
+    --bg-surface-hover: #3a2a4d;
+    --bg-panel: #1a1224;
+    --bg-input: rgba(255, 255, 255, 0.08);
+    --bg-overlay: rgba(12, 8, 16, 0.92);
 
-    --border-color: rgba(255, 121, 198, 0.25);
-    --border-highlight: rgba(255, 121, 198, 0.5);
-    --border-focus: #ff79c6;
+    /* Bolder borders for that cartoon "Ink" feel */
+    --border-color: rgba(180, 140, 255, 0.25);
+    --border-highlight: rgba(180, 140, 255, 0.5);
+    --border-focus: #bd93f9;
 
-    --text-primary: #fffaff;
-    --text-secondary: #fdbaed;
-    --text-muted: #e0b0ff;
+    /* High contrast Lumpy Space violet text */
+    --text-primary: #f8f0ff;
+    --text-secondary: #d8c0ff;
+    --text-muted: #9b8bb8;
 
-    --accent-primary: #ff79c6;
-    --accent-primary-glow: rgba(255, 121, 198, 0.35);
-    --accent-primary-hover: #ff92d0;
+    /* Bouncy Accents: LSP Purple & Flame Princess Violet */
+    --accent-primary: #bd93f9;
+    --accent-primary-glow: rgba(189, 147, 249, 0.4);
+    --accent-primary-hover: #caadff;
     --accent-teal: #50fa7b;
 
-    --font-family: 'Nunito', sans-serif;
-    --radius-sm: 12px;
-    --radius-md: 20px;
-    --radius-lg: 28px;
-    --radius-xl: 36px;
+    --font-family: 'Nunito', 'Inter', sans-serif;
 
-    --surface-tonal: color-mix(in srgb, var(--accent-primary) 14%, var(--bg-surface-2));
+    /* Bouncy Cartoon Shapes (Slightly irregular but M3 large) */
+    --radius-sm: 14px 10px 14px 10px / 10px 14px 10px 14px;
+    --radius-md: 22px 18px 22px 18px / 18px 22px 18px 22px;
+    --radius-lg: 32px 28px 32px 28px / 28px 32px 28px 32px;
+    --radius-xl: 44px 38px 44px 38px / 38px 44px 38px 44px;
+    
+    --shape-sm: 14px;
+    --shape-md: 22px;
+    --shape-lg: 32px;
+
+    --surface-tonal: color-mix(in srgb, var(--accent-primary) 15%, var(--bg-surface-2));
     --surface-tonal-soft: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-surface));
 
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
-    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.4);
-    --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5);
+    /* Bouncy, slightly offset "Cartoon" shadows but with M3 softness */
+    --shadow-sm: 2px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 4px 4px 12px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 6px 6px 24px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 8px 8px 40px rgba(0, 0, 0, 0.6);
 }
 
 /* Organic magic background for Celada */
@@ -182,35 +205,49 @@
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(circle at 15% 50%, rgba(244, 114, 182, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 85% 30%, rgba(52, 211, 153, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 50% 90%, rgba(167, 139, 250, 0.08) 0%, transparent 50%);
+        radial-gradient(circle at 20% 40%, rgba(208, 132, 240, 0.1) 0%, transparent 45%),
+        radial-gradient(circle at 80% 20%, rgba(167, 139, 250, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 50% 85%, rgba(74, 222, 128, 0.06) 0%, transparent 50%);
     pointer-events: none;
     z-index: 0;
 }
 
 [data-theme="zen"] {
-  /* ── Zen Theme (M3 Relaxed) ── */
-  --bg-base: #f5f2eb;
-  --bg-surface: #efebe3;
-  --bg-surface-2: #fcfaf5;
-  --surface-tonal: #e8e4d9;
-  --surface-tonal-soft: #f1eee6;
-  --text-primary: #1a1a1a; /* Full contrast slate-black */
-  --text-secondary: #423f3b; /* Readable dark grey */
-  --text-muted: #645d54;
-  --border-color: #d8d3c7;
-  --border-highlight: #c4bcae;
-  --border-focus: #bc4749;
-  --bg-panel: rgba(244, 238, 224, 0.8);
+  /* M3 Light — Warm parchment, ink-red seed. Legible, calm, professional. */
+  --bg-base: #f6f3ec;
+  --bg-surface: #faf7f0;
+  --bg-surface-2: #f0ede5;
+  --surface-tonal: #e9e3d4;
+  --surface-tonal-soft: #f3f0e8;
+  --bg-surface-hover: #e4dfd0;
+  --bg-panel: rgba(250, 247, 240, 0.9);
   --bg-input: #ffffff;
-  --bg-overlay: rgba(26, 26, 26, 0.45);
-  --bg-surface-hover: #e5e0d4;
-  --accent-primary: #bc4749;
-  --accent-primary-glow: rgba(188, 71, 73, 0.15);
-  --accent-primary-hover: #a23c3e;
-  --accent-teal: #2a6f97;
-  --radius-lg: 28px;
+  --bg-overlay: rgba(26, 22, 16, 0.5);
+
+  --border-color: #ddd7c8;
+  --border-highlight: #c9c0ae;
+  --border-focus: #9b3537;
+
+  /* WCAG AA contrast on parchment bg */
+  --text-primary: #18140e;
+  --text-secondary: #3f3830;
+  --text-muted: #6b6054;
+
+  /* Ink-red (M3 primary on warm bg) */
+  --accent-primary: #9b3537;
+  --accent-primary-glow: rgba(155, 53, 55, 0.15);
+  --accent-primary-hover: #7e2b2d;
+  /* Slate-blue as complementary */
+  --accent-teal: #2d5f8a;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --shadow-sm: 0 1px 4px rgba(30, 20, 10, 0.1);
+  --shadow-md: 0 4px 12px rgba(30, 20, 10, 0.13);
+  --shadow-lg: 0 10px 28px rgba(30, 20, 10, 0.15);
 }
 
 /* Sumi-e Background for Zen */
@@ -236,25 +273,35 @@
 /* ── New Themes ──────────────────────────────────────────────────────────── */
 
 [data-theme="analog-horror"] {
-    --bg-base: #050505;
-    --bg-surface: rgba(15, 15, 15, 0.92);
-    --bg-surface-2: rgba(25, 25, 25, 0.96);
-    --bg-surface-hover: rgba(45, 45, 45, 1);
-    --bg-panel: rgba(5, 5, 5, 0.85);
-    --bg-input: rgba(255, 0, 0, 0.05);
-    --bg-overlay: rgba(0, 0, 0, 0.96);
-    --border-color: rgba(255, 0, 0, 0.25);
-    --border-highlight: rgba(255, 0, 0, 0.45);
-    --border-focus: rgba(255, 0, 0, 0.85);
-    --text-primary: #d5d5d5;
-    --text-secondary: #9a9a9a;
-    --text-muted: #5a5a5a;
-    --accent-primary: #ff0000;
-    --accent-primary-glow: rgba(255, 0, 0, 0.55);
-    --accent-primary-hover: #cc0000;
-    --accent-teal: #00ff00;
+    /* Lo-fi horror — crushing blacks, blood-red signal, distorted grain */
+    --bg-base: #080808;
+    --bg-surface: #111111;
+    --bg-surface-2: #1a1a1a;
+    --bg-surface-hover: #242424;
+    --bg-panel: #0a0a0a;
+    --bg-input: rgba(180, 0, 0, 0.06);
+    --bg-overlay: rgba(0, 0, 0, 0.97);
+
+    --border-color: rgba(200, 20, 20, 0.22);
+    --border-highlight: rgba(220, 30, 30, 0.45);
+    --border-focus: #cc1111;
+
+    /* Much more legible — moved from grey to near-white */
+    --text-primary: #e8e8e8;
+    --text-secondary: #aaaaaa;
+    --text-muted: #666666;
+
+    --accent-primary: #cc1111;
+    --accent-primary-glow: rgba(204, 17, 17, 0.45);
+    --accent-primary-hover: #aa0000;
+    --accent-teal: #1aaa1a;
+
     --font-family: 'Courier New', Courier, monospace;
     --blur: blur(1.5px);
+
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.7);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.8), 0 0 6px rgba(204, 17, 17, 0.1);
+    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.85), 0 0 12px rgba(204, 17, 17, 0.15);
 }
 
 [data-theme="analog-horror"] body::after {
@@ -277,95 +324,137 @@
 }
 
 [data-theme="moomins"] {
-    --bg-base: #f0f7f4;
-    --bg-surface: #ffffff;
-    --bg-surface-2: #e9f2ee;
-    --bg-surface-hover: #dae8e2;
-    --bg-panel: rgba(255, 255, 255, 0.8);
-    --bg-input: #f8faf9;
-    --bg-overlay: rgba(70, 90, 80, 0.2);
-    --border-color: #d1e2da;
-    --border-highlight: #b8cfc4;
-    --border-focus: #a3c4bc;
-    --text-primary: #4a5c54;
-    --text-secondary: #6b8076;
-    --text-muted: #8fa399;
-    --accent-primary: #a3c4bc;
-    --accent-primary-glow: rgba(163, 196, 188, 0.3);
-    --accent-primary-hover: #8eb1a8;
-    --accent-teal: #bfd8d2;
+    /* Moomins — soft Finnish magic. Improved contrast on teal palette. */
+    --bg-base: #eaf3ef;
+    --bg-surface: #f4faf7;
+    --bg-surface-2: #e0ece6;
+    --bg-surface-hover: #d2e4dc;
+    --bg-panel: rgba(244, 250, 247, 0.92);
+    --bg-input: #ffffff;
+    --bg-overlay: rgba(40, 70, 60, 0.4);
+
+    --border-color: #c0d9cf;
+    --border-highlight: #a4c5b9;
+    --border-focus: #3d8a73;
+
+    /* WCAG AA: increased from low-contrast #4a5c54 */
+    --text-primary: #1f3a2e;
+    --text-secondary: #2d5244;
+    --text-muted: #5c7d72;
+
+    --accent-primary: #3d8a73;
+    --accent-primary-glow: rgba(61, 138, 115, 0.2);
+    --accent-primary-hover: #2d6f5a;
+    --accent-teal: #7ab5a5;
+
     --font-family: 'Quicksand', 'Nunito', sans-serif;
     --radius-lg: 28px;
     --radius-md: 20px;
     --radius-sm: 14px;
+
+    --shadow-sm: 0 1px 4px rgba(40, 70, 60, 0.1);
+    --shadow-md: 0 4px 12px rgba(40, 70, 60, 0.12);
+    --shadow-lg: 0 8px 24px rgba(40, 70, 60, 0.15);
 }
 
 [data-theme="pokemon"] {
+    /* Game Boy — 4-color palette, pixel-perfect */
     --bg-base: #8bac0f;
     --bg-surface: #9bbc0f;
     --bg-surface-2: #8bac0f;
-    --bg-surface-hover: #9bbc0f;
+    --bg-surface-hover: #a8c520;
     --bg-panel: #8bac0f;
-    --bg-input: #cadc9f;
-    --bg-overlay: rgba(15, 56, 15, 0.5);
-    --border-color: #0f380f;
-    --border-highlight: #306230;
+    --bg-input: #c4d856;
+    --bg-overlay: rgba(15, 56, 15, 0.6);
+
+    --border-color: #306230;
+    --border-highlight: #0f380f;
     --border-focus: #0f380f;
+
+    /* Game Boy dark green — maximum contrast on the green bg */
     --text-primary: #0f380f;
-    --text-secondary: #306230;
+    --text-secondary: #1e4a1e;
     --text-muted: #306230;
+
     --accent-primary: #0f380f;
-    --accent-primary-glow: rgba(15, 56, 15, 0.2);
-    --accent-primary-hover: #306230;
+    --accent-primary-glow: rgba(15, 56, 15, 0.3);
+    --accent-primary-hover: #1e4a1e;
     --accent-teal: #306230;
-    --font-family: 'Courier New', monospace; /* Fallback since specific pixel font might not be available */
+
+    --font-family: 'Courier New', monospace;
     --radius-sm: 0px;
     --radius-md: 0px;
     --radius-lg: 0px;
     --radius-xl: 0px;
-    --shadow-md: 4px 4px 0px #0f380f;
+    --shadow-md: 3px 3px 0px #0f380f;
+    --shadow-lg: 4px 4px 0px #0f380f;
 }
 
 [data-theme="zelda"] {
-    --bg-base: #111d11;
-    --bg-surface: #1a2a1a;
-    --bg-surface-2: #243a24;
-    --bg-surface-hover: #2d4a2d;
-    --bg-panel: rgba(15, 25, 15, 0.8);
-    --bg-input: #111d11;
-    --bg-overlay: rgba(0, 0, 0, 0.85);
-    --border-color: #c9a66b;
-    --border-highlight: #e5c185;
-    --border-focus: #ffcc00;
-    --text-primary: #f5e6c4;
-    --text-secondary: #d4bf9c;
-    --text-muted: #a89984;
-    --accent-primary: #c9a66b;
-    --accent-primary-glow: rgba(201, 166, 107, 0.45);
-    --accent-primary-hover: #e5c185;
-    --accent-teal: #4c7c4c;
+    /* Hyrule — dark forest, gold triforce, earthy parchment text */
+    --bg-base: #0e1a0e;
+    --bg-surface: #162616;
+    --bg-surface-2: #1e3420;
+    --bg-surface-hover: #274427;
+    --bg-panel: rgba(12, 22, 12, 0.88);
+    --bg-input: rgba(255, 210, 80, 0.05);
+    --bg-overlay: rgba(0, 0, 0, 0.88);
+
+    --border-color: rgba(201, 166, 107, 0.35);
+    --border-highlight: rgba(229, 193, 133, 0.6);
+    --border-focus: #ffd700;
+
+    /* Warm parchment — excellent on dark forest bg */
+    --text-primary: #f0e6c8;
+    --text-secondary: #c8b48a;
+    --text-muted: #8a7a60;
+
+    /* Triforce gold */
+    --accent-primary: #d4a843;
+    --accent-primary-glow: rgba(212, 168, 67, 0.35);
+    --accent-primary-hover: #e8c060;
+    --accent-teal: #4a8a4a;
+
     --font-family: 'Spectral', 'Georgia', serif;
+
+    --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 8px rgba(212, 168, 67, 0.1);
+    --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 16px rgba(212, 168, 67, 0.15);
+    --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(212, 168, 67, 0.2);
 }
 
 [data-theme="ukiyo-e"] {
-    --bg-base: #f4ece1;
-    --bg-surface: #ede4d5;
-    --bg-surface-2: #e4dac9;
-    --bg-surface-hover: #dbcfbc;
-    --bg-panel: rgba(244, 236, 225, 0.75);
-    --bg-input: #f4ece1;
-    --bg-overlay: rgba(43, 40, 38, 0.35);
-    --border-color: #2b2826;
-    --border-highlight: #4a4542;
-    --border-focus: #8c2a2a;
-    --text-primary: #2b2826;
-    --text-secondary: #4a4542;
-    --text-muted: #6e6762;
-    --accent-primary: #8c2a2a;
-    --accent-primary-glow: rgba(140, 42, 42, 0.25);
-    --accent-primary-hover: #a63232;
-    --accent-teal: #3c5a5a;
+    /* Woodblock print — rice paper, indigo, vermilion */
+    --bg-base: #f5ede0;
+    --bg-surface: #fdf5e8;
+    --bg-surface-2: #ece2d0;
+    --bg-surface-hover: #e0d3be;
+    --bg-panel: rgba(253, 245, 232, 0.92);
+    --bg-input: #fdf5e8;
+    --bg-overlay: rgba(30, 24, 18, 0.5);
+
+    /* Ink-dark borders — architectural, crisp */
+    --border-color: rgba(48, 40, 30, 0.25);
+    --border-highlight: rgba(48, 40, 30, 0.5);
+    --border-focus: #8c2020;
+
+    /* Full ink-black for maximum legibility on rice paper */
+    --text-primary: #1e1812;
+    --text-secondary: #3a3028;
+    --text-muted: #6a5e50;
+
+    /* Torii vermilion */
+    --accent-primary: #8c2020;
+    --accent-primary-glow: rgba(140, 32, 32, 0.2);
+    --accent-primary-hover: #a83030;
+    /* Indigo-teal as secondary */
+    --accent-teal: #2a4a5e;
+
     --font-family: 'Noto Serif JP', serif;
+
+    --shadow-sm: 0 1px 4px rgba(30, 24, 18, 0.12);
+    --shadow-md: 0 4px 12px rgba(30, 24, 18, 0.16);
+    --shadow-lg: 0 8px 24px rgba(30, 24, 18, 0.2);
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────────── */

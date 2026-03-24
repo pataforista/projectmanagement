@@ -164,20 +164,18 @@ class OllamaAPI {
 
     /**
      * Handles and logs helpful CORS error messages
+     * Only logs if there's an actual CORS / mixed-content issue, not a simple offline error.
      * @private
      */
     _handleCorsError(error) {
         const errorMsg = error?.message || '';
-        const isCorsError = errorMsg.includes('CORS') || errorMsg.includes('Failed to fetch') || errorMsg.includes('origin');
+        const isCorsError = errorMsg.includes('CORS') || errorMsg.includes('origin');
         const shouldWarnCors = this._shouldWarnAboutCors();
 
         if (isCorsError || shouldWarnCors) {
-            console.error('[Ollama] CORS/Mixed-content issue detected. Solutions:');
-            console.error('1. Configure Ollama CORS on your local machine (RECOMMENDED):');
-            console.error('   - Set environment variable: OLLAMA_ORIGINS="https://pataforista.github.io"');
-            console.error('   - Or use wildcard: OLLAMA_ORIGINS="*" (less secure)');
-            console.error('2. Use a CORS proxy service by configuring it in the Integrations panel');
-            console.error('3. Run this locally over HTTP instead of HTTPS');
+            console.warn('[Ollama] CORS/Mixed-content issue detected. Solutions:');
+            console.warn('1. Set environment variable: OLLAMA_ORIGINS="*" then run: ollama serve');
+            console.warn('2. Use a CORS proxy in the Integrations panel.');
         }
     }
 
@@ -189,12 +187,20 @@ class OllamaAPI {
             const fetchUrl = this._buildFetchUrl('/api/tags');
             const response = await fetchWithTimeout(fetchUrl);
             if (!response.ok) {
+                // Only warn about CORS if it's a non-connection-refused server error
                 this._handleCorsError(new Error(`HTTP ${response.status}`));
                 return false;
             }
             return true;
         } catch (err) {
-            console.warn('[Ollama] Health check failed:', err);
+            // ERR_CONNECTION_REFUSED = Ollama simply not running. Stay silent.
+            const isConnectionRefused = err?.message?.includes('ERR_CONNECTION_REFUSED')
+                || err?.message?.includes('Failed to fetch')
+                || err?.message?.includes('NetworkError');
+            if (isConnectionRefused && !this._shouldWarnAboutCors()) {
+                // Silent fail — Ollama is just not running locally
+                return false;
+            }
             this._handleCorsError(err);
             return false;
         }
