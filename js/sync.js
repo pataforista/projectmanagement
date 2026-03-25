@@ -1999,7 +1999,7 @@ const syncManager = (() => {
     async function syncMembers(raw) {
         const names = raw.split(',').map(x => x.trim()).filter(Boolean);
         const current = store.get.members();
-        const existing = new Set(current.map(m => m.name.toLowerCase()));
+        const existing = new Set(current.filter(m => m.name).map(m => m.name.toLowerCase()));
         for (const name of names) {
             if (!existing.has(name.toLowerCase())) {
                 await store.dispatch('ADD_MEMBER', { name, role: 'Colaborador' });
