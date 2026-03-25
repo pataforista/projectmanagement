@@ -59,14 +59,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('[Boot] Account detector init failed:', e);
     }
 
-    // ── 0. Pre-init syncManager (needed before auth block to read config) ──────
-    // FIX: syncManager.init() se mueve aquí para que getConfig() funcione
-    // dentro del bloque de auth sin race condition.
-    try {
-        await syncManager.init();
-    } catch (e) {
-        console.warn('[Boot] syncManager pre-init failed:', e);
-    }
+    // ── 0. Pre-init syncManager (config is already available via exports) ──────
+    // getConfig() can be used directly from the module if needed, no need to init() yet.
 
     // ── Listen for account switch events from SessionManager or AccountDetector
     window.addEventListener('account:switched', (e) => {
@@ -428,6 +422,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         await store.load();
     } catch (e) {
         console.warn('[Boot] Store load failed:', e);
+    }
+
+    // ── 2.1. Initialize syncManager ─────────────────────────────────────────
+    // Now that DB is ready and store is loaded, we can safely start syncing.
+    try {
+        await syncManager.init();
+        console.log('[Boot] syncManager initialized');
+    } catch (e) {
+        console.warn('[Boot] syncManager init failed:', e);
     }
 
     // ── 3. Initialize Service Worker Update Manager ──────────────────────────
