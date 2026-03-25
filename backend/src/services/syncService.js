@@ -270,7 +270,7 @@ export class SyncService {
       'id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted',
       'createdAt', 'updatedAt', 'projectId', 'userId',
       // Nexus Fortress client-side encryption fields — must NEVER be stored in D1
-      '__encrypted', '__iv', '__tag', '__version', '__keyId',
+      '__encrypted', '__iv', '__tag', '__version', '__keyId', 'iv', 'data',
     ]);
     const SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
