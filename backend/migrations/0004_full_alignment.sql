@@ -1,5 +1,6 @@
--- Migration: Full Alignment (v2)
+-- Migration: Full Alignment (v3) — REFINED
 -- Aligns ALL tables with the latest schema.sql requirements
+-- Only adds columns that weren't in 0001 or 0003
 
 -- 1. Infrastructure (Drop and Recreate transient tables)
 DROP TABLE IF EXISTS sync_queue;
@@ -65,14 +66,13 @@ ALTER TABLE documents ADD COLUMN user_id TEXT;
 ALTER TABLE documents ADD COLUMN title TEXT;
 ALTER TABLE documents ADD COLUMN type TEXT;
 ALTER TABLE documents ADD COLUMN metadata TEXT;
+ALTER TABLE documents ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;
 
 -- 7. Members
 ALTER TABLE members ADD COLUMN avatar TEXT;
 ALTER TABLE members ADD COLUMN status TEXT;
 
--- 8. Notes
-ALTER TABLE notes ADD COLUMN content_hash TEXT;
-ALTER TABLE notes ADD COLUMN is_pinned BOOLEAN DEFAULT 0;
+-- 8. Notes (Only truly missing columns)
 ALTER TABLE notes ADD COLUMN encrypted BOOLEAN DEFAULT 0;
 ALTER TABLE notes ADD COLUMN encryption_iv TEXT;
 ALTER TABLE notes ADD COLUMN remote_version INTEGER DEFAULT 0;
@@ -80,8 +80,6 @@ ALTER TABLE notes ADD COLUMN synced_at DATETIME;
 ALTER TABLE notes ADD COLUMN conflict_state TEXT;
 ALTER TABLE notes ADD COLUMN conflict_remote_data TEXT;
 ALTER TABLE notes ADD COLUMN conflict_resolution_strategy TEXT;
-ALTER TABLE notes ADD COLUMN created_by TEXT;
-ALTER TABLE notes ADD COLUMN updated_by TEXT;
 
 -- 9. Create New Collaboration Tables
 CREATE TABLE IF NOT EXISTS messages (
