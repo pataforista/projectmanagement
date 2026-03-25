@@ -1,9 +1,7 @@
--- Migration: Align Sync Infrastructure and Collaboration Tables
--- Fixes sync_queue and sync_cursor to match backend code requirements
--- Adds missing tables for messages, annotations, snapshots, etc.
+-- Migration: Full Alignment (v2)
+-- Aligns ALL tables with the latest schema.sql requirements
 
--- 1. Infrastructure Alignment
--- We drop and recreate these because they are transient/config tables and PK types changed
+-- 1. Infrastructure (Drop and Recreate transient tables)
 DROP TABLE IF EXISTS sync_queue;
 CREATE TABLE sync_queue (
   id TEXT PRIMARY KEY,
@@ -27,7 +25,65 @@ CREATE TABLE sync_cursor (
   UNIQUE(user_id, device_id)
 );
 
--- 2. New Collaboration Tables (from schema.sql)
+-- 2. Projects
+ALTER TABLE projects ADD COLUMN type TEXT;
+ALTER TABLE projects ADD COLUMN status TEXT;
+ALTER TABLE projects ADD COLUMN color TEXT;
+ALTER TABLE projects ADD COLUMN icon TEXT;
+ALTER TABLE projects ADD COLUMN view_type TEXT;
+ALTER TABLE projects ADD COLUMN parent_id TEXT;
+ALTER TABLE projects ADD COLUMN owner_id TEXT;
+ALTER TABLE projects ADD COLUMN "order" INTEGER DEFAULT 0;
+ALTER TABLE projects ADD COLUMN metadata TEXT;
+
+-- 3. Tasks
+ALTER TABLE tasks ADD COLUMN user_id TEXT;
+ALTER TABLE tasks ADD COLUMN cycle_id TEXT;
+ALTER TABLE tasks ADD COLUMN parent_id TEXT;
+ALTER TABLE tasks ADD COLUMN description TEXT;
+ALTER TABLE tasks ADD COLUMN assignee_id TEXT;
+ALTER TABLE tasks ADD COLUMN tags TEXT;
+ALTER TABLE tasks ADD COLUMN subtasks TEXT;
+ALTER TABLE tasks ADD COLUMN dependencies TEXT;
+ALTER TABLE tasks ADD COLUMN estimate INTEGER;
+ALTER TABLE tasks ADD COLUMN due_date DATETIME;
+ALTER TABLE tasks ADD COLUMN visibility TEXT DEFAULT 'shared';
+
+-- 4. Cycles
+ALTER TABLE cycles ADD COLUMN user_id TEXT;
+ALTER TABLE cycles ADD COLUMN description TEXT;
+ALTER TABLE cycles ADD COLUMN status TEXT;
+
+-- 5. Decisions
+ALTER TABLE decisions ADD COLUMN user_id TEXT;
+ALTER TABLE decisions ADD COLUMN status TEXT;
+ALTER TABLE decisions ADD COLUMN tags TEXT;
+ALTER TABLE decisions ADD COLUMN related_task_ids TEXT;
+
+-- 6. Documents
+ALTER TABLE documents ADD COLUMN user_id TEXT;
+ALTER TABLE documents ADD COLUMN title TEXT;
+ALTER TABLE documents ADD COLUMN type TEXT;
+ALTER TABLE documents ADD COLUMN metadata TEXT;
+
+-- 7. Members
+ALTER TABLE members ADD COLUMN avatar TEXT;
+ALTER TABLE members ADD COLUMN status TEXT;
+
+-- 8. Notes
+ALTER TABLE notes ADD COLUMN content_hash TEXT;
+ALTER TABLE notes ADD COLUMN is_pinned BOOLEAN DEFAULT 0;
+ALTER TABLE notes ADD COLUMN encrypted BOOLEAN DEFAULT 0;
+ALTER TABLE notes ADD COLUMN encryption_iv TEXT;
+ALTER TABLE notes ADD COLUMN remote_version INTEGER DEFAULT 0;
+ALTER TABLE notes ADD COLUMN synced_at DATETIME;
+ALTER TABLE notes ADD COLUMN conflict_state TEXT;
+ALTER TABLE notes ADD COLUMN conflict_remote_data TEXT;
+ALTER TABLE notes ADD COLUMN conflict_resolution_strategy TEXT;
+ALTER TABLE notes ADD COLUMN created_by TEXT;
+ALTER TABLE notes ADD COLUMN updated_by TEXT;
+
+-- 9. Create New Collaboration Tables
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -159,9 +215,9 @@ CREATE TABLE IF NOT EXISTS account_history (
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- 3. Indexes for new tables
+-- 10. Indexes
 CREATE INDEX IF NOT EXISTS idx_sync_queue_user_device ON sync_queue(user_id, device_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_project ON messages(project_id, _deleted);
 CREATE INDEX IF NOT EXISTS idx_annotations_project ON annotations(project_id);
 CREATE INDEX IF NOT EXISTS idx_calendar_events_project ON calendar_events(project_id);
-CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, "read");
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);
