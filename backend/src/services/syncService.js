@@ -23,11 +23,26 @@ export class SyncService {
     // tasks, cycles, decisions, documents, messages, annotations, snapshots,
     // interconsultations, calendar_events belong to a project (not directly to a user).
     // members also gets a user_id for the workspace owner who created them.
-    this.tablesWithUserId = new Set([
-      'projects', 'notes', 'members', 'logs',
-      'time_logs', 'library_items', 'notifications'
-    ]);
-
+    this.tablesWithUserId = new Set(['projects', 'tasks', 'cycles', 'decisions', 'documents', 'members', 'interconsultations', 'sessions', 'time_logs', 'library_item', 'notifications', 'logs']);
+    
+    // Schema whitelist — allowed columns per table (prevents 'no such column' errors)
+    this.tableColumns = {
+      projects: new Set([
+        'name', 'description', 'visibility', 'settings', 'type',
+        'status', 'color', 'icon', 'view_type', 'parent_id',
+        'owner_id', 'order', 'metadata', '_deleted'
+      ]),
+      tasks: new Set([
+        'project_id', 'title', 'status', 'priority', 'payload',
+        'cycle_id', 'parent_id', 'description', 'assignee_id',
+        'tags', 'subtasks', 'dependencies', 'estimate',
+        'due_date', 'visibility', '_deleted'
+      ]),
+      members: new Set([
+        'project_id', 'user_id', 'name', 'email', 'role',
+        '_deleted', 'created_at', 'updated_at', 'avatar', 'status'
+      ])
+    };
     // For members: we allow deletion by the workspace owner (user_id on the member record)
     this.tablesWithUserIdOwner = new Set(['members']);
 
@@ -264,7 +279,7 @@ export class SyncService {
     if (change.action === 'CREATE') {
        if (tableName === 'tasks' && !payload.title) throw new Error('Task title is required');
        if (tableName === 'projects' && !payload.name) throw new Error('Project name is required');
-       if (tableName === 'cycles' && !payload.name) throw new Error('Cycle name is required');
+       if (tableName === 'cycles' && !payload.title) throw new Error('Cycle name is required');
        if (tableName === 'decisions' && !payload.title) throw new Error('Decision title is required');
     }
 
@@ -286,12 +301,34 @@ export class SyncService {
     // Prepare data columns
     const dataColumns = [];
     const dataValues = [];
-    for (const [rawKey, val] of Object.entries(payload)) {
-      if (skipKeys.has(rawKey)) continue;
-      const colName = camelToSnake[rawKey] || rawKey;
+    for (const [key, value] of Object.entries(payload)) {
+      if (skipKeys.has(key)) continue;
+      const colName = camelToSnake[key] || key;
+      if (skipKeys.has(colName)) continue; // Double check in case it's and also skip the snake_case version
       if (!SQL_IDENTIFIER.test(colName)) continue;
       dataColumns.push(colName);
-      dataValues.push((typeof val === 'object' && val !== null) ? JSON.stringify(val) : val);
+      dataValues.push((typeof value === 'object' && value !== null) ? JSON.stringify(value) : value);
+    }
+
+    // --- Whitelist Filtering: Ensure columns exist in D1 ---
+    const allowedCols = this.tableColumns[tableName];
+    if (allowedCols) {
+      const filtered = dataColumns.reduce((acc, col, i) => {
+        if (allowedCols.has(col)) {
+          acc.cols.push(col);
+          acc.vals.push(dataValues[i]);
+        }
+        return acc;
+      }, { cols: [], vals: [] });
+      
+      dataColumns.length = 0;
+      dataValues.length = 0;
+      dataColumns.push(...filtered.cols);
+      dataValues.push(...filtered.vals);
+    }
+
+    if (dataColumns.length === 0 && change.action === 'UPDATE') {
+      return null; // No actual columns to update
     }
 
     if (change.action === 'CREATE') {

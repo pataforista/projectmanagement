@@ -892,26 +892,43 @@ const syncManager = (() => {
                 if (!res.ok) throw new Error('Push failed: ' + res.status);
 
                 const data = await res.json();
-                // Only remove items that the server confirmed as successful.
-                // Failed items stay in the queue and will be retried on the next push cycle.
-                const failedEntityIds = new Set(
-                    (data.results || [])
-                        .filter(r => r.status !== 'success')
-                        .map(r => r.entityId)
-                );
-                if (failedEntityIds.size === 0) {
-                    // All items succeeded — fast path: clear entire queue
-                    await dbAPI.clear('sync_push_queue');
-                } else {
-                    // Partial success — delete only the succeeded items by their IndexedDB key
-                    for (const item of changes) {
-                        if (!failedEntityIds.has(item.entityId)) {
-                            await dbAPI.delete('sync_push_queue', item.id);
-                        }
+                const results = data.results || [];
+                
+                // PARTIAL SUCCESS & PURGE LOGIC:
+                // We remove an item from the queue if:
+                // a) The server confirmed success.
+                // b) The server returned a PERMANENT error (validation fail, missing column).
+                // Transient errors (network, D1 busy) stay in the queue for retry.
+                const successfulEntityIds = new Set(results.filter(r => r.status === 'success').map(r => r.entityId));
+                let remainingErrors = 0;
+
+                for (const item of changes) {
+                    const result = results.find(r => r.entityId === item.entityId);
+                    
+                    if (successfulEntityIds.has(item.entityId)) {
+                        await dbAPI.delete('sync_push_queue', item.id);
+                        continue;
                     }
-                    console.warn(`[Sync] ${failedEntityIds.size} change(s) failed on server and will be retried.`);
+
+                    if (result && result.status === 'error') {
+                        const isPermanent = 
+                            result.error?.includes('is required') ||
+                            result.error?.includes('no such column') ||
+                            result.error?.includes('constraint failed');
+                        
+                        if (isPermanent) {
+                            await dbAPI.delete('sync_push_queue', item.id);
+                            console.warn(`[Sync] Purged invalid record ${item.entityId} from queue: ${result.error}`);
+                        } else {
+                            remainingErrors++;
+                        }
+                    } else {
+                        // If for some reason we have no result for this item, keep it as an error to retry
+                        remainingErrors++;
+                    }
                 }
-                _dirtyLocalChanges = failedEntityIds.size > 0;
+
+                _dirtyLocalChanges = remainingErrors > 0;
                 if (!_dirtyLocalChanges) localStorage.removeItem('nexus_dirty_flag');
                 updateSyncUI('online');
                 console.log('[Sync] Push successful.');
