@@ -186,7 +186,11 @@ const store = (() => {
                     ...payload
                 };
                 await dbAPI.put(storeName, record);
-                if (!payload._sync) await dbAPI.queueSync('CREATE', 'project', record.id, record);
+                if (!payload.name) {
+                    console.warn('[Store] ADD_PROJECT skipped sync: missing name');
+                } else if (!payload._sync) {
+                    await dbAPI.queueSync('CREATE', 'project', record.id, record);
+                }
                 _state.projects.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Proyecto "${record.name}" creado.`, 'success');
@@ -352,7 +356,11 @@ const store = (() => {
                     updatedById: actor.id,
                 };
                 await dbAPI.put(storeName, record);
-                if (!payload._sync) await dbAPI.queueSync('CREATE', 'task', record.id, record);
+                if (!payload.title) {
+                    console.warn('[Store] ADD_TASK skipped sync: missing title');
+                } else if (!payload._sync) {
+                    await dbAPI.queueSync('CREATE', 'task', record.id, record);
+                }
                 _state.tasks.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Tarea "${record.title}" creada.`, 'success');

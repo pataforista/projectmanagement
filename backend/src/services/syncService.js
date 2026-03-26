@@ -106,6 +106,7 @@ export class SyncService {
 
     const results = [];
     const statements = [];
+    const batchedEntities = []; // Tracks which entityIds are in the current batch
 
     for (const change of changes) {
       try {
@@ -114,15 +115,16 @@ export class SyncService {
           throw new Error(`Unsupported entity type: ${change.entityType}`);
         }
 
-        // SECURITY: Validate ownership before processing
+        // 1. Prepare application statement (INSERT/UPDATE/DELETE)
         const applyStmt = await this.prepareApplyStatement(db, userId, tableName, change);
+
         if (!applyStmt) {
-          results.push({ entityId: change.entityId, status: 'error', error: 'Authorization denied or invalid' });
+          results.push({ entityId: change.entityId, status: 'success', note: 'No-op' });
           continue;
         }
 
-        // 1. Prepare sync_queue statement (id pk required, use device_id column)
-        const queueStmt = db.prepare(`
+        // 2. Prepare sync_queue statement 
+        statements.push(db.prepare(`
           INSERT INTO sync_queue (id, user_id, device_id, action, entity_type, entity_id, payload, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).bind(
@@ -134,22 +136,37 @@ export class SyncService {
           change.entityId,
           JSON.stringify(change.payload || {}),
           Date.now()
-        );
-        statements.push(queueStmt);
+        ));
 
-        // 2. Add table application statement
+        // 3. Add table application statement
         statements.push(applyStmt);
+        
+        // Track for deferred success marking
+        batchedEntities.push(change.entityId);
 
-        results.push({ entityId: change.entityId, status: 'success' });
       } catch (error) {
-        console.error(`[SyncService] Error preparing change ${change.entityId}:`, error);
+        console.error(`[SyncService] Error preparing/validating change ${change.entityId}:`, error);
         results.push({ entityId: change.entityId, status: 'error', error: error.message });
       }
     }
 
     if (statements.length > 0) {
-      // Execute all statements as a single transaction
-      await db.batch(statements);
+      try {
+        // Execute all statements as a single transaction in D1
+        await db.batch(statements);
+        
+        // Only now mark batched items as success
+        for (const entityId of batchedEntities) {
+          results.push({ entityId, status: 'success' });
+        }
+      } catch (batchError) {
+        console.error('[SyncService] Batch execution failed:', batchError);
+        // All items in this batch failed due to the atomic nature of db.batch()
+        for (const entityId of batchedEntities) {
+          results.push({ entityId, status: 'error', error: `Batch failed: ${batchError.message}` });
+        }
+        // We don't re-throw here so the controller can return the granular (though failed) results
+      }
     }
 
     await this.updateCursor(db, userId, deviceId);
@@ -207,74 +224,14 @@ export class SyncService {
                .bind(Date.now(), entityId);
     }
 
-    // --- CREATE / UPDATE: Schema-aware UPSERT ---
-    // Filter out internal/system fields from payload
-    const systemFields = new Set(['id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted']);
-    const columns = Object.keys(payload).filter(col => !systemFields.has(col));
-
+    // --- CREATE / UPDATE: Distinct paths to handle partial payloads ---
     const now = Date.now();
-
-    // Build column list based on actual table schema
-    const cols = ['id'];
-    const vals = [entityId];
-
-    // Owner column: user_id for user-owned tables, project_id for project-owned tables
-    if (schema.ownerCol === 'user_id') {
-      cols.push('user_id');
-      vals.push(userId);
-    } else if (schema.ownerCol === 'project_id') {
-      // SECURITY: Validate that user owns the project before allowing assignment
-      let projectId = payload.project_id || payload.projectId;
-
-      // RESOLVE PROJECT_ID IF MISSING
-      if (!projectId) {
-        if (change.action === 'CREATE') {
-          // Fallback: If no project_id is provided, we'll allow it if the DB allows it, 
-          // or if we can find a default. For now, we set it to null and let the DB decide.
-          // (We will add a migration 0006 to make this column nullable)
-          projectId = null;
-        } else {
-          // For UPDATE/DELETE, fetch the existing project_id from the database
-          const existing = await db.prepare(`SELECT project_id FROM ${tableName} WHERE id = ?`).bind(entityId).first();
-          if (existing) {
-            projectId = existing.project_id;
-          }
-        }
-      }
-
-      if (projectId) {
-        const ownsProject = await this.validateProjectOwnership(db, userId, projectId);
-        if (!ownsProject) {
-          throw new Error(`User ${userId} does not own project ${projectId} for ${tableName}#${entityId}`);
-        }
-        cols.push('project_id');
-        vals.push(projectId);
-      }
-
-      // Also store user_id so we can verify workspace membership later, if table has it
-      if (this.tablesWithUserId.has(tableName) || this.tablesWithUserIdOwner.has(tableName)) {
-        cols.push('user_id');
-        vals.push(userId);
-      }
-    } else if (schema.ownerCol === null && this.tablesWithUserIdOwner.has(tableName)) {
-      // members: null-ownerCol tables that still have a user_id FK for the creator
-      cols.push('user_id');
-      vals.push(userId);
-    }
-
-    if (schema.hasCreatedAt) {
-      cols.push('created_at');
-      vals.push(payload.createdAt || now);
-    }
-    if (schema.hasUpdatedAt) {
-      cols.push('updated_at');
-      vals.push(now);
-    }
-
-    // --- SECURITY: Only allow valid SQL identifier-safe column names ---
-    // Reject payload keys with camelCase, spaces, or SQL keywords.
-    // camelCase keys from the frontend (e.g. `projectId`) are accepted only if
-    // they match an expected alias and are translated to their snake_case DB column.
+    const skipKeys = new Set([
+      'id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted',
+      'createdAt', 'updatedAt', 'projectId', 'userId',
+      // Nexus Fortress client-side encryption fields
+      '__encrypted', '__iv', '__tag', '__version', '__keyId', 'iv', 'data',
+    ]);
     const camelToSnake = {
       projectId: 'project_id', userId: 'user_id', createdAt: 'created_at',
       updatedAt: 'updated_at', taskId: 'task_id', cycleId: 'cycle_id',
@@ -282,59 +239,118 @@ export class SyncService {
       dueDate: 'due_date', viewType: 'view_type', relatedTaskIds: 'related_task_ids',
       elementId: 'element_id', isOpen: 'is_open', emailHash: 'email_hash',
     };
-    // Columns already handled above and system keys to skip
-    const skipKeys = new Set([
-      'id', 'user_id', 'project_id', 'created_at', 'updated_at', '_deleted',
-      'createdAt', 'updatedAt', 'projectId', 'userId',
-      // Nexus Fortress client-side encryption fields — must NEVER be stored in D1
-      '__encrypted', '__iv', '__tag', '__version', '__keyId', 'iv', 'data',
-    ]);
     const SQL_IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
+    // Resolve project/user context for validation
+    let resolvedProjectId = payload.project_id || payload.projectId || null;
+    if (!resolvedProjectId && change.action === 'UPDATE') {
+      const existing = await db.prepare(`SELECT project_id FROM ${tableName} WHERE id = ?`).bind(entityId).first();
+      if (existing) resolvedProjectId = existing.project_id;
+    }
+
+    // Security check for project-owned tables
+    if (schema.ownerCol === 'project_id') {
+      if (resolvedProjectId) {
+        const ownsProject = await this.validateProjectOwnership(db, userId, resolvedProjectId);
+        if (!ownsProject) {
+          throw new Error(`User ${userId} does not own project ${resolvedProjectId} for ${tableName}#${entityId}`);
+        }
+      } else if (change.action === 'CREATE') {
+         // Some tables might allow null project_id after migration 0006, but it's risky for tasks/projects
+      }
+    }
+
+    // MANDATORY FIELD VALIDATION (Fix for 500 errors)
+    if (change.action === 'CREATE') {
+       if (tableName === 'tasks' && !payload.title) throw new Error('Task title is required');
+       if (tableName === 'projects' && !payload.name) throw new Error('Project name is required');
+       if (tableName === 'cycles' && !payload.name) throw new Error('Cycle name is required');
+       if (tableName === 'decisions' && !payload.title) throw new Error('Decision title is required');
+    }
+
+    // Bug 2 Fix: Prevent UPDATE from nullifying shared mandatory fields
+    if (change.action === 'UPDATE') {
+       const nullProtected = { tasks: ['title'], projects: ['name'], cycles: ['name'], decisions: ['title'] };
+       const protectedCols = nullProtected[tableName] || [];
+       for (const col of protectedCols) {
+         const camelKey = col.replace(/_([a-z])/g, (g) => g[1].toUpperCase()); // e.g. project_id -> projectId
+         const val = payload.hasOwnProperty(col) ? payload[col] : (payload.hasOwnProperty(camelKey) ? payload[camelKey] : undefined);
+         if (val === null || val === undefined || val === '') {
+           if (payload.hasOwnProperty(col) || payload.hasOwnProperty(camelKey)) {
+             throw new Error(`Field "${col}" cannot be null or empty in table "${tableName}" during update`);
+           }
+         }
+       }
+    }
+
+    // Prepare data columns
     const dataColumns = [];
     const dataValues = [];
     for (const [rawKey, val] of Object.entries(payload)) {
       if (skipKeys.has(rawKey)) continue;
       const colName = camelToSnake[rawKey] || rawKey;
-      if (!SQL_IDENTIFIER.test(colName)) {
-        console.warn(`[SyncService] Skipping unsafe field name: ${rawKey}`);
-        continue;
-      }
+      if (!SQL_IDENTIFIER.test(colName)) continue;
       dataColumns.push(colName);
-      dataValues.push(
-        (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val
-      );
+      dataValues.push((typeof val === 'object' && val !== null) ? JSON.stringify(val) : val);
     }
 
-    cols.push(...dataColumns);
-    vals.push(...dataValues);
+    if (change.action === 'CREATE') {
+      const cols = ['id'];
+      const vals = [entityId];
+      
+      if (schema.ownerCol === 'user_id') {
+        cols.push('user_id'); vals.push(userId);
+      } else if (schema.ownerCol === 'project_id' && resolvedProjectId) {
+        cols.push('project_id'); vals.push(resolvedProjectId);
+        if (this.tablesWithUserId.has(tableName) || this.tablesWithUserIdOwner.has(tableName)) {
+          cols.push('user_id'); vals.push(userId);
+        }
+      } else if (schema.ownerCol === null && this.tablesWithUserIdOwner.has(tableName)) {
+        cols.push('user_id'); vals.push(userId);
+      }
 
-    const placeHolders = cols.map(() => '?').join(', ');
-    const updateAssigns = dataColumns.map(col => `${col} = EXCLUDED.${col}`).join(', ');
+      if (schema.hasCreatedAt) { cols.push('created_at'); vals.push(payload.createdAt || now); }
+      if (schema.hasUpdatedAt) { cols.push('updated_at'); vals.push(now); }
+      
+      cols.push(...dataColumns);
+      vals.push(...dataValues);
 
-    // Build ON CONFLICT update clause
-    // IMPORTANT: Do NOT reset _deleted = 0 on conflict, as this would resurrect
-    // soft-deleted records if a CREATE/UPDATE races with a DELETE.
-    // Instead, preserve the existing _deleted value — the DELETE action will set it
-    // explicitly via the dedicated UPDATE path above.
-    const updateParts = [];
-    if (updateAssigns) updateParts.push(updateAssigns);
-    if (schema.hasUpdatedAt) updateParts.push('updated_at = EXCLUDED.updated_at');
+      const sql = `INSERT OR IGNORE INTO ${tableName} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
+      return db.prepare(sql).bind(...vals);
 
-    if (updateParts.length === 0) {
-      // Nothing to update on conflict — just INSERT OR IGNORE
-      const sql = `INSERT OR IGNORE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeHolders})`;
+    } else {
+      // UPDATE: Only patch provided columns
+      const setParts = [];
+      const vals = [];
+      
+      for (let i = 0; i < dataColumns.length; i++) {
+        setParts.push(`${dataColumns[i]} = ?`);
+        vals.push(dataValues[i]);
+      }
+
+      if (schema.hasUpdatedAt) {
+        setParts.push('updated_at = ?');
+        vals.push(now);
+      }
+      
+      // Ensure we hit the right record and check ownership
+      setParts.push('_deleted = 0');
+
+      if (setParts.length === 0) return null;
+
+      let sql = `UPDATE ${tableName} SET ${setParts.join(', ')} WHERE id = ?`;
+      vals.push(entityId);
+
+      if (schema.ownerCol === 'project_id' && resolvedProjectId) {
+         sql += ` AND project_id = ?`;
+         vals.push(resolvedProjectId);
+      } else if (schema.ownerCol === 'user_id' || this.tablesWithUserId.has(tableName)) {
+         sql += ` AND user_id = ?`;
+         vals.push(userId);
+      }
+
       return db.prepare(sql).bind(...vals);
     }
-
-    const sql = `
-      INSERT INTO ${tableName} (${cols.join(', ')})
-      VALUES (${placeHolders})
-      ON CONFLICT(id) DO UPDATE SET
-        ${updateParts.join(', ')}
-    `;
-
-    return db.prepare(sql).bind(...vals);
   }
 
   async processPull(db, userId, deviceId, lastSyncTime) {
