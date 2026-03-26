@@ -230,7 +230,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.projects[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
-                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'project', updated.id, payload);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'project', updated.id, { ...payload, project_id: updated.id });
                     _state.projects[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Proyecto actualizado.', 'success');
@@ -396,7 +396,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.tasks[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
-                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'task', updated.id, payload);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'task', updated.id, { ...payload, project_id: updated.projectId });
                     _state.tasks[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Tarea actualizada.', 'success');
@@ -489,7 +489,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.cycles[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
-                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'cycle', updated.id, payload);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'cycle', updated.id, { ...payload, project_id: updated.projectId });
                     _state.cycles[idx] = updated;
                     _notify(storeName);
                 }
@@ -567,7 +567,7 @@ const store = (() => {
                         _timestamps: stampFields(_state.decisions[idx], payload, _now),
                     };
                     await dbAPI.put(storeName, updated);
-                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'decision', updated.id, payload);
+                    if (!payload._sync) await dbAPI.queueSync('UPDATE', 'decision', updated.id, { ...payload, project_id: updated.projectId });
                     _state.decisions[idx] = updated;
                     _notify(storeName);
                 }
@@ -670,7 +670,7 @@ const store = (() => {
                 if (!existing) throw new Error(`Member ${payload.id} not found`);
                 const updated = { ...existing, ...payload, updatedAt: monotonicNow() };
                 await dbAPI.put(storeName, updated);
-                if (!payload._sync) await dbAPI.queueSync('UPDATE', 'member', updated.id, payload);
+                if (!payload._sync) await dbAPI.queueSync('UPDATE', 'member', updated.id, { ...payload, project_id: updated.projectId || updated.project_id });
                 Object.assign(existing, updated);
                 _notify(storeName);
                 result = updated;

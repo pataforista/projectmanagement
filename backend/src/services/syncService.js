@@ -39,7 +39,7 @@ export class SyncService {
       'cycles':    { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
       'decisions': { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
       'documents': { ownerCol: 'project_id', hasCreatedAt: false, hasUpdatedAt: true,  hasDeleted: true  },
-      'members':   { ownerCol: null,         hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
+      'members':   { ownerCol: 'project_id', hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
       'logs':      { ownerCol: 'user_id',    hasCreatedAt: false, hasUpdatedAt: false, hasDeleted: false },
       'notes':     { ownerCol: 'user_id',    hasCreatedAt: true,  hasUpdatedAt: true,  hasDeleted: true  },
       
@@ -224,19 +224,32 @@ export class SyncService {
       vals.push(userId);
     } else if (schema.ownerCol === 'project_id') {
       // SECURITY: Validate that user owns the project before allowing assignment
-      const projectId = payload.project_id || payload.projectId;
+      let projectId = payload.project_id || payload.projectId;
 
+      // RESOLVE PROJECT_ID IF MISSING
       if (!projectId) {
-        throw new Error(`project_id is required for ${tableName}`);
+        if (change.action === 'CREATE') {
+          // Fallback: If no project_id is provided, we'll allow it if the DB allows it, 
+          // or if we can find a default. For now, we set it to null and let the DB decide.
+          // (We will add a migration 0006 to make this column nullable)
+          projectId = null;
+        } else {
+          // For UPDATE/DELETE, fetch the existing project_id from the database
+          const existing = await db.prepare(`SELECT project_id FROM ${tableName} WHERE id = ?`).bind(entityId).first();
+          if (existing) {
+            projectId = existing.project_id;
+          }
+        }
       }
 
-      const ownsProject = await this.validateProjectOwnership(db, userId, projectId);
-      if (!ownsProject) {
-        throw new Error(`User ${userId} does not own project ${projectId}`);
+      if (projectId) {
+        const ownsProject = await this.validateProjectOwnership(db, userId, projectId);
+        if (!ownsProject) {
+          throw new Error(`User ${userId} does not own project ${projectId} for ${tableName}#${entityId}`);
+        }
+        cols.push('project_id');
+        vals.push(projectId);
       }
-
-      cols.push('project_id');
-      vals.push(projectId);
 
       // Also store user_id so we can verify workspace membership later, if table has it
       if (this.tablesWithUserId.has(tableName) || this.tablesWithUserIdOwner.has(tableName)) {

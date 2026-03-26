@@ -1567,19 +1567,30 @@ function openInitialSetupModal() {
       created_at: new Date().toISOString()
     });
 
-    // 2. Create the Admin Member record
+    // 2. Create a default project first (to satisfy NOT NULL project_id in members/tasks)
+    const firstProject = await store.dispatch('ADD_PROJECT', {
+      name: 'Mi Primer Proyecto',
+      type: 'general',
+      status: 'activo',
+      goal: 'Primer proyecto creado automáticamente durante la configuración.',
+      color: '#5e6ad2',
+      visibility: 'shared'
+    });
+
+    // 3. Create the Admin Member record
     const adminPayload = {
       name: adminName,
       email: user.email || 'local-admin',
       emailHash: user.emailHash || null,
       role: 'admin',
       avatar: adminName.charAt(0).toUpperCase(),
-      joinedAt: new Date().toISOString()
+      joinedAt: new Date().toISOString(),
+      projectId: firstProject ? firstProject.id : null // Link to the new project
     };
 
     const newMember = await store.dispatch('ADD_MEMBER', adminPayload);
 
-    // 3. Link local identity to this new member
+    // 4. Link local identity to this new member
     if (newMember && newMember.id) {
       setCurrentMemberId(newMember.id);
     }
