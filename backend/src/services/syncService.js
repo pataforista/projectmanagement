@@ -172,16 +172,20 @@ export class SyncService {
         // logs table has no _deleted column — skip
         return null;
       }
-      // logs: INSERT OR IGNORE (id, user_id, type, message, timestamp)
+      // logs: INSERT OR IGNORE (id, user_id, type, message, timestamp, action, entity_type, entity_id, payload)
       return db.prepare(`
-        INSERT OR IGNORE INTO logs (id, user_id, type, message, timestamp)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO logs (id, user_id, type, message, timestamp, action, entity_type, entity_id, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         entityId,
         userId,
         payload.type || 'sync',
         payload.message || '',
-        payload.timestamp || Date.now()
+        payload.timestamp || Date.now(),
+        payload.action || change.action || null,
+        payload.entity_type || payload.entityType || null,
+        payload.entity_id || payload.entityId || null,
+        payload.payload ? JSON.stringify(payload.payload) : (payload.data ? JSON.stringify(payload.data) : null)
       );
     }
 

@@ -45,7 +45,7 @@ const STORES = {
  * Incluye un mecanismo de recuperación en caso de errores de versión.
  * @returns {Promise<IDBDatabase>} Promesa que resuelve la instancia de la base de datos.
  */
-export const initDB = () => new Promise(async (resolve, reject) => {
+const _initDB = () => new Promise(async (resolve, reject) => {
   const openDB = () => new Promise((res, rej) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -262,6 +262,10 @@ export const initDB = () => new Promise(async (resolve, reject) => {
   resolve(result);
 });
 
+// Re-export as a permanent promise that can be awaited by任何人
+export const dbPromise = _initDB();
+export const initDB = () => dbPromise;
+
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Generic CRUD helpers
@@ -297,8 +301,18 @@ function _showSaveIndicator() {
  * @returns {Promise<any>} Promesa que se resuelve con el resultado de la transacción.
  */
 function tx(storeName, mode, fn) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    // BUG 42 FIX: If a transaction is requested before initDB completes,
+    // wait for the initialization promise instead of failing immediately.
+    if (!db) {
+      try {
+        await dbPromise;
+      } catch (e) {
+        return reject('DB initialization failed: ' + e.message);
+      }
+    }
     if (!db) return reject('DB not initialized');
+    
     try {
       const transaction = db.transaction([storeName], mode);
       const store = transaction.objectStore(storeName);

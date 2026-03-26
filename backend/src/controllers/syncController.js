@@ -16,14 +16,25 @@ export default class SyncController {
     }
 
     try {
+      console.log(`[SyncController] Push request from user ${userId}, device ${deviceId} (${changes.length} changes)`);
       const results = await this.syncService.processPush(c.env.DB, userId, deviceId, changes);
+      
+      const successCount = results.filter(r => r.status === 'success').length;
+      const errorCount = results.length - successCount;
+      console.log(`[SyncController] Push results: ${successCount} success, ${errorCount} errors`);
+      
+      if (errorCount > 0) {
+        const errors = results.filter(r => r.status === 'error').map(r => r.error);
+        console.warn(`[SyncController] Push partial errors:`, errors.slice(0, 3));
+      }
+
       return c.json({
         status: 'success',
         syncedAt: new Date().toISOString(),
         results
       });
     } catch (error) {
-      console.error('[SyncController] Push error:', error);
+      console.error('[SyncController] Push critical error:', error);
       return c.json({ status: 'error', message: error.message }, 500);
     }
   }

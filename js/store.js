@@ -190,6 +190,19 @@ const store = (() => {
                 _state.projects.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Proyecto "${record.name}" creado.`, 'success');
+
+                // Automated Activity Log
+                if (!payload._sync) {
+                    await dispatch('ADD_LOG', {
+                        type: 'create',
+                        message: `Proyecto creado: ${record.name}`,
+                        action: 'CREATE',
+                        entityType: 'project',
+                        entityId: record.id,
+                        payload: { name: record.name }
+                    });
+                }
+
                 result = record;
                 break;
             }
@@ -221,6 +234,18 @@ const store = (() => {
                     _state.projects[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Proyecto actualizado.', 'success');
+
+                    // Automated Activity Log
+                    if (!payload._sync) {
+                        await dispatch('ADD_LOG', {
+                            type: 'update',
+                            message: `Proyecto actualizado: ${updated.name}`,
+                            action: 'UPDATE',
+                            entityType: 'project',
+                            entityId: updated.id,
+                            payload: { name: updated.name }
+                        });
+                    }
                 }
                 break;
             }
@@ -264,6 +289,18 @@ const store = (() => {
                     };
                     await dbAPI.put(storeName, tombstone);
                     if (!payload._sync) await dbAPI.queueSync('DELETE', 'project', tombstone.id, null);
+                    
+                    // Automated Activity Log
+                    if (!payload._sync) {
+                        await dispatch('ADD_LOG', {
+                            type: 'delete',
+                            message: `Proyecto eliminado: ${tombstone.name}`,
+                            action: 'DELETE',
+                            entityType: 'project',
+                            entityId: tombstone.id
+                        });
+                    }
+
                     _state.projects[pIdx] = tombstone;
                 }
 
@@ -319,6 +356,19 @@ const store = (() => {
                 _state.tasks.push(record);
                 _notify(storeName);
                 if (window.showToast) showToast(`Tarea "${record.title}" creada.`, 'success');
+
+                // Automated Activity Log
+                if (!payload._sync) {
+                    await dispatch('ADD_LOG', {
+                        type: 'create',
+                        message: `Tarea creada: ${record.title}`,
+                        action: 'CREATE',
+                        entityType: 'task',
+                        entityId: record.id,
+                        payload: { title: record.title, projectId: record.projectId }
+                    });
+                }
+
                 result = record;
                 break;
             }
@@ -350,6 +400,18 @@ const store = (() => {
                     _state.tasks[idx] = updated;
                     _notify(storeName);
                     if (window.showToast) showToast('Tarea actualizada.', 'success');
+
+                    // Automated Activity Log
+                    if (!payload._sync) {
+                        await dispatch('ADD_LOG', {
+                            type: payload.status === 'completada' ? 'complete' : 'update',
+                            message: `${payload.status === 'completada' ? 'Tarea completada' : 'Tarea actualizada'}: ${updated.title}`,
+                            action: 'UPDATE',
+                            entityType: 'task',
+                            entityId: updated.id,
+                            payload: { title: updated.title, status: updated.status }
+                        });
+                    }
                 }
                 break;
             }
@@ -364,6 +426,18 @@ const store = (() => {
                     };
                     await dbAPI.put(storeName, tombstone);
                     if (!payload._sync) await dbAPI.queueSync('DELETE', 'task', tombstone.id, null);
+
+                    // Automated Activity Log
+                    if (!payload._sync) {
+                        await dispatch('ADD_LOG', {
+                            type: 'delete',
+                            message: `Tarea eliminada: ${tombstone.title}`,
+                            action: 'DELETE',
+                            entityType: 'task',
+                            entityId: tombstone.id
+                        });
+                    }
+
                     _state.tasks[tIdx] = tombstone;
                     _notify(storeName);
                     if (window.showToast) showToast('Tarea eliminada.', 'info');
@@ -556,8 +630,19 @@ const store = (() => {
             case 'ADD_LOG': {
                 storeName = 'logs';
                 if (!_state.logs) _state.logs = [];
-                const record = { id: _uid, timestamp: monotonicNow(), ...payload };
+                // Support new columns from migration 0005
+                const record = { 
+                    id: _uid, 
+                    timestamp: monotonicNow(), 
+                    action: payload.action || 'CREATE',
+                    entity_type: payload.entityType || null,
+                    entity_id: payload.entityId || null,
+                    payload: payload.payload ? JSON.stringify(payload.payload) : null,
+                    ...payload 
+                };
                 await dbAPI.put(storeName, record);
+                // We don't sync 'logs' themselves back and forth normally to avoid loops,
+                // but the sync_queue WILL track them so other devices get the activity history.
                 if (!payload._sync) await dbAPI.queueSync('CREATE', 'log', record.id, record);
                 _state.logs.push(record);
                 _notify(storeName);

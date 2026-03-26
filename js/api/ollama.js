@@ -10,6 +10,8 @@ class OllamaAPI {
         this.baseUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
         this.model = localStorage.getItem('ollama_model') || 'llama3';
         this.corsProxyUrl = localStorage.getItem('ollama_cors_proxy') || '';
+        this._isOffline = false;
+        this._lastCheck = 0;
 
         // We will evaluate the proxy dynamically in _getActiveProxy()
     }
@@ -211,6 +213,11 @@ class OllamaAPI {
      * Health check - ping the Ollama server
      */
     async healthCheck() {
+        const now = Date.now();
+        // If it was offline recently, don't spam requests (and console errors)
+        if (this._isOffline && (now - this._lastCheck) < 60000) return false;
+        
+        this._lastCheck = now;
         try {
             const fetchUrl = this._buildFetchUrl('/api/tags');
             const headers = {};
@@ -219,23 +226,16 @@ class OllamaAPI {
                 headers['x-ollama-url'] = this.baseUrl;
             }
 
-            const response = await fetchWithTimeout(fetchUrl, { headers });
+            // Using a very short timeout for healthcheck to avoid hanging
+            const response = await fetchWithTimeout(fetchUrl, { headers, timeout: 2000 });
             if (!response.ok) {
-                // Only warn about CORS if it's a non-connection-refused server error
-                this._handleCorsError(new Error(`HTTP ${response.status}`));
+                this._isOffline = true;
                 return false;
             }
+            this._isOffline = false;
             return true;
         } catch (err) {
-            // ERR_CONNECTION_REFUSED = Ollama simply not running. Stay silent.
-            const isConnectionRefused = err?.message?.includes('ERR_CONNECTION_REFUSED')
-                || err?.message?.includes('Failed to fetch')
-                || err?.message?.includes('NetworkError');
-            if (isConnectionRefused && !this._shouldWarnAboutCors()) {
-                // Silent fail — Ollama is just not running locally
-                return false;
-            }
-            this._handleCorsError(err);
+            this._isOffline = true;
             return false;
         }
     }
