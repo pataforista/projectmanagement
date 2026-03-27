@@ -441,7 +441,8 @@ function getObsidianFileName(uri) {
 export const SYNCABLE_SETTINGS_KEYS = [
     'workspace_team_label',
     'autolock_enabled',
-    'low_feedback_enabled'
+    'low_feedback_enabled',
+    'admin_key_hash'
 ];
 
 // These MUST NEVER be in SYNCABLE_SETTINGS_KEYS. Defensive check.

@@ -41,7 +41,18 @@ export class SyncService {
       members: new Set([
         'project_id', 'user_id', 'name', 'email', 'role',
         '_deleted', 'created_at', 'updated_at', 'avatar', 'status'
-      ])
+      ]),
+      logs: new Set([
+        'user_id', 'type', 'message', 'action', 'entity_type', 'entity_id', 'payload', 'timestamp'
+      ]),
+      messages: new Set(['project_id', 'user_id', 'content', 'type', 'created_at', 'updated_at', '_deleted']),
+      annotations: new Set(['project_id', 'user_id', 'content', 'created_at', 'updated_at', '_deleted']),
+      snapshots: new Set(['project_id', 'user_id', 'content', 'timestamp', '_deleted', 'updated_at']),
+      interconsultations: new Set(['project_id', 'user_id', 'name', 'status', 'visibility', 'created_at', 'updated_at', '_deleted']),
+      sessions: new Set(['project_id', 'user_id', 'name', 'date', 'start_time', 'end_time', 'created_at', 'updated_at', '_deleted']),
+      time_logs: new Set(['project_id', 'user_id', 'duration', 'date', 'created_at', 'updated_at', '_deleted']),
+      library_items: new Set(['user_id', 'title', 'authors', 'year', 'url', 'created_at', 'updated_at', '_deleted']),
+      notifications: new Set(['user_id', 'title', 'message', 'read', 'created_at', 'updated_at', '_deleted'])
     };
     // For members: we allow deletion by the workspace owner (user_id on the member record)
     this.tablesWithUserIdOwner = new Set(['members']);
@@ -337,8 +348,12 @@ export class SyncService {
       
       if (schema.ownerCol === 'user_id') {
         cols.push('user_id'); vals.push(userId);
-      } else if (schema.ownerCol === 'project_id' && resolvedProjectId) {
-        cols.push('project_id'); vals.push(resolvedProjectId);
+      } else if (schema.ownerCol === 'project_id') {
+        if (resolvedProjectId) {
+          cols.push('project_id'); vals.push(resolvedProjectId);
+        }
+        // BUG FIX: Even if project_id is null (workspace-level), we MUST 
+        // inject user_id if the table supports it so the record has an owner.
         if (this.tablesWithUserId.has(tableName) || this.tablesWithUserIdOwner.has(tableName)) {
           cols.push('user_id'); vals.push(userId);
         }

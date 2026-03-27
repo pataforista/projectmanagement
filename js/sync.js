@@ -1588,10 +1588,13 @@ const syncManager = (() => {
             syncSettingsToLocalStorage(data.settings);
         }
 
+        const normalizedRemoteIterations = normalizeRemoteIterations(data.pbkdf2Iterations);
+
         if (data.e2ee && data.workspaceSalt) {
             // SECURITY FIX: Validate salt checksum to detect poisoning
             const saltChecksum = data.metadata?.saltChecksum || null;
-            const result = await injectWorkspaceSalt(data.workspaceSalt, saltChecksum);
+            // Atomic update: pass both salt and iterations so the re-unlock happens ONCE with correct params
+            const result = await injectWorkspaceSalt(data.workspaceSalt, saltChecksum, normalizedRemoteIterations);
 
             if (result.rejected) {
                 console.error('[Sync] Salt validation failed — aborting hydration');
@@ -1599,29 +1602,15 @@ const syncManager = (() => {
             }
 
             if (result.locked) {
-                if (window.showToast) showToast('Se actualizó la llave desde Drive. Por favor ingresa tu contraseña.', 'warning', true);
+                if (window.showToast) showToast('Se actualizó la seguridad desde Drive. Por favor ingresa tu contraseña.', 'warning', true);
                 if (window.openPanel) window.openPanel(); // Abro el panel lateral para forzar password
                 return; // Abort hydration
             }
-        }
-
-        // BUG 15 FIX: Sync PBKDF2 iteration count from remote workspace.
-        // If Device A upgraded to 600k iterations (via password reset), Device B
-        // still has 310k in its localStorage and will derive a DIFFERENT AES key
-        // from the same password, making decryption fail on next unlock.
-        // Solution: propagate the higher iteration count and force a re-derive.
-        const normalizedRemoteIterations = normalizeRemoteIterations(data.pbkdf2Iterations);
-        if (normalizedRemoteIterations && normalizedRemoteIterations > getStoredIterations()) {
-            localStorage.setItem('nexus_pbkdf2_iterations', String(normalizedRemoteIterations));
-            // KEY ERA MISMATCH FIX: The in-memory key was derived with the old iteration
-            // count. The remote data was encrypted with the new count → different AES key.
-            // Lock the vault so the next unlock re-derives the key with the updated count.
-            // Uses the directly-imported lock() to avoid the fragile window.cryptoLayer
-            // reference that may not be set in all execution contexts.
-            lock();
-            if (window.showToast) showToast('Actualización de seguridad del workspace. Ingresa tu contraseña nuevamente.', 'warning', true);
-            if (window.openPanel) window.openPanel();
-            return; // Abort hydration — user must re-authenticate with correct key
+        } else if (normalizedRemoteIterations && normalizedRemoteIterations !== getStoredIterations()) {
+            // BUG 15 FIX: Sync PBKDF2 iteration count from remote workspace even if salt didn't change.
+            // Adopt the remote count and re-unlock to ensure the key is derived with the new standard.
+            const result = await injectWorkspaceSalt(null, null, normalizedRemoteIterations); 
+            if (result.locked) return;
         }
 
         let hydrationData = data;
