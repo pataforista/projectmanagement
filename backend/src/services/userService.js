@@ -9,6 +9,8 @@ export class UserService {
     const now = Date.now();
 
     if (existing) {
+      const emailChanged = existing.email !== googleClaims.email;
+
       await db.prepare(`
         UPDATE users SET
           email = ?,
@@ -23,6 +25,15 @@ export class UserService {
         now,
         existing.id
       ).run();
+
+      // Keep active sessions in sync when the Google account email changes.
+      // Without this, sessions.email would hold the old address while users.email
+      // already reflects the new one, causing silent desynchronisation.
+      if (emailChanged) {
+        await db.prepare(`
+          UPDATE sessions SET email = ? WHERE user_id = ? AND is_active = 1
+        `).bind(googleClaims.email, existing.id).run();
+      }
 
       return { ...existing, email: googleClaims.email, name: googleClaims.name, avatar: googleClaims.picture };
     } else {

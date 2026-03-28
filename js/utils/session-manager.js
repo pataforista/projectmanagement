@@ -7,6 +7,7 @@
  */
 
 import { StorageManager } from './storage-manager.js';
+import { BackendClient } from '../api/backend-client.js';
 
 export const SessionManager = (() => {
     const SESSIONS_STORE = 'sessions';
@@ -283,23 +284,31 @@ export const SessionManager = (() => {
     async function logoutFast() {
         console.log('[SessionManager] Fast logout initiated');
 
-        // 1. Save token BEFORE clearing session (logout clears sessionStorage)
-        const token = StorageManager.get('google_id_token', 'session');
+        // 1. Revoke the backend session BEFORE clearing local tokens so the
+        //    Authorization header is still valid when the request is sent.
+        //    This is fire-and-forget — we do not block logout on a network failure.
+        BackendClient.logout().catch(e => {
+            console.warn('[SessionManager] Backend logout notification failed:', e);
+        });
 
-        // 2. Clear local session
+        // 2. Clear local session (sessionStorage + in-memory tokens)
         await logout();
 
-        // 3. Attempt Google token revocation in background (fire-and-forget)
-        // Note: google.accounts.oauth2.revoke() is callback-based, not a Promise
-        if (token && window.google?.accounts?.oauth2) {
+        // 3. Attempt Google OAuth2 access token revocation (fire-and-forget).
+        //    The Google Drive access token lives on the syncManager, not in storage,
+        //    so we ask syncManager to expose it if available.
+        //    NOTE: google.accounts.oauth2.revoke() requires the *access token*, NOT
+        //    the ID token.  Passing the ID token would silently fail.
+        const googleAccessToken = window.syncManager?.getAccessToken?.();
+        if (googleAccessToken && window.google?.accounts?.oauth2) {
             try {
-                google.accounts.oauth2.revoke(token, (response) => {
+                google.accounts.oauth2.revoke(googleAccessToken, (response) => {
                     if (response?.error) {
                         console.warn('[SessionManager] Google revocation failed:', response.error);
                     }
                 });
             } catch (e) {
-                console.warn('[SessionManager] Could not revoke token:', e);
+                console.warn('[SessionManager] Could not revoke Google token:', e);
             }
         }
 

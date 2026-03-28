@@ -8,50 +8,85 @@
  * `audit_log` for accountability.
  */
 
+// PBKDF2 parameters — intentionally slow to resist brute-force attacks.
+// SHA-256 alone (the previous approach) is far too fast for password hashing.
+const PBKDF2_ITERATIONS = 100_000;
+const PBKDF2_KEY_LENGTH = 32; // 256-bit output
+
 export class AdminService {
   // ─── Admin Key ────────────────────────────────────────────────────────────
 
   /**
-   * Hash a plain-text key with SHA-256 using the Web Crypto API
-   * (available in both Cloudflare Workers and modern browsers).
+   * Generate a cryptographically random hex salt.
    */
-  async hashKey(plainKey) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(plainKey);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+  #generateSalt() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   /**
-   * Retrieve the stored admin key hash from workspace_config.
-   * Returns null if no admin key has been configured yet.
+   * Derive a hash for `plainKey` using PBKDF2-SHA256 and the given hex `salt`.
+   * Returns the hash as a hex string.
    */
-  async getAdminKeyHash(db) {
-    const { results } = await db.prepare(
+  async #deriveKey(plainKey, saltHex) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', enc.encode(plainKey), 'PBKDF2', false, ['deriveBits']
+    );
+    const saltBytes = Uint8Array.from(saltHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: PBKDF2_ITERATIONS },
+      keyMaterial,
+      PBKDF2_KEY_LENGTH * 8
+    );
+    return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Retrieve the stored admin key hash and salt from workspace_config.
+   * Returns { hash, salt } or null if no admin key has been configured.
+   */
+  async #getStoredKey(db) {
+    const { results: hashRow } = await db.prepare(
       `SELECT value FROM workspace_config WHERE key = 'admin_key_hash'`
     ).all();
-    return results[0]?.value ?? null;
+    const { results: saltRow } = await db.prepare(
+      `SELECT value FROM workspace_config WHERE key = 'admin_key_salt'`
+    ).all();
+    const hash = hashRow[0]?.value ?? null;
+    const salt = saltRow[0]?.value ?? null;
+    if (!hash) return null;
+    return { hash, salt };
   }
 
   /**
    * Returns true when an admin key has been configured.
    */
   async hasAdminKey(db) {
-    const hash = await this.getAdminKeyHash(db);
-    return !!hash;
+    const stored = await this.#getStoredKey(db);
+    return !!stored;
   }
 
   /**
-   * Verify a plain-text key against the stored hash.
+   * Verify a plain-text key against the stored PBKDF2 hash+salt.
    * Returns true if no admin key is configured (open workspace).
    */
   async verifyAdminKey(env, plainKey) {
-    const storedHash = await this.getAdminKeyHash(env.DB);
-    if (!storedHash) return true; // no key configured → open
-    const inputHash = await this.hashKey(plainKey);
-    return inputHash === storedHash;
+    const stored = await this.#getStoredKey(env.DB);
+    if (!stored) return true; // no key configured → open workspace
+
+    if (!stored.salt) {
+      // Legacy record hashed with plain SHA-256 (no salt). Accept it but force
+      // a re-hash on next setAdminKey call. Compare with SHA-256 for now.
+      const enc = new TextEncoder();
+      const buf = await crypto.subtle.digest('SHA-256', enc.encode(plainKey));
+      const legacyHash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      return legacyHash === stored.hash;
+    }
+
+    const inputHash = await this.#deriveKey(plainKey, stored.salt);
+    return inputHash === stored.hash;
   }
 
   /**
@@ -66,24 +101,31 @@ export class AdminService {
       throw new Error('KEY_TOO_SHORT');
     }
 
-    const existingHash = await this.getAdminKeyHash(db);
-    if (existingHash) {
+    const stored = await this.#getStoredKey(db);
+    if (stored) {
       if (!currentKey) throw new Error('CURRENT_KEY_REQUIRED');
-      const currentHash = await this.hashKey(currentKey);
-      if (currentHash !== existingHash) throw new Error('INVALID_CURRENT_KEY');
+      // Verify using the correct path (PBKDF2 or legacy SHA-256)
+      const valid = await this.verifyAdminKey({ DB: db }, currentKey);
+      if (!valid) throw new Error('INVALID_CURRENT_KEY');
     }
 
-    const newHash = await this.hashKey(newKey);
+    const salt = this.#generateSalt();
+    const hash = await this.#deriveKey(newKey, salt);
     const now = Date.now();
 
-    await db.prepare(`
-      INSERT INTO workspace_config (key, value, updated_at, updated_by)
-      VALUES ('admin_key_hash', ?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-        value      = EXCLUDED.value,
-        updated_at = EXCLUDED.updated_at,
-        updated_by = EXCLUDED.updated_by
-    `).bind(newHash, now, userId).run();
+    // Persist hash and salt as separate config entries
+    await db.batch([
+      db.prepare(`
+        INSERT INTO workspace_config (key, value, updated_at, updated_by)
+        VALUES ('admin_key_hash', ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
+      `).bind(hash, now, userId),
+      db.prepare(`
+        INSERT INTO workspace_config (key, value, updated_at, updated_by)
+        VALUES ('admin_key_salt', ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
+      `).bind(salt, now, userId),
+    ]);
   }
 
   // ─── Audit Log ────────────────────────────────────────────────────────────

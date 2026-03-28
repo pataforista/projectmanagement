@@ -2,6 +2,8 @@
  * views/admin.js — Centralized Workspace Administration
  */
 
+import { BackendClient } from '../api/backend-client.js';
+
 async function renderAdmin(root) {
   const members = store.get.members().filter(m => !m._deleted);
   const config = syncManager.getConfig();
@@ -202,8 +204,34 @@ window.saveAdminGeneral = async function() {
   const updates = { workspace_name: wsName };
 
   if (masterKey) {
-      const cryptoLayer = await import('../utils/crypto.js');
-      updates.admin_key_hash = await cryptoLayer.hashPassword(masterKey);
+    if (BackendClient.isAuthenticated()) {
+      // Backend mode: set key server-side. If a key already exists the backend
+      // requires the current key — prompt for it.
+      try {
+        const statusRes = await BackendClient.fetch('/api/admin/status');
+        const statusData = await statusRes.json();
+        let currentKey = null;
+        if (statusData.hasAdminKey) {
+          currentKey = prompt('Ya existe una Clave Maestra en el servidor. Ingresa la clave actual para poder cambiarla:');
+          if (!currentKey) return;
+        }
+        const keyRes = await BackendClient.fetch('/api/admin/key', {
+          method: 'POST',
+          body: JSON.stringify({ newKey: masterKey, currentKey }),
+        });
+        if (!keyRes.ok) {
+          const err = await keyRes.json().catch(() => ({}));
+          return showToast(err.message || 'Error al guardar la clave en el servidor.', 'error');
+        }
+      } catch (e) {
+        console.error('[Admin] Error setting backend admin key:', e);
+        return showToast('Error de conexión al guardar la clave en el servidor.', 'error');
+      }
+    }
+
+    // Also persist locally (used for the GDrive-only sync path)
+    const cryptoLayer = await import('../utils/crypto.js');
+    updates.admin_key_hash = await cryptoLayer.hashPassword(masterKey);
   }
 
   syncManager.saveConfig({ ...syncManager.getConfig(), ...updates });
@@ -213,10 +241,12 @@ window.saveAdminGeneral = async function() {
 
 window.generateInvite = function(role) {
   const config = syncManager.getConfig();
+  // NOTE: sharedFolderId and fileName are intentionally omitted from the invite code.
+  // Including them would allow anyone who intercepts the code to locate and read the
+  // shared Google Drive file directly — a significant data exposure risk.
+  // New members must receive Drive credentials through a separate, trusted channel.
   const payload = {
     c: config.clientId,
-    f: config.sharedFolderId,
-    n: config.fileName,
     w: config.workspace_name,
     r: role
   };
@@ -244,6 +274,19 @@ window.editMemberRoles = async function(id) {
     const member = store.get.members().find(m => m.id === id);
     const config = syncManager.getConfig();
 
+    // If the backend is connected, check whether it has an admin key configured
+    // so we know whether to require it for all role changes (not just promote-to-admin).
+    let backendHasKey = false;
+    if (BackendClient.isAuthenticated()) {
+      try {
+        const statusRes = await BackendClient.fetch('/api/admin/status');
+        const statusData = await statusRes.json();
+        backendHasKey = statusData.hasAdminKey ?? false;
+      } catch (e) { /* ignore — fall back to local check */ }
+    }
+    // Show key input when either the backend or the local config has a key configured
+    const requiresKey = backendHasKey || !!config.admin_key_hash;
+
     const roleModal = openModal(`
         <div class="modal-header"><h2>Editar Rol de ${esc(member.name)}</h2></div>
         <div class="modal-body">
@@ -254,10 +297,11 @@ window.editMemberRoles = async function(id) {
                     <option value="admin" ${member.role === 'admin' ? 'selected' : ''}>Administrador</option>
                 </select>
             </div>
-            <div id="master-key-verify" style="display:none; margin-top:16px;">
+            ${requiresKey ? `
+            <div style="margin-top:16px;">
                 <label class="form-label">Clave Maestra de Administrador</label>
-                <input type="password" class="form-input" id="verify-master-key" placeholder="Requerido para cambios críticos">
-            </div>
+                <input type="password" class="form-input" id="verify-master-key" placeholder="Requerido para cualquier cambio de rol">
+            </div>` : ''}
         </div>
         <div class="modal-footer">
             <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -265,28 +309,40 @@ window.editMemberRoles = async function(id) {
         </div>
     `);
 
-    const select = roleModal.querySelector('#new-role-select');
-    const verifyDiv = roleModal.querySelector('#master-key-verify');
-
-    select.onchange = () => {
-        if (select.value === 'admin' && config.admin_key_hash) {
-            verifyDiv.style.display = 'block';
-        } else {
-            verifyDiv.style.display = 'none';
-        }
-    };
-
     roleModal.querySelector('#save-role-btn').onclick = async () => {
-        const newRole = select.value;
-        if (newRole === 'admin' && config.admin_key_hash) {
-            const key = roleModal.querySelector('#verify-master-key').value;
-            const cryptoLayer = await import('../utils/crypto.js');
-            const hash = await cryptoLayer.hashPassword(key);
-            if (hash !== config.admin_key_hash) {
-                return showToast('Clave Maestra incorrecta.', 'error');
+        const newRole = roleModal.querySelector('#new-role-select').value;
+        const keyInput = roleModal.querySelector('#verify-master-key');
+        const enteredKey = keyInput ? keyInput.value.trim() : null;
+
+        if (requiresKey) {
+            if (!enteredKey) return showToast('La Clave Maestra es requerida.', 'error');
+
+            // Validate against local hash first (fast, works offline)
+            if (config.admin_key_hash) {
+                const cryptoLayer = await import('../utils/crypto.js');
+                const hash = await cryptoLayer.hashPassword(enteredKey);
+                if (hash !== config.admin_key_hash) return showToast('Clave Maestra incorrecta.', 'error');
             }
         }
 
+        if (BackendClient.isAuthenticated()) {
+            // Persist role change through the backend API so server-side auth and
+            // audit log are applied. The x-admin-key header carries the plain key
+            // (backend hashes it server-side for comparison).
+            const headers = {};
+            if (enteredKey) headers['x-admin-key'] = enteredKey;
+            const res = await BackendClient.fetch(`/api/admin/members/${id}/role`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ role: newRole }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                return showToast(err.message || 'Error al actualizar el rol en el servidor.', 'error');
+            }
+        }
+
+        // Also update IDB/Drive so the local store stays in sync
         await store.dispatch('UPDATE_MEMBER', { id, role: newRole });
         closeModal();
         showToast('Rol actualizado.', 'success');
@@ -298,16 +354,33 @@ window.deleteMemberAdmin = async function(id) {
     const member = store.get.members().find(m => m.id === id);
     if (!confirm(`¿Eliminar a ${member.name} del equipo? Esta acción no se puede deshacer.`)) return;
 
-    // Safety check: is there a Master Key?
     const config = syncManager.getConfig();
+    let enteredKey = null;
+
+    // Deletion always requires the admin key when one is configured
     if (config.admin_key_hash) {
-        const key = prompt('Ingresa la Clave Maestra de Administrador para confirmar la eliminación de un miembro:');
-        if (!key) return;
+        enteredKey = prompt('Ingresa la Clave Maestra de Administrador para confirmar la eliminación:');
+        if (!enteredKey) return;
         const cryptoLayer = await import('../utils/crypto.js');
-        const hash = await cryptoLayer.hashPassword(key);
+        const hash = await cryptoLayer.hashPassword(enteredKey);
         if (hash !== config.admin_key_hash) return showToast('Clave Maestra incorrecta.', 'error');
     }
 
+    if (BackendClient.isAuthenticated()) {
+        // Delete through the backend API so the audit log and server-side auth are enforced
+        const headers = {};
+        if (enteredKey) headers['x-admin-key'] = enteredKey;
+        const res = await BackendClient.fetch(`/api/admin/members/${id}`, {
+            method: 'DELETE',
+            headers,
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            return showToast(err.message || 'Error al eliminar el miembro en el servidor.', 'error');
+        }
+    }
+
+    // Soft-delete in IDB/Drive to keep local store in sync
     await store.dispatch('DELETE_MEMBER', { id });
     showToast('Miembro eliminado.', 'success');
     renderAdmin(document.getElementById('app-root'));

@@ -180,11 +180,16 @@ export class SyncService {
       try {
         // Execute all statements as a single transaction in D1
         await db.batch(statements);
-        
+
         // Only now mark batched items as success
         for (const entityId of batchedEntities) {
           results.push({ entityId, status: 'success' });
         }
+
+        // Only advance the cursor when data was actually written.
+        // If the batch failed, the cursor must NOT advance — the client will
+        // retry with the same changes and we must not skip them on the next pull.
+        await this.updateCursor(db, userId, deviceId);
       } catch (batchError) {
         console.error('[SyncService] Batch execution failed:', batchError);
         // All items in this batch failed due to the atomic nature of db.batch()
@@ -195,7 +200,6 @@ export class SyncService {
       }
     }
 
-    await this.updateCursor(db, userId, deviceId);
     return results;
   }
 
@@ -274,6 +278,10 @@ export class SyncService {
       if (existing) resolvedProjectId = existing.project_id;
     }
 
+    // Tables that require a project_id to belong to a project (cannot be workspace-level)
+    const TABLES_REQUIRING_PROJECT = new Set(['tasks', 'cycles', 'decisions', 'documents',
+      'messages', 'annotations', 'snapshots', 'interconsultations', 'calendar_events']);
+
     // Security check for project-owned tables
     if (schema.ownerCol === 'project_id') {
       if (resolvedProjectId) {
@@ -281,8 +289,10 @@ export class SyncService {
         if (!ownsProject) {
           throw new Error(`User ${userId} does not own project ${resolvedProjectId} for ${tableName}#${entityId}`);
         }
-      } else if (change.action === 'CREATE') {
-         // Some tables might allow null project_id after migration 0006, but it's risky for tasks/projects
+      } else if (change.action === 'CREATE' && TABLES_REQUIRING_PROJECT.has(tableName)) {
+        // Entities in these tables must always belong to a project.
+        // Allowing a null project_id here would create orphan records with no ownership validation.
+        throw new Error(`project_id is required when creating a ${tableName} record`);
       }
     }
 
@@ -385,12 +395,12 @@ export class SyncService {
         vals.push(now);
       }
       
-      // Ensure we hit the right record and check ownership
-      setParts.push('_deleted = 0');
-
       if (setParts.length === 0) return null;
 
-      let sql = `UPDATE ${tableName} SET ${setParts.join(', ')} WHERE id = ?`;
+      // WHERE clause: target the specific record, scope to owner, and only update non-deleted entities.
+      // NOT setting _deleted = 0 here — an UPDATE from a stale/offline device must never
+      // silently resurrect an entity that was soft-deleted on another device.
+      let sql = `UPDATE ${tableName} SET ${setParts.join(', ')} WHERE id = ? AND _deleted = 0`;
       vals.push(entityId);
 
       if (schema.ownerCol === 'project_id' && resolvedProjectId) {

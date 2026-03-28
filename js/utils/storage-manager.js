@@ -147,8 +147,12 @@ export const StorageManager = (() => {
     }
 
     /**
-     * Migrate session keys from localStorage to sessionStorage
-     * Called on first load of new version to transition data
+     * Migrate session keys from localStorage to sessionStorage.
+     * Called on first load of new version to transition data.
+     *
+     * Session keys (tokens, auth state) are removed from localStorage immediately
+     * after copying to sessionStorage — keeping them in localStorage for a grace
+     * period would expose tokens to any XSS that can read localStorage.
      */
     function migrateSessionKeys() {
         if (isMigrated || localStorage.getItem('nexus_storage_migrated_v2') === 'true') {
@@ -158,44 +162,30 @@ export const StorageManager = (() => {
 
         console.log('[StorageManager] Migrating session keys to sessionStorage...');
 
-        // Copy all SESSION_KEYS from localStorage to sessionStorage
         for (const key of SESSION_KEYS) {
             const value = localStorage.getItem(key);
             if (value !== null) {
                 sessionStorage.setItem(key, value);
-                // Don't delete yet — keep for fallback
+                // Remove from localStorage immediately — tokens must not linger there.
+                localStorage.removeItem(key);
             }
         }
 
-        // Mark as migrated
+        // Mark as migrated (no timestamp needed — cleanup is now immediate)
         localStorage.setItem('nexus_storage_migrated_v2', 'true');
-        localStorage.setItem('nexus_migration_timestamp', String(Date.now()));
 
         console.log('[StorageManager] Migration complete');
         isMigrated = true;
     }
 
     /**
-     * Clean up old localStorage session keys after migration period
-     * Called on subsequent loads (e.g., after 2 weeks)
+     * No-op kept for backward compatibility — cleanup is now done immediately
+     * inside migrateSessionKeys() rather than after a 14-day grace period.
      */
     function cleanupOldStorage() {
-        const migrationTime = Number(localStorage.getItem('nexus_migration_timestamp') || 0);
-        if (migrationTime === 0) return; // Not migrated yet
-
-        const twoWeeksAgo = Date.now() - (14 * 24 * 60 * 60 * 1000);
-
-        if (migrationTime < twoWeeksAgo) {
-            console.log('[StorageManager] Cleaning up old localStorage session keys...');
-
-            // Remove old session keys from localStorage
-            for (const key of SESSION_KEYS) {
-                localStorage.removeItem(key);
-            }
-
-            localStorage.removeItem('nexus_migration_timestamp');
-            console.log('[StorageManager] Cleanup complete');
-        }
+        // Intentional no-op: the delayed cleanup approach was replaced because
+        // leaving tokens in localStorage for 14 days after migration was a
+        // security risk (tokens accessible to XSS via localStorage).
     }
 
     /**
