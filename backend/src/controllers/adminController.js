@@ -160,11 +160,11 @@ export class AdminController {
         }, 400);
       }
 
-      // Promote-to-admin requires the admin key
-      if (role === 'admin') {
-        const denied = await this.#requireAdminKey(c);
-        if (denied) return denied;
-      }
+      // Any role change requires the admin key (when one is configured).
+      // Restricting this only to promote-to-admin would allow any authenticated
+      // user to demote admins without authorization.
+      const denied = await this.#requireAdminKey(c);
+      if (denied) return denied;
 
       // Fetch current state for audit
       const { results } = await c.env.DB.prepare(
