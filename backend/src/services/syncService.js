@@ -131,13 +131,18 @@ export class SyncService {
    * In Cloudflare D1, we use db.batch() for atomic transactions.
    */
   async processPush(db, userId, deviceId, changes) {
-    if (!changes || !Array.isArray(changes)) return [];
+    // Deduplicate changes by entityId (keep last occurrence)
+    // This prevents a user editing the same entity 100 times from creating 100 sync_queue rows
+    const dedupMap = new Map();
+    for (const change of changes) {
+      dedupMap.set(change.entityId, change);  // Overwrites with latest version
+    }
 
     const results = [];
     const statements = [];
     const batchedEntities = []; // Tracks which entityIds are in the current batch
 
-    for (const change of changes) {
+    for (const change of dedupMap.values()) {
       try {
         const tableName = this.entityTables[change.entityType];
         if (!tableName) {
@@ -152,10 +157,16 @@ export class SyncService {
           continue;
         }
 
-        // 2. Prepare sync_queue statement 
+        // 2. Prepare sync_queue statement
+        // Use UPSERT instead of INSERT to deduplicate in sync_queue
+        // If (user_id, device_id, entity_id) already exists, update with latest payload
         statements.push(db.prepare(`
           INSERT INTO sync_queue (id, user_id, device_id, action, entity_type, entity_id, payload, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, device_id, entity_id) DO UPDATE SET
+            action = EXCLUDED.action,
+            payload = EXCLUDED.payload,
+            created_at = EXCLUDED.created_at
         `).bind(
           crypto.randomUUID(),
           userId,
@@ -305,6 +316,25 @@ export class SyncService {
        if (tableName === 'projects' && !payload.name) throw new Error('Project name is required');
        if (tableName === 'cycles' && !payload.name) throw new Error('Cycle name is required');
        if (tableName === 'decisions' && !payload.title) throw new Error('Decision title is required');
+
+       // Validate parent entity ownership on CREATE
+       // If parent_id is specified, it must belong to a project the user owns
+       if ((payload.parent_id || payload.parentId) && tableName === 'tasks') {
+         const parentId = payload.parent_id || payload.parentId;
+         const parentOwned = await this.validateEntityOwnership(db, userId, 'tasks', parentId);
+         if (!parentOwned) {
+           throw new Error(`User ${userId} does not own parent task ${parentId}`);
+         }
+       }
+
+       // If cycle_id is specified for a task, validate it
+       if ((payload.cycle_id || payload.cycleId) && tableName === 'tasks') {
+         const cycleId = payload.cycle_id || payload.cycleId;
+         const cycleOwned = await this.validateEntityOwnership(db, userId, 'cycles', cycleId);
+         if (!cycleOwned) {
+           throw new Error(`User ${userId} does not own cycle ${cycleId}`);
+         }
+       }
     }
 
     // Bug 2 Fix: Prevent UPDATE from nullifying shared mandatory fields

@@ -1,0 +1,39 @@
+﻿
+ Ôøà´©Å wrangler 4.76.0 (update available 4.78.0)
+ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+Resource location: local 
+
+Use --remote if you want to access the remote instance.
+
+­ƒîÇ Executing on local database workspace-db (ad306137-1205-4d00-8121-cfd408426d77) from .wrangler\state\v3\d1:
+­ƒîÇ To execute on your remote database, add a --remote flag to your wrangler command.
+
+node.exe : [31mX [41;31m
+[[41;97mERROR[41;31m][0
+m [1mnear "EXISTS": 
+syntax error at offset 
+39: SQLITE_ERROR[0m
+En línea: 1 Carácter: 1
++ & "C:\Program 
+Files\nodejs/node.exe" 
+"C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (  
+  [31mX [41;31m...QLIT   
+ E_ERROR[0m:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+
+
+ƒ¬Á  Logs were written to 
+"C:\Users\Admin\AppData\Ro
+aming\xdg.config\.wrangler
+\logs\wrangler-2026-03-29_
+14-09-54_576.log"

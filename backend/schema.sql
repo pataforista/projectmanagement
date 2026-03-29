@@ -230,6 +230,11 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Add unique constraint for deduplication on UPSERT
+-- This enables ON CONFLICT logic to deduplicate multiple changes to same entity
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_queue_dedup
+ON sync_queue(user_id, device_id, entity_id);
+
 CREATE TABLE IF NOT EXISTS sync_cursor (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

@@ -87,21 +87,54 @@ export class AdminController {
   async setKey(c) {
     try {
       const userId = c.get('userId');
+      if (!userId) {
+        return c.json({
+          status: 'error',
+          code: 'UNAUTHORIZED',
+          message: 'Authentication required to manage admin key'
+        }, 401);
+      }
+
       const body = await c.req.json();
       const { newKey, currentKey } = body;
+
+      const hasKey = await this.adminService.hasAdminKey(c.env.DB);
+
+      if (!hasKey) {
+        console.warn(
+          `[AdminController] FIRST-TIME ADMIN SETUP by user ${userId}`,
+          `IP: ${this.#ip(c)},`,
+          `Time: ${new Date().toISOString()}`
+        );
+
+        // Pre-record the attempt
+        await this.adminService.addAuditLog(c.env.DB, {
+          userId,
+          action: 'INIT_ADMIN_KEY',
+          entityType: 'workspace_config',
+          entityId: 'admin_key_hash',
+          newValue: { timestamp: Date.now() },
+          ipAddress: this.#ip(c),
+          userAgent: this.#ua(c),
+        });
+      }
 
       await this.adminService.setAdminKey(c.env.DB, userId, newKey, currentKey);
 
       await this.adminService.addAuditLog(c.env.DB, {
         userId,
-        action: 'SET_ADMIN_KEY',
+        action: hasKey ? 'CHANGE_ADMIN_KEY' : 'INIT_ADMIN_KEY',
         entityType: 'workspace_config',
         entityId: 'admin_key_hash',
         ipAddress: this.#ip(c),
         userAgent: this.#ua(c),
       });
 
-      return c.json({ status: 'success', message: 'Admin key updated' });
+      return c.json({
+        status: 'success',
+        message: hasKey ? 'Admin key updated' : 'Admin key initialized',
+        initialized: !hasKey
+      });
     } catch (err) {
       const codeMap = {
         KEY_TOO_SHORT: [400, 'Admin key must be at least 8 characters'],

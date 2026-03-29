@@ -17,6 +17,9 @@ export const SessionManager = (() => {
     let db = null;
     let currentSessionId = null;
 
+    let _isSwitching = false;
+    let _switchQueue = [];
+
     /**
      * Initialize SessionManager with IndexedDB connection
      */
@@ -131,17 +134,26 @@ export const SessionManager = (() => {
      * EMAIL IS PRIMARY KEY — all account coordination uses email
      */
     async function switchSession(sessionId) {
-        const targetSession = await getSession(sessionId);
-        if (!targetSession || targetSession.status !== 'active') {
-            console.warn(`[SessionManager] Session ${sessionId} not found or inactive`);
-            return false;
+        if (_isSwitching) {
+            await new Promise(resolve => {
+                _switchQueue.push(resolve);
+            });
         }
 
-        // Validate email is present (PRIMARY KEY)
-        if (!targetSession.email) {
-            console.error('[SessionManager] CRITICAL: Session missing email (primary key)');
-            return false;
-        }
+        _isSwitching = true;
+
+        try {
+            const targetSession = await getSession(sessionId);
+            if (!targetSession || targetSession.status !== 'active') {
+                console.warn(`[SessionManager] Session ${sessionId} not found or inactive`);
+                return false;
+            }
+
+            // Validate email is present (PRIMARY KEY)
+            if (!targetSession.email) {
+                console.error('[SessionManager] CRITICAL: Session missing email (primary key)');
+                return false;
+            }
 
         // Save current session's last activity
         const currentEmail = StorageManager.get('workspace_user_email', 'session');
@@ -161,19 +173,26 @@ export const SessionManager = (() => {
         }
 
         // Load target session — EMAIL IS PRIMARY KEY
-        StorageManager.set('workspace_user_email', targetSession.email, 'session');
-        StorageManager.set('google_id_token', targetSession.idToken, 'session');
-        StorageManager.set('workspace_user_name', targetSession.metadata.name || targetSession.email, 'session');
-        StorageManager.set('workspace_user_avatar', targetSession.metadata.avatar || targetSession.email.charAt(0).toUpperCase(), 'session');
-        StorageManager.set('workspace_user_member_id', targetSession.metadata.memberId || '', 'session');
-        StorageManager.set('workspace_user_role', targetSession.metadata.role || 'member', 'session');
+        const updates = {
+            'workspace_user_email': targetSession.email,
+            'google_id_token': targetSession.idToken,
+            'workspace_user_name': targetSession.metadata.name || targetSession.email,
+            'workspace_user_avatar': targetSession.metadata.avatar || targetSession.email.charAt(0).toUpperCase(),
+            'workspace_user_member_id': targetSession.metadata.memberId || '',
+            'workspace_user_role': targetSession.metadata.role || 'member',
+        };
 
         // Store account identifiers for sync coordination
         if (targetSession.metadata.sub) {
-            StorageManager.set('nexus_stored_google_sub', targetSession.metadata.sub, 'session');
+            updates['nexus_stored_google_sub'] = targetSession.metadata.sub;
         }
         if (targetSession.metadata.aud) {
-            StorageManager.set('nexus_stored_google_aud', targetSession.metadata.aud, 'session');
+            updates['nexus_stored_google_aud'] = targetSession.metadata.aud;
+        }
+
+        // Apply all storage updates atomically
+        for (const [key, value] of Object.entries(updates)) {
+            StorageManager.set(key, value, 'session');
         }
 
         // Update current session pointer (per-tab)
@@ -212,6 +231,11 @@ export const SessionManager = (() => {
         }
 
         return true;
+        } finally {
+            _isSwitching = false;
+            const next = _switchQueue.shift();
+            if (next) next();
+        }
     }
 
     /**
@@ -410,6 +434,10 @@ export const SessionManager = (() => {
             const { type, data } = event.data;
 
             if (type === 'session:switched') {
+                if (_isSwitching) {
+                    console.log(`[SessionManager] Cross-tab session sync: ignoring message, switch already in progress`);
+                    return;
+                }
                 // Another tab switched session — restore our state if needed
                 const currentEmail = StorageManager.get('workspace_user_email', 'session');
                 if (currentEmail && currentEmail !== data.email && data.sessionId) {
