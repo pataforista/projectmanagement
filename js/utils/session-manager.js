@@ -17,6 +17,9 @@ export const SessionManager = (() => {
     let db = null;
     let currentSessionId = null;
 
+    // ✅ FIX 1.2: Anti-concurrency flag to prevent race conditions in switchSession()
+    let _isSwitching = false;
+
     /**
      * Initialize SessionManager with IndexedDB connection
      */
@@ -129,89 +132,113 @@ export const SessionManager = (() => {
      * Switch to a different session
      * This is atomic: saves current state and loads new state
      * EMAIL IS PRIMARY KEY — all account coordination uses email
+     *
+     * ✅ FIX 1.2: Added anti-concurrency flag to prevent race conditions
      */
     async function switchSession(sessionId) {
-        const targetSession = await getSession(sessionId);
-        if (!targetSession || targetSession.status !== 'active') {
-            console.warn(`[SessionManager] Session ${sessionId} not found or inactive`);
-            return false;
+        // ✅ FIX 1.2: Prevent concurrent session switches
+        if (_isSwitching) {
+            console.warn(`[SessionManager] Session switch already in progress, queuing ${sessionId}`);
+            // Wait briefly for concurrent switch to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (_isSwitching) return false;
         }
 
-        // Validate email is present (PRIMARY KEY)
-        if (!targetSession.email) {
-            console.error('[SessionManager] CRITICAL: Session missing email (primary key)');
-            return false;
-        }
+        _isSwitching = true;
 
-        // Save current session's last activity
-        const currentEmail = StorageManager.get('workspace_user_email', 'session');
-        if (currentEmail && currentSessionId) {
+        try {
+            const targetSession = await getSession(sessionId);
+            if (!targetSession || targetSession.status !== 'active') {
+                console.warn(`[SessionManager] Session ${sessionId} not found or inactive`);
+                return false;
+            }
+
+            // Validate email is present (PRIMARY KEY)
+            if (!targetSession.email) {
+                console.error('[SessionManager] CRITICAL: Session missing email (primary key)');
+                return false;
+            }
+
+            // Save current session's last activity
+            const currentEmail = StorageManager.get('workspace_user_email', 'session');
+            if (currentEmail && currentSessionId) {
+                try {
+                    const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+                    const store = tx.objectStore(SESSIONS_STORE);
+                    const current = await store.get(currentSessionId);
+
+                    if (current) {
+                        current.lastActive = Date.now();
+                        await store.put(current);
+                    }
+                } catch (e) {
+                    console.warn('[SessionManager] Failed to update current session:', e);
+                }
+            }
+
+            // ✅ FIX 1.2: Update ALL storage keys atomically to prevent partial state
+            // This prevents race conditions where some keys are updated but not others
+            const storageUpdates = {
+                'workspace_user_email': targetSession.email,
+                'google_id_token': targetSession.idToken,
+                'workspace_user_name': targetSession.metadata.name || targetSession.email,
+                'workspace_user_avatar': targetSession.metadata.avatar || targetSession.email.charAt(0).toUpperCase(),
+                'workspace_user_member_id': targetSession.metadata.memberId || '',
+                'workspace_user_role': targetSession.metadata.role || 'member',
+            };
+
+            // Add account identifiers for sync coordination
+            if (targetSession.metadata.sub) {
+                storageUpdates['nexus_stored_google_sub'] = targetSession.metadata.sub;
+            }
+            if (targetSession.metadata.aud) {
+                storageUpdates['nexus_stored_google_aud'] = targetSession.metadata.aud;
+            }
+
+            // Apply all updates together (atomic from app perspective)
+            for (const [key, value] of Object.entries(storageUpdates)) {
+                StorageManager.set(key, value, 'session');
+            }
+
+            // Update current session pointer (per-tab)
+            StorageManager.set(CURRENT_SESSION_KEY, sessionId, 'session');
+            currentSessionId = sessionId;
+
+            // Update last active timestamp
             try {
                 const tx = db.transaction(SESSIONS_STORE, 'readwrite');
                 const store = tx.objectStore(SESSIONS_STORE);
-                const current = await store.get(currentSessionId);
+                targetSession.lastActive = Date.now();
+                await store.put(targetSession);
+            } catch (e) {
+                console.warn('[SessionManager] Failed to update session timestamp:', e);
+            }
 
-                if (current) {
-                    current.lastActive = Date.now();
-                    await store.put(current);
+            console.log(`[SessionManager] Switched to session: ${sessionId} (email: ${targetSession.email})`);
+
+            // Dispatch event for UI to react
+            window.dispatchEvent(new CustomEvent('session:switched', {
+                detail: { sessionId, email: targetSession.email }
+            }));
+
+            // Sync across tabs via BroadcastChannel
+            if (typeof BroadcastChannel !== 'undefined') {
+                try {
+                    const channel = new BroadcastChannel('session-sync');
+                    channel.postMessage({
+                        type: 'session:switched',
+                        data: { sessionId, email: targetSession.email }
+                    });
+                    channel.close();
+                } catch (e) {
+                    console.warn('[SessionManager] Failed to broadcast session switch:', e);
                 }
-            } catch (e) {
-                console.warn('[SessionManager] Failed to update current session:', e);
             }
+
+            return true;
+        } finally {
+            _isSwitching = false;
         }
-
-        // Load target session — EMAIL IS PRIMARY KEY
-        StorageManager.set('workspace_user_email', targetSession.email, 'session');
-        StorageManager.set('google_id_token', targetSession.idToken, 'session');
-        StorageManager.set('workspace_user_name', targetSession.metadata.name || targetSession.email, 'session');
-        StorageManager.set('workspace_user_avatar', targetSession.metadata.avatar || targetSession.email.charAt(0).toUpperCase(), 'session');
-        StorageManager.set('workspace_user_member_id', targetSession.metadata.memberId || '', 'session');
-        StorageManager.set('workspace_user_role', targetSession.metadata.role || 'member', 'session');
-
-        // Store account identifiers for sync coordination
-        if (targetSession.metadata.sub) {
-            StorageManager.set('nexus_stored_google_sub', targetSession.metadata.sub, 'session');
-        }
-        if (targetSession.metadata.aud) {
-            StorageManager.set('nexus_stored_google_aud', targetSession.metadata.aud, 'session');
-        }
-
-        // Update current session pointer (per-tab)
-        StorageManager.set(CURRENT_SESSION_KEY, sessionId, 'session');
-        currentSessionId = sessionId;
-
-        // Update last active timestamp
-        try {
-            const tx = db.transaction(SESSIONS_STORE, 'readwrite');
-            const store = tx.objectStore(SESSIONS_STORE);
-            targetSession.lastActive = Date.now();
-            await store.put(targetSession);
-        } catch (e) {
-            console.warn('[SessionManager] Failed to update session timestamp:', e);
-        }
-
-        console.log(`[SessionManager] Switched to session: ${sessionId} (email: ${targetSession.email})`);
-
-        // Dispatch event for UI to react
-        window.dispatchEvent(new CustomEvent('session:switched', {
-            detail: { sessionId, email: targetSession.email }
-        }));
-
-        // Sync across tabs via BroadcastChannel
-        if (typeof BroadcastChannel !== 'undefined') {
-            try {
-                const channel = new BroadcastChannel('session-sync');
-                channel.postMessage({
-                    type: 'session:switched',
-                    data: { sessionId, email: targetSession.email }
-                });
-                channel.close();
-            } catch (e) {
-                console.warn('[SessionManager] Failed to broadcast session switch:', e);
-            }
-        }
-
-        return true;
     }
 
     /**

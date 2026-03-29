@@ -26,6 +26,11 @@ export class UserService {
         existing.id
       );
 
+      // ✅ FIX 1.1: ALWAYS use db.batch() for atomicity
+      // This ensures users.email and sessions.email stay synchronized
+      // even if one of the updates partially fails.
+      const statements = [updateUsers];
+
       if (emailChanged) {
         // Keep active sessions in sync when the Google account email changes.
         // Without this, sessions.email would hold the old address while users.email
@@ -49,10 +54,11 @@ export class UserService {
           now
         );
 
-        await db.batch([updateUsers, updateSessions, insertHistory]);
-      } else {
-        await updateUsers.run();
+        statements.push(updateSessions);
+        statements.push(insertHistory);
       }
+
+      await db.batch(statements);
 
       return { ...existing, email: googleClaims.email, name: googleClaims.name, avatar: googleClaims.picture };
     } else {
