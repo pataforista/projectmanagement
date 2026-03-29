@@ -23,7 +23,7 @@ export class SyncService {
     // tasks, cycles, decisions, documents, messages, annotations, snapshots,
     // interconsultations, calendar_events belong to a project (not directly to a user).
     // members also gets a user_id for the workspace owner who created them.
-    this.tablesWithUserId = new Set(['projects', 'tasks', 'cycles', 'decisions', 'documents', 'members', 'interconsultations', 'sessions', 'time_logs', 'library_item', 'notifications', 'logs']);
+    this.tablesWithUserId = new Set(['projects', 'tasks', 'cycles', 'decisions', 'documents', 'members', 'interconsultations', 'sessions', 'time_logs', 'library_items', 'notifications', 'logs']);
     
     // Schema whitelist — allowed columns per table (prevents 'no such column' errors)
     this.tableColumns = {
@@ -45,14 +45,17 @@ export class SyncService {
       logs: new Set([
         'user_id', 'type', 'message', 'action', 'entity_type', 'entity_id', 'payload', 'timestamp'
       ]),
-      messages: new Set(['project_id', 'user_id', 'content', 'type', 'created_at', 'updated_at', '_deleted']),
+      messages: new Set(['project_id', 'user_id', 'text', 'sender', 'visibility', 'timestamp', 'created_at', 'updated_at', '_deleted']),
       annotations: new Set(['project_id', 'user_id', 'content', 'created_at', 'updated_at', '_deleted']),
       snapshots: new Set(['project_id', 'user_id', 'content', 'timestamp', '_deleted', 'updated_at']),
       interconsultations: new Set(['project_id', 'user_id', 'name', 'status', 'visibility', 'created_at', 'updated_at', '_deleted']),
       sessions: new Set(['project_id', 'user_id', 'name', 'date', 'start_time', 'end_time', 'created_at', 'updated_at', '_deleted']),
       time_logs: new Set(['project_id', 'user_id', 'duration', 'date', 'created_at', 'updated_at', '_deleted']),
       library_items: new Set(['user_id', 'title', 'authors', 'year', 'url', 'created_at', 'updated_at', '_deleted']),
-      notifications: new Set(['user_id', 'title', 'message', 'read', 'created_at', 'updated_at', '_deleted'])
+      notifications: new Set(['user_id', 'title', 'message', 'read', 'created_at', 'updated_at', '_deleted']),
+      cycles: new Set(['name', 'description', 'status', 'start_date', 'end_date', '_deleted']),
+      decisions: new Set(['title', 'content', 'status', 'tags', 'related_task_ids', '_deleted']),
+      documents: new Set(['title', 'content', 'type', 'metadata', '_deleted'])
     };
     // For members: we allow deletion by the workspace owner (user_id on the member record)
     this.tablesWithUserIdOwner = new Set(['members']);
@@ -300,7 +303,7 @@ export class SyncService {
     if (change.action === 'CREATE') {
        if (tableName === 'tasks' && !payload.title) throw new Error('Task title is required');
        if (tableName === 'projects' && !payload.name) throw new Error('Project name is required');
-       if (tableName === 'cycles' && !payload.title) throw new Error('Cycle name is required');
+       if (tableName === 'cycles' && !payload.name) throw new Error('Cycle name is required');
        if (tableName === 'decisions' && !payload.title) throw new Error('Decision title is required');
     }
 
