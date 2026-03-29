@@ -424,6 +424,8 @@ export const SessionManager = (() => {
 
     /**
      * Synchronize session state across tabs using BroadcastChannel
+     *
+     * ✅ FIX 2.4: Added safeguards against race conditions in cross-tab sync
      */
     async function syncAcrossTabs() {
         if (typeof BroadcastChannel === 'undefined') {
@@ -437,6 +439,12 @@ export const SessionManager = (() => {
             const { type, data } = event.data;
 
             if (type === 'session:switched') {
+                // ✅ FIX 2.4: Check if we're already switching (prevent concurrent switches)
+                if (_isSwitching) {
+                    console.log('[SessionManager] Cross-tab sync: ignoring message, switch already in progress');
+                    return;
+                }
+
                 // Another tab switched session — restore our state if needed
                 const currentEmail = StorageManager.get('workspace_user_email', 'session');
                 if (currentEmail && currentEmail !== data.email && data.sessionId) {
