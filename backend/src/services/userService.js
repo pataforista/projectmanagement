@@ -11,7 +11,7 @@ export class UserService {
     if (existing) {
       const emailChanged = existing.email !== googleClaims.email;
 
-      await db.prepare(`
+      const updateUsers = db.prepare(`
         UPDATE users SET
           email = ?,
           name = ?,
@@ -24,15 +24,34 @@ export class UserService {
         googleClaims.picture,
         now,
         existing.id
-      ).run();
+      );
 
-      // Keep active sessions in sync when the Google account email changes.
-      // Without this, sessions.email would hold the old address while users.email
-      // already reflects the new one, causing silent desynchronisation.
       if (emailChanged) {
-        await db.prepare(`
+        // Keep active sessions in sync when the Google account email changes.
+        // Without this, sessions.email would hold the old address while users.email
+        // already reflects the new one, causing silent desynchronisation.
+        const updateSessions = db.prepare(`
           UPDATE sessions SET email = ? WHERE user_id = ? AND is_active = 1
-        `).bind(googleClaims.email, existing.id).run();
+        `).bind(googleClaims.email, existing.id);
+
+        const insertHistory = db.prepare(`
+          INSERT INTO account_history (id, user_id, old_email, new_email, old_google_sub, new_google_sub, reason, same_sub, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          crypto.randomUUID(),
+          existing.id,
+          existing.email,
+          googleClaims.email,
+          googleClaims.sub,
+          googleClaims.sub,
+          'email_alias_update',
+          1,
+          now
+        );
+
+        await db.batch([updateUsers, updateSessions, insertHistory]);
+      } else {
+        await updateUsers.run();
       }
 
       return { ...existing, email: googleClaims.email, name: googleClaims.name, avatar: googleClaims.picture };
