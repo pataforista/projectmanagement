@@ -529,12 +529,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(updateTopbarSyncWidget, 15_000);
 
     // ── 9. Try sync pull ───────────────────────────────────────────────────────
-    // FIX: syncManager.init() ya fue llamado al inicio (antes del auth block).
-    // Aquí solo hacemos el pull inicial si ya hay un accessToken activo.
-    try {
-        await syncManager.pull();
-    } catch (e) {
-        console.warn('[Sync] Could not pull on boot:', e);
+    // Solo hacemos pull si ya existen miembros locales. Esto evita que en una
+    // instalación limpia se vuelvan a bajar datos corruptos/viejos antes de tiempo.
+    if (store.get.members().length > 0) {
+        try {
+            await syncManager.pull();
+        } catch (e) {
+            console.warn('[Sync] Could not pull on boot:', e);
+        }
+    } else {
+        console.log('[Sync] No local members — skipping initial pull for clean setup.');
     }
 
     // ── 9.1. Identity & First-Run Setup ─────────────────────────────────────

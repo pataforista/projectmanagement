@@ -560,17 +560,30 @@ export async function hardReset() {
     delRequest.onsuccess = () => {
       console.log('[DB] Base de datos borrada con éxito.');
 
-      // 3. Limpiar almacenamiento local y de sesión
+      // 3. Limpiar almacenamiento local, de sesión y CACHÉS (Service Worker)
       localStorage.clear();
       sessionStorage.clear();
 
-      console.log('[DB] Almacenamiento local limpiado.');
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          for (let name of names) caches.delete(name);
+        }).catch(err => console.warn('[DB] Error clearing caches:', err));
+      }
+
+      // Des-registrar Service Workers si existen
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          for (let reg of regs) reg.unregister();
+        }).catch(err => console.warn('[DB] Error unregistering SW:', err));
+      }
+
+      console.log('[DB] Almacenamiento y cachés limpiados.');
       resolve(true);
 
       // 4. Recargar para iniciar Setup desde cero
       setTimeout(() => {
-        window.location.reload();
-      }, 500);
+        window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
+      }, 800);
     };
 
     delRequest.onerror = (e) => {
@@ -580,8 +593,11 @@ export async function hardReset() {
 
     delRequest.onblocked = () => {
       console.warn('[DB] El borrado está bloqueado por otra pestaña abierta.');
+      const msg = '⚠️ CIERRA TODAS LAS DEMÁS PESTAÑAS de la aplicación para completar la limpieza profunda y evitar errores de descifrado.';
       if (window.showToast) {
-        window.showToast('El borrado total está bloqueado. Cierra todas las pestañas de la app.', 'error', true);
+        window.showToast(msg, 'error', true);
+      } else {
+        alert(msg);
       }
     };
   });

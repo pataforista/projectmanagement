@@ -19,8 +19,8 @@ class OllamaCompanion {
         this.renderBase();
         this.setupListeners();
         this.checkConnection();
-        // Periodically check connection
-        setInterval(() => this.checkConnection(), 30000);
+        // Periodically check connection every 5 minutes (reduced frequency to minimize console noise)
+        setInterval(() => this.checkConnection(), 300000);
     }
 
     renderBase() {
@@ -158,6 +158,7 @@ class OllamaCompanion {
         // Update class based on state
         if (this.isOpen) {
             this.el.classList.add('open');
+            this.checkConnection(); // Check connection immediately when opening
             this.renderQuickActions();
             const input = this.el.querySelector('#ollama-input');
             if (input) input.focus();

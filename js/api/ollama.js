@@ -214,8 +214,10 @@ class OllamaAPI {
      */
     async healthCheck() {
         const now = Date.now();
-        // If it was offline recently, don't spam requests (and console errors)
-        if (this._isOffline && (now - this._lastCheck) < 60000) return false;
+        // If it was offline recently, don't spam requests (and console errors).
+        // Using a 10-minute backoff for background checks when offline.
+        const backoff = 10 * 60 * 1000;
+        if (this._isOffline && (now - this._lastCheck) < backoff) return false;
         
         this._lastCheck = now;
         try {
