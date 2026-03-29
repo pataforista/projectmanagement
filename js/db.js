@@ -539,5 +539,54 @@ export const dbAPI = {
   STORES,
 };
 
+/**
+ * Realiza un borrado total (Hard Reset) de la base de datos y llaves de seguridad.
+ * Esta operación es destructiva para los datos locales no sincronizados.
+ */
+export async function hardReset() {
+  console.warn('[DB] INICIANDO REINICIO TOTAL (HARD RESET)...');
+
+  // 1. Cerrar conexión activa para no bloquear el borrado
+  if (db) {
+    console.log('[DB] Cerrando conexión de base de datos...');
+    db.close();
+  }
+
+  // 2. Borrar IndexedDB
+  console.log(`[DB] Solicitando borrado de ${DB_NAME}...`);
+  const delRequest = indexedDB.deleteDatabase(DB_NAME);
+
+  return new Promise((resolve, reject) => {
+    delRequest.onsuccess = () => {
+      console.log('[DB] Base de datos borrada con éxito.');
+
+      // 3. Limpiar almacenamiento local y de sesión
+      localStorage.clear();
+      sessionStorage.clear();
+
+      console.log('[DB] Almacenamiento local limpiado.');
+      resolve(true);
+
+      // 4. Recargar para iniciar Setup desde cero
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    };
+
+    delRequest.onerror = (e) => {
+      console.error('[DB] Error al borrar la base de datos:', e);
+      reject(e);
+    };
+
+    delRequest.onblocked = () => {
+      console.warn('[DB] El borrado está bloqueado por otra pestaña abierta.');
+      if (window.showToast) {
+        window.showToast('El borrado total está bloqueado. Cierra todas las pestañas de la app.', 'error', true);
+      }
+    };
+  });
+}
+
 window.dbAPI = dbAPI;
 window.initDB = initDB;
+window.hardReset = hardReset;

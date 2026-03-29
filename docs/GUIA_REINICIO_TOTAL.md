@@ -23,18 +23,28 @@ Este script borra las bases de datos locales (`IndexedDB`) y las claves de segur
 
 ```javascript
 (async () => {
-  // Limpiar llaves de seguridad y sesión
+  if (!confirm("⚠️ ATENCIÓN: Esto borrará permanentemente todos tus datos locales. Asegúrate de tener respaldo en Drive o D1 si los necesitas.\n\n¿Proceder con el reinicio total?")) return;
+
+  console.log("Iniciando limpieza profunda...");
+
+  // 1. Cerrar base de datos si está abierta para evitar bloqueos
+  if (window.dbAPI && window.hardReset) {
+    await window.hardReset();
+    return;
+  }
+
+  // Fallback manual si la app no ha cargado los módulos:
   localStorage.clear();
   sessionStorage.clear();
-  
-  // Localizar y borrar bases de datos de la aplicación
+
   const dbs = await window.indexedDB.databases();
-  for (const db of dbs) {
-    console.log("Borrando base de datos:", db.name);
-    window.indexedDB.deleteDatabase(db.name);
+  for (const dbInfo of dbs) {
+    console.log("Cerrando y borrando:", dbInfo.name);
+    const req = window.indexedDB.deleteDatabase(dbInfo.name);
+    req.onblocked = () => alert("Por favor, cierra todas las demás pestañas de esta aplicación para completar la limpieza.");
   }
-  
-  alert("Limpieza completada. La página se recargará para iniciar el Setup de Administrador.");
+
+  alert("Limpieza manual solicitada. La página se recargará.");
   location.reload();
 })();
 ```

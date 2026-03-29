@@ -1633,8 +1633,16 @@ function openMemberSelectModal() {
         ${memberRows}
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn" id="modal-skip">Configurar después</button>
+    <div class="modal-footer" style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-primary" id="modal-skip" style="width:100%;justify-content:center;">Configurar identidad después</button>
+      <div style="border-top:1px solid var(--border-light);margin:8px 0;padding-top:12px;width:100%;">
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;text-align:center;">
+          ¿Ves errores de descifrado o datos obsoletos?
+        </p>
+        <button class="btn btn-ghost btn-danger" id="modal-factory-reset" style="width:100%;justify-content:center;font-size:0.8rem;">
+          <i data-feather="refresh-cw" style="width:14px;height:14px;"></i> Limpiar datos locales y empezar de cero
+        </button>
+      </div>
     </div>
   `);
 
@@ -1654,6 +1662,19 @@ function openMemberSelectModal() {
 
   modal.querySelector('#modal-skip')?.addEventListener('click', closeModal);
   modal.querySelector('#modal-close')?.addEventListener('click', closeModal);
+
+  modal.querySelector('#modal-factory-reset')?.addEventListener('click', async () => {
+    if (confirm('⚠️ ATENCIÓN: Esta acción borrará todos tus datos locales de este navegador. Solo úsalo si tienes problemas graves de sincronización o errores de seguridad.\n\n¿Estás seguro de querer reiniciar todo?')) {
+      const dbLayer = await import('./db.js');
+      if (dbLayer && dbLayer.hardReset) {
+        await dbLayer.hardReset();
+      } else if (window.hardReset) {
+        await window.hardReset();
+      } else {
+        alert('Error: No se pudo cargar el módulo de reinicio.');
+      }
+    }
+  });
 
   feather.replace();
 }
