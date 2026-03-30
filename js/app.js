@@ -587,7 +587,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } catch (e) {
                         console.warn('[Sync] Initial pull for invited member failed:', e);
                     }
-                    refreshCurrentView();
+                    // Forzar una recarga limpia para inicializar la PWA con los datos recién descargados
+                    window.location.reload();
                 }
             };
 
