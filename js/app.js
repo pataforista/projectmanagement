@@ -277,28 +277,37 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const code = inviteInput.value.trim();
                 if (!code) return showToast('Pega un código válido.', 'error');
                 try {
-                    const data = JSON.parse(decodeURIComponent(escape(atob(code))));
-                    if (!data.c || !data.f) throw new Error('Invalid code');
+                    // Try to decode, handling spaces or missing padding
+                    const cleanCode = code.replace(/\\s/g, '');
+                    const data = JSON.parse(decodeURIComponent(escape(atob(cleanCode))));
+                    
+                    // Admin generates code with `c` (clientId), `w` (workspaceName), `r` (role)
+                    if (!data.c) throw new Error('El código no contiene el ClientID requerido');
 
                     setupClientIdInput.value = data.c;
-                    const sharedIdInput = document.getElementById('auth-setup-shared-id') || { value: '' };
-                    sharedIdInput.value = data.f;
+                    const sharedIdInput = document.getElementById('auth-setup-shared-id');
+                    if (sharedIdInput && data.f) {
+                        sharedIdInput.value = data.f;
+                    }
 
                     // Pre-fill config so syncManager uses it
-                    syncManager.saveConfig({
+                    const newConfig = {
                         ...syncManager.getConfig(),
                         clientId: data.c,
-                        sharedFolderId: data.f,
                         fileName: data.n || 'workspace-team-data.json',
                         workspace_name: data.w || 'Workspace Unido',
                         pending_invite_role: data.r || 'member'
-                    });
+                    };
+                    if (data.f) newConfig.sharedFolderId = data.f;
+
+                    syncManager.saveConfig(newConfig);
 
                     showToast('Código procesado. Ahora conéctate con Google.', 'success');
                     setupPanel.style.display = 'flex';
                     joinPanel.style.display = 'none';
                 } catch (e) {
-                    showToast('Código de invitación inválido.', 'error');
+                    console.error('[Auth] Invite processing failed:', e);
+                    showToast('Código de invitación inválido o corrupto.', 'error');
                 }
             };
         }
