@@ -555,14 +555,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const config = syncManager.getConfig();
     const user = getCurrentWorkspaceUser();
 
-    if (allMembers.length === 0) {
+    const isInvited = !!config.pending_invite_role;
+
+    if (allMembers.length === 0 && !isInvited) {
         console.log('[Auth] Empty workspace detected. Launching Admin Setup...');
         if (window.openInitialSetupModal) openInitialSetupModal();
     } else if (user.email) {
         let member = allMembers.find(m => m.email === user.email || (m.emailHash && m.emailHash === user.emailHash));
 
         // If not a member yet, but has a pending invite role
-        if (!member && config.pending_invite_role) {
+        if (!member && isInvited) {
             const role = config.pending_invite_role;
             const proceedWithCreate = async () => {
                 const newMember = await store.dispatch('ADD_MEMBER', {
@@ -578,6 +580,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     syncManager.saveConfig({ ...config, pending_invite_role: null });
                     showToast(`¡Bienvenido al equipo, ${user.name}!`, 'success');
                     if (window.updateUserProfileUI) updateUserProfileUI();
+                    
+                    // Now that we have a member, pull data from Drive
+                    try {
+                        await syncManager.pull();
+                    } catch (e) {
+                        console.warn('[Sync] Initial pull for invited member failed:', e);
+                    }
+                    refreshCurrentView();
                 }
             };
 

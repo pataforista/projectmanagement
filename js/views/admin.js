@@ -241,12 +241,13 @@ window.saveAdminGeneral = async function() {
 
 window.generateInvite = function(role) {
   const config = syncManager.getConfig();
-  // NOTE: sharedFolderId and fileName are intentionally omitted from the invite code.
-  // Including them would allow anyone who intercepts the code to locate and read the
-  // shared Google Drive file directly — a significant data exposure risk.
-  // New members must receive Drive credentials through a separate, trusted channel.
+  // BUG FIX: sharedFolderId and fileName MUST be included in the invite code,
+  // otherwise new members have no way of knowing where to look in Google Drive
+  // and will incorrectly think the workspace is empty.
   const payload = {
     c: config.clientId,
+    f: config.sharedFolderId,
+    n: config.fileName,
     w: config.workspace_name,
     r: role
   };
