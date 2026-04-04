@@ -50,7 +50,7 @@ export class SyncService {
       snapshots: new Set(['project_id', 'user_id', 'content', 'timestamp', '_deleted', 'updated_at']),
       interconsultations: new Set(['project_id', 'user_id', 'name', 'status', 'visibility', 'created_at', 'updated_at', '_deleted']),
       sessions: new Set(['project_id', 'user_id', 'name', 'date', 'start_time', 'end_time', 'created_at', 'updated_at', '_deleted']),
-      time_logs: new Set(['project_id', 'user_id', 'duration', 'date', 'created_at', 'updated_at', '_deleted']),
+      time_logs: new Set(['project_id', 'user_id', 'task_id', 'duration', 'minutes', 'date', 'description', 'created_at', 'updated_at', '_deleted']),
       library_items: new Set(['user_id', 'title', 'authors', 'year', 'url', 'created_at', 'updated_at', '_deleted']),
       notifications: new Set(['user_id', 'title', 'message', 'read', 'created_at', 'updated_at', '_deleted']),
       cycles: new Set(['name', 'description', 'status', 'start_date', 'end_date', '_deleted']),
