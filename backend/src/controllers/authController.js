@@ -134,6 +134,12 @@ export class AuthController {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
         expiresIn: 900,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatar: user.avatar,
+        },
       });
 
     } catch (error) {

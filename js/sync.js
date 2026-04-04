@@ -616,10 +616,22 @@ const syncManager = (() => {
             _beforeunloadListenerRegistered = true;
         }
 
-        // NEW: Check if we have a refresh token and grab a fresh access token silently
+        // NEW: Check if we have a refresh token and grab a fresh access token silently.
+        // After a successful refresh the backend returns user info which we use to
+        // restore workspace_user_email (and name/avatar) so the auth overlay is
+        // bypassed and the profile UI shows correctly without requiring a re-login.
         if (BackendClient.isAuthenticated()) {
              try {
                  await BackendClient.refreshToken();
+                 const cachedUser = BackendClient.getCachedUser();
+                 if (cachedUser?.email) {
+                     await syncIdentityToWorkspaceProfile({
+                         email: cachedUser.email,
+                         name: cachedUser.name || cachedUser.email,
+                         picture: cachedUser.avatar || null,
+                     });
+                     console.log('[Sync] User profile restored from refresh token.');
+                 }
              } catch (err) {
                  console.warn('[Sync] JWT Auto-refresh omitted:', err.message);
              }

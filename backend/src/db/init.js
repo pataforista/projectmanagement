@@ -269,6 +269,7 @@ export class DatabaseInit {
         action TEXT NOT NULL,
         entity_type TEXT,
         entity_id TEXT,
+        message TEXT,
         payload TEXT,
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -318,7 +319,8 @@ export class DatabaseInit {
         entity_id TEXT NOT NULL,
         payload TEXT NOT NULL,
         created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, device_id, entity_id)
       );
     `);
   }
@@ -464,8 +466,11 @@ export class DatabaseInit {
       CREATE TABLE IF NOT EXISTS time_logs (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        project_id TEXT,
         task_id TEXT,
+        duration INTEGER,
         minutes INTEGER,
+        date TEXT,
         description TEXT,
         _deleted BOOLEAN DEFAULT 0,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

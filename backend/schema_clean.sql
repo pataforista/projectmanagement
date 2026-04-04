@@ -147,7 +147,8 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE TABLE IF NOT EXISTS members (
   id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
+  user_id TEXT,
+  project_id TEXT,
   name TEXT NOT NULL,
   email TEXT,
   role TEXT,
@@ -155,8 +156,7 @@ CREATE TABLE IF NOT EXISTS members (
   status TEXT,
   _deleted BOOLEAN DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS logs (
   id TEXT PRIMARY KEY,
@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS logs (
   action TEXT NOT NULL,
   entity_type TEXT,
   entity_id TEXT,
+  message TEXT,
   payload TEXT,
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -204,7 +205,8 @@ CREATE TABLE IF NOT EXISTS sync_queue (
   entity_id TEXT NOT NULL,
   payload TEXT NOT NULL,
   created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE(user_id, device_id, entity_id)
 );
 CREATE TABLE IF NOT EXISTS sync_cursor (
   id TEXT PRIMARY KEY,
@@ -288,8 +290,11 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 CREATE TABLE IF NOT EXISTS time_logs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
+  project_id TEXT,
   task_id TEXT,
+  duration INTEGER,
   minutes INTEGER,
+  date TEXT,
   description TEXT,
   _deleted BOOLEAN DEFAULT 0,
   updated_at INTEGER DEFAULT (strftime('%s','now') * 1000),

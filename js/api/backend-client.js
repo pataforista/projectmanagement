@@ -12,6 +12,7 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 
 let currentAccessToken = null; // JWT stored in memory for security
 let refreshTokenPromise = null; // Prevents parallel refresh token calls
+let _cachedUser = null; // User profile restored from last successful refresh
 
 /**
  * Returns a stable device UUID, generating one on first use.
@@ -99,6 +100,7 @@ export const BackendClient = {
 
             const data = await res.json();
             this.setTokens(data.accessToken, data.refreshToken);
+            if (data.user) _cachedUser = data.user;
             return data;
         } catch (error) {
             console.error('[BackendClient] Login error:', error);
@@ -125,11 +127,30 @@ export const BackendClient = {
 
             const data = await res.json();
             this.setTokens(data.accessToken, data.refreshToken);
+            if (data.user) _cachedUser = data.user;
             return data.accessToken;
         } catch (error) {
             console.warn('[BackendClient] Falla al refrescar token, cerrando sesión local.');
             this.clearTokens();
             throw error;
+        }
+    },
+
+    /**
+     * Returns the user profile cached from the last successful token refresh,
+     * or decodes it from the current access token as a fallback.
+     */
+    getCachedUser() {
+        if (_cachedUser) return _cachedUser;
+        // Fallback: decode email from the JWT payload (doesn't require a round-trip)
+        if (!currentAccessToken) return null;
+        try {
+            const base64Url = currentAccessToken.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(atob(base64));
+            return payload.email ? { email: payload.email, id: payload.sub } : null;
+        } catch {
+            return null;
         }
     },
 

@@ -199,12 +199,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const userNameEl = document.getElementById('auth-user-name');
 
         const googleIDToken = StorageManager.get('google_id_token', 'session');
-        const hasSession = !!googleIDToken || !!StorageManager.get('workspace_user_email', 'session');
+        // Also accept a valid backend session (refresh token in localStorage) even when
+        // sessionStorage was cleared (tab closed). The user profile will be restored
+        // asynchronously by syncManager.init() → BackendClient.refreshToken().
+        const hasSession = !!googleIDToken
+            || !!StorageManager.get('workspace_user_email', 'session')
+            || BackendClient.isAuthenticated();
         const existingClientId = window.syncManager?.getConfig?.()?.clientId || '';
 
         // Bypassear el overlay solo si ya estamos autenticados (token presente)
         // o si el sistema de crypto ya desbloqueó automáticamente (hasKey).
-        if ((existingClientId && hasSession) || cryptoLayer?.hasKey() || !setupPanel) {
+        if ((existingClientId && hasSession) || BackendClient.isAuthenticated() || cryptoLayer?.hasKey() || !setupPanel) {
             authOverlay.classList.remove('open');
             return resolve();
         }
