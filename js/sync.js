@@ -445,6 +445,13 @@ const syncManager = (() => {
         StorageManager.set('workspace_user_email', email, 'session');
         StorageManager.set('workspace_user_avatar', avatar, 'session');
 
+        // PERSISTENCE FIX: Also save email to localStorage so it survives
+        // browser restarts and new tabs. This ensures the email-scoped
+        // refresh token key and sync cursor key are available on init().
+        if (email) {
+            localStorage.setItem('nexus_last_email', email);
+        }
+
         // PERSISTENT IDENTITY FIX: Store a non-reversible hash of the email
         // to allow matching the local user to a member in the shared Drive snapshot
         // even when emails are stripped for privacy (plaintext path).
@@ -616,6 +623,17 @@ const syncManager = (() => {
             _beforeunloadListenerRegistered = true;
         }
 
+        // ACCOUNT PERSISTENCE FIX: Restore email from localStorage when sessionStorage
+        // is empty (new tab, browser restart). This ensures the email-scoped sync cursor
+        // and refresh token keys work correctly before auto-sync starts.
+        if (!StorageManager.get('workspace_user_email', 'session')) {
+            const persistedEmail = localStorage.getItem('nexus_last_email');
+            if (persistedEmail) {
+                StorageManager.set('workspace_user_email', persistedEmail, 'session');
+                console.log('[Sync] Restored email from localStorage:', persistedEmail);
+            }
+        }
+
         // NEW: Check if we have a refresh token and grab a fresh access token silently.
         // After a successful refresh the backend returns user info which we use to
         // restore workspace_user_email (and name/avatar) so the auth overlay is
@@ -646,6 +664,10 @@ const syncManager = (() => {
             console.warn('[Sync] nexus_dirty_flag detected — previous session closed with unsynced changes. Will push on next opportunity.');
         }
 
+        // NOTE: configureAutoSync runs AFTER the refresh token flow above so that
+        // workspace_user_email is already in sessionStorage when the first auto-sync
+        // tick fires. This prevents the cursor key from falling back to the generic
+        // 'last_sync_server' and orphaning the per-account cursor.
         const cfg = getConfig();
         configureAutoSync(cfg.autoSyncMinutes);
         if (cfg.clientId) {
@@ -982,21 +1004,31 @@ const syncManager = (() => {
                 const email = StorageManager.get('workspace_user_email', 'session') || '';
                 const cursorKey = email ? `last_sync_server_${email}` : 'last_sync_server';
                 const lastSync = localStorage.getItem(cursorKey) || '0';
-                console.log(`[Sync] Pulling deltas since ${lastSync}...`);
-                const res = await BackendClient.fetch(`/api/sync/pull?lastSyncTime=${lastSync}`);
+
+                // FULL SYNC FIX: When lastSync is '0' (first connect / new device),
+                // use the /full endpoint which reads directly from entity tables.
+                // The delta /pull endpoint only reads from sync_queue which may have
+                // deduplicated CREATE actions, causing data loss on new devices.
+                const isInitialSync = lastSync === '0' || lastSync === '';
+                const endpoint = isInitialSync
+                    ? '/api/sync/full'
+                    : `/api/sync/pull?lastSyncTime=${lastSync}`;
+
+                console.log(`[Sync] ${isInitialSync ? 'Full' : 'Delta'} pull (since ${lastSync})...`);
+                const res = await BackendClient.fetch(endpoint);
                 if (!res.ok) throw new Error('Pull failed: ' + res.status);
 
                 const { changes, lastSyncTime } = await res.json();
                 if (changes && changes.length > 0) {
                     console.log(`[Sync] Applying ${changes.length} remote changes...`);
-                    
+
                     // Mapping of backend entity types to store actions
                     const actionMap = {
                         'project': { 'CREATE': 'ADD_PROJECT', 'UPDATE': 'UPDATE_PROJECT', 'DELETE': 'DELETE_PROJECT' },
                         'task':    { 'CREATE': 'ADD_TASK',    'UPDATE': 'UPDATE_TASK',    'DELETE': 'DELETE_TASK' },
                         'cycle':   { 'CREATE': 'ADD_CYCLE',   'UPDATE': 'UPDATE_CYCLE',   'DELETE': 'DELETE_CYCLE' },
                         'decision':{ 'CREATE': 'ADD_DECISION','UPDATE': 'UPDATE_DECISION','DELETE': 'DELETE_DECISION' },
-                        'document':{ 'UPDATE': 'UPDATE_DOCUMENT' },
+                        'document':{ 'CREATE': 'SAVE_DOCUMENT', 'UPDATE': 'SAVE_DOCUMENT' },
                         'member':  { 'CREATE': 'ADD_MEMBER',  'UPDATE': 'UPDATE_MEMBER',  'DELETE': 'DELETE_MEMBER' },
                         'log':     { 'CREATE': 'ADD_LOG' },
                         'message':           { 'CREATE': 'ADD_MESSAGE', 'DELETE': 'DELETE_MESSAGE' },
@@ -1009,9 +1041,38 @@ const syncManager = (() => {
                         'notification':      { 'CREATE': 'ADD_NOTIFICATION' }
                     };
 
+                    // Entity type → IDB store name mapping for local existence checks
+                    const entityToStore = {
+                        'project': 'projects', 'task': 'tasks', 'cycle': 'cycles',
+                        'decision': 'decisions', 'document': 'documents', 'member': 'members',
+                        'message': 'messages', 'annotation': 'annotations', 'snapshot': 'snapshots',
+                        'interconsultation': 'interconsultations', 'calendar_event': 'sessions',
+                        'time_log': 'timeLogs', 'library_item': 'library', 'notification': 'notifications',
+                        'log': 'logs'
+                    };
+
                     for (const change of changes) {
-                        const action = actionMap[change.entityType]?.[change.action];
-                        if (action) {
+                        let resolvedAction = change.action;
+
+                        // UPDATE→CREATE FALLBACK: If the remote says UPDATE but the entity
+                        // doesn't exist locally (e.g. deduplication ate the CREATE, or this
+                        // is a new device), promote the action to CREATE so the record is
+                        // inserted instead of silently dropped.
+                        if (resolvedAction === 'UPDATE') {
+                            const localStore = entityToStore[change.entityType];
+                            if (localStore) {
+                                try {
+                                    const existing = await dbAPI.getById(localStore, change.entityId);
+                                    if (!existing) {
+                                        resolvedAction = 'CREATE';
+                                        console.log(`[Sync] Promoted UPDATE→CREATE for missing ${change.entityType}#${change.entityId}`);
+                                    }
+                                } catch { /* if check fails, try UPDATE anyway */ }
+                            }
+                        }
+
+                        const storeAction = actionMap[change.entityType]?.[resolvedAction];
+                        if (storeAction) {
                             let payload = change.payload;
                             // If payload is encrypted, decrypt it before store dispatch
                             if (payload && payload.__encrypted) {
@@ -1021,7 +1082,7 @@ const syncManager = (() => {
                                     if (decrypted) payload = decrypted;
                                 }
                             }
-                            await store.dispatch(action, { ...payload, id: change.entityId, _sync: true });
+                            await store.dispatch(storeAction, { ...payload, id: change.entityId, _sync: true });
                         }
                     }
                     showToast(`Sincronizados ${changes.length} cambios remotos`, 'success');

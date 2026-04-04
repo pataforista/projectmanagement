@@ -55,4 +55,25 @@ export default class SyncController {
       return c.json({ status: 'error', message: error.message }, 500);
     }
   }
+
+  /**
+   * GET /api/sync/full
+   * Returns ALL non-deleted entities for the authenticated user.
+   * Used for initial sync when a new device connects (lastSyncTime = 0).
+   */
+  async fullSync(c) {
+    const userId = c.get('userId');
+
+    try {
+      console.log(`[SyncController] Full sync request from user ${userId}`);
+      const data = await this.syncService.processFullSync(c.env.DB, userId);
+      return c.json({
+        status: 'success',
+        ...data
+      });
+    } catch (error) {
+      console.error('[SyncController] Full sync error:', error);
+      return c.json({ status: 'error', message: error.message }, 500);
+    }
+  }
 }
