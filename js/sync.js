@@ -239,6 +239,19 @@ const syncManager = (() => {
                         return;
                     }
 
+                    // TOKEN KEY FIX: Extract email from credential BEFORE calling
+                    // loginWithGoogle, so getRefreshTokenKey() uses the per-account
+                    // key (nexus_refresh_token_email@...) instead of the legacy fallback
+                    // (nexus_refresh_token). Without this, tokens are stored under the
+                    // generic key on first login, causing cross-account contamination
+                    // when multiple users share the same device/browser profile.
+                    const tempUser = decodeIdToken(response.credential);
+                    if (tempUser?.email) {
+                        const tempEmail = tempUser.email.trim().toLowerCase();
+                        StorageManager.set('workspace_user_email', tempEmail, 'session');
+                        localStorage.setItem('nexus_last_email', tempEmail);
+                    }
+
                     // NEW: Send ID Token to our backend
                     try {
                         await BackendClient.loginWithGoogle(response.credential);
@@ -397,6 +410,8 @@ const syncManager = (() => {
             _dirtyLocalChanges = false;
             accessToken = null;
             pushPending = false;
+            currentUser = null;    // Clear old Google identity so it doesn't linger
+            tokenTimestamp = 0;    // Invalidate Drive token age check
         } else {
             // Same account, just email changed — keep sync state
             console.log('[Sync] Email alias updated, maintaining sync state');
@@ -651,7 +666,15 @@ const syncManager = (() => {
                      console.log('[Sync] User profile restored from refresh token.');
                  }
              } catch (err) {
-                 console.warn('[Sync] JWT Auto-refresh omitted:', err.message);
+                 // EXPIRED TOKEN FIX: The auth overlay was already bypassed (isAuthenticated
+                 // returns true if a refresh token exists in localStorage, even if expired/
+                 // revoked). When the actual refresh call fails the user is left in a broken
+                 // state — authenticated according to localStorage, but no valid session.
+                 // Solution: emit a session:expired event so app.js can reload and force
+                 // the user to log in again through the auth overlay.
+                 console.warn('[Sync] JWT refresh failed — session expired or revoked:', err.message);
+                 StorageManager.remove('workspace_user_email', 'session');
+                 window.dispatchEvent(new CustomEvent('session:expired'));
              }
         }
 
