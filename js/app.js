@@ -48,7 +48,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (changeEvent.type === 'account_switched') {
                 console.log(`[Boot] Account switch detected: ${changeEvent.oldEmail} → ${changeEvent.newEmail}`);
                 if (window.syncManager && window.syncManager.handleAccountSwitch) {
-                    await window.syncManager.handleAccountSwitch(changeEvent.oldEmail, changeEvent.newEmail);
+                    // Pass sameSub flag so email-alias updates don't trigger a full sync reset
+                    await window.syncManager.handleAccountSwitch(
+                        changeEvent.oldEmail,
+                        changeEvent.newEmail,
+                        changeEvent.sameSub === true
+                    );
                 }
             } else if (changeEvent.type === 'token_expired') {
                 console.log('[Boot] Google token expired');
@@ -76,6 +81,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.addEventListener('session:logout', () => {
         console.log('[Boot] Logout event received');
+        location.reload();
+    });
+
+    window.addEventListener('session:expired', () => {
+        console.log('[Boot] Session expired — clearing tokens and reloading to show login');
+        // BackendClient.clearTokens() was already called inside refreshToken() on failure.
+        // Clear the persisted email so the auth overlay is not bypassed on reload.
+        localStorage.removeItem('nexus_last_email');
         location.reload();
     });
 
@@ -543,16 +556,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(updateTopbarSyncWidget, 15_000);
 
     // ── 9. Try sync pull ───────────────────────────────────────────────────────
-    // Solo hacemos pull si ya existen miembros locales. Esto evita que en una
-    // instalación limpia se vuelvan a bajar datos corruptos/viejos antes de tiempo.
-    if (store.get.members().length > 0) {
+    // SYNC FIX: Always pull from backend when authenticated, regardless of local
+    // member count. Without this, a new device (Computer B) skips the initial pull,
+    // sees 0 members, and wrongly opens the Admin Setup modal — appearing to lose
+    // all data created on Computer A. The pull populates local IDB before the
+    // member-count check below, so the Admin Setup is correctly suppressed.
+    if (BackendClient.isAuthenticated()) {
+        try {
+            await syncManager.pull();
+        } catch (e) {
+            console.warn('[Sync] Could not pull on boot:', e);
+        }
+    } else if (store.get.members().length > 0) {
         try {
             await syncManager.pull();
         } catch (e) {
             console.warn('[Sync] Could not pull on boot:', e);
         }
     } else {
-        console.log('[Sync] No local members — skipping initial pull for clean setup.');
+        console.log('[Sync] Not authenticated and no local members — skipping initial pull.');
     }
 
     // ── 9.1. Identity & First-Run Setup ─────────────────────────────────────
