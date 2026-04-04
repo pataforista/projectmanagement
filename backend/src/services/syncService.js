@@ -158,14 +158,24 @@ export class SyncService {
         }
 
         // 2. Prepare sync_queue statement
-        // Use UPSERT instead of INSERT to deduplicate in sync_queue
-        // If (user_id, device_id, entity_id) already exists, update with latest payload
+        // Use UPSERT instead of INSERT to deduplicate in sync_queue.
+        // CRITICAL FIX: When an UPDATE overwrites a CREATE, keep action as CREATE
+        // and merge the payloads. Otherwise new devices pulling from time 0 only
+        // see UPDATE with partial payload for entities that don't exist locally.
+        // We use json_patch to merge: existing payload fields are kept, new fields
+        // from EXCLUDED overwrite. Action stays CREATE if existing row was CREATE.
         statements.push(db.prepare(`
           INSERT INTO sync_queue (id, user_id, device_id, action, entity_type, entity_id, payload, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(user_id, device_id, entity_id) DO UPDATE SET
-            action = EXCLUDED.action,
-            payload = EXCLUDED.payload,
+            action = CASE
+              WHEN sync_queue.action = 'CREATE' THEN 'CREATE'
+              ELSE EXCLUDED.action
+            END,
+            payload = CASE
+              WHEN sync_queue.action = 'CREATE' THEN json_patch(sync_queue.payload, EXCLUDED.payload)
+              ELSE EXCLUDED.payload
+            END,
             created_at = EXCLUDED.created_at
         `).bind(
           crypto.randomUUID(),
@@ -471,6 +481,90 @@ export class SyncService {
         payload: JSON.parse(c.payload),
         timestamp: c.created_at
       }))
+    };
+  }
+
+  /**
+   * Returns ALL non-deleted entities for a user from the actual entity tables.
+   * Used for initial/full sync when a new device connects.
+   */
+  async processFullSync(db, userId) {
+    // Tables owned directly by user_id
+    const userOwnedTables = [
+      { table: 'projects',          entityType: 'project' },
+      { table: 'members',           entityType: 'member' },
+      { table: 'logs',              entityType: 'log' },
+      { table: 'time_logs',         entityType: 'time_log' },
+      { table: 'library_items',     entityType: 'library_item' },
+      { table: 'notifications',     entityType: 'notification' },
+    ];
+
+    // Tables owned via project_id (we join through projects to scope to user)
+    const projectOwnedTables = [
+      { table: 'tasks',              entityType: 'task' },
+      { table: 'cycles',             entityType: 'cycle' },
+      { table: 'decisions',          entityType: 'decision' },
+      { table: 'documents',          entityType: 'document' },
+      { table: 'messages',           entityType: 'message' },
+      { table: 'annotations',        entityType: 'annotation' },
+      { table: 'snapshots',          entityType: 'snapshot' },
+      { table: 'interconsultations', entityType: 'interconsultation' },
+      { table: 'calendar_events',    entityType: 'calendar_event' },
+    ];
+
+    const changes = [];
+
+    // Fetch user-owned entities
+    for (const { table, entityType } of userOwnedTables) {
+      const hasDeleted = table !== 'logs';
+      const whereClause = hasDeleted
+        ? `WHERE user_id = ? AND (_deleted = 0 OR _deleted IS NULL)`
+        : `WHERE user_id = ?`;
+      const { results } = await db.prepare(
+        `SELECT * FROM ${table} ${whereClause}`
+      ).bind(userId).all();
+
+      for (const row of results) {
+        const payload = { ...row };
+        delete payload.id;
+        delete payload.user_id;
+        changes.push({
+          action: 'CREATE',
+          entityType,
+          entityId: row.id,
+          payload,
+          timestamp: row.updated_at || row.created_at || Date.now()
+        });
+      }
+    }
+
+    // Fetch project-owned entities (scoped through user's projects)
+    for (const { table, entityType } of projectOwnedTables) {
+      const { results } = await db.prepare(`
+        SELECT t.* FROM ${table} t
+        INNER JOIN projects p ON t.project_id = p.id
+        WHERE p.user_id = ? AND (t._deleted = 0 OR t._deleted IS NULL)
+      `).bind(userId).all();
+
+      for (const row of results) {
+        const payload = { ...row };
+        delete payload.id;
+        delete payload.user_id;
+        changes.push({
+          action: 'CREATE',
+          entityType,
+          entityId: row.id,
+          payload,
+          timestamp: row.updated_at || row.created_at || Date.now()
+        });
+      }
+    }
+
+    // Return the server's current time as the sync cursor
+    // so subsequent delta pulls start from this point.
+    return {
+      changes,
+      lastSyncTime: Date.now()
     };
   }
 

@@ -10,6 +10,7 @@ export function createSyncRoutes() {
 
   router.post('/push', (c) => syncController.pushChanges(c));
   router.get('/pull', (c) => syncController.pullChanges(c));
+  router.get('/full', (c) => syncController.fullSync(c));
 
   return router;
 }
