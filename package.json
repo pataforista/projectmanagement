@@ -5,5 +5,8 @@
   "scripts": {
     "check:review-ready": "node scripts/review-ready.js",
     "check": "npm run check:review-ready"
+  },
+  "devDependencies": {
+    "wrangler": "^4.81.1"
   }
 }
