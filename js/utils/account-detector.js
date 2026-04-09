@@ -283,6 +283,22 @@ export const AccountChangeDetector = (() => {
             changeCallback = callback;
             storeCurrentSession(StorageManager.get('google_id_token', 'session'));
             startVerification();
+
+            // BUG 48 FIX: Periodic polling is set to 5 minutes to save battery/network,
+            // but this is too slow for critical identity isolation. Adding listeners
+            // for visibility and focus allows the app to re-verify the session
+            // the second the user returns to the tab.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    console.log('[AccountChangeDetector] Tab visible — forcing re-verification.');
+                    verifyCurrent();
+                }
+            });
+            window.addEventListener('focus', () => {
+                console.log('[AccountChangeDetector] Tab focused — forcing re-verification.');
+                verifyCurrent();
+            });
+
             console.log('[AccountChangeDetector] Initialized');
         },
 

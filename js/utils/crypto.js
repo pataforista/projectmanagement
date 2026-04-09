@@ -499,11 +499,26 @@ export async function hashPassword(password) {
     }
     return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
-
 // ── Session Management ───────────────────────────────────────────────────────
 
 /** Called on successful unlock — stores derived key in module RAM */
 export async function unlock(password = INVISIBLE_TEAM_PASS) {
+    // FIX 2 (Security): If the workspace has a personal password hash set in
+    // localStorage, do NOT silently auto-unlock with the shared team key.
+    // Without this guard, a device that someone else has set up with a personal
+    // password would still be decryptable via the hardcoded team key, bypassing
+    // any lock screen the user configured.
+    if (password === INVISIBLE_TEAM_PASS) {
+        const personalHash = localStorage.getItem('workspace_lock_hash');
+        if (personalHash) {
+            // A personal password is set — require explicit unlock via the UI.
+            // Do NOT auto-unlock; the lock screen will call unlock() with the
+            // user-provided password.
+            console.warn('[Fortress] Personal password set — skipping auto-unlock with team key. Lock screen required.');
+            _isLocked = true;
+            return;
+        }
+    }
     _cryptoKey = await deriveKey(password);
     _isLocked = false;
 }

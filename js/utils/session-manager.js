@@ -318,7 +318,20 @@ export const SessionManager = (() => {
         // 2. Clear local session (sessionStorage + in-memory tokens)
         await logout();
 
-        // 3. Attempt Google OAuth2 access token revocation (fire-and-forget).
+        // 3. FIX F: Broadcast logout to all sibling tabs so they also lose their
+        //    active session. Without this, other tabs keep their token in sessionStorage
+        //    and can continue syncing after the user considers themselves logged out.
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                const logoutChannel = new BroadcastChannel('session-sync');
+                logoutChannel.postMessage({ type: 'session:logout' });
+                logoutChannel.close();
+            } catch (e) {
+                console.warn('[SessionManager] Could not broadcast logout:', e);
+            }
+        }
+
+        // 4. Attempt Google OAuth2 access token revocation (fire-and-forget).
         //    The Google Drive access token lives on the syncManager, not in storage,
         //    so we ask syncManager to expose it if available.
         //    NOTE: google.accounts.oauth2.revoke() requires the *access token*, NOT
@@ -336,12 +349,12 @@ export const SessionManager = (() => {
             }
         }
 
-        // 4. Show feedback to user
+        // 5. Show feedback to user
         if (window.showToast) {
             showToast('Sesión cerrada', 'success');
         }
 
-        // 5. Reload page after brief delay (allow toast to show)
+        // 6. Reload page after brief delay (allow toast to show)
         setTimeout(() => {
             location.reload();
         }, 300);
@@ -451,6 +464,15 @@ export const SessionManager = (() => {
                         console.log(`[SessionManager] Cross-tab session sync: restored session from other tab`);
                     }
                 }
+            }
+
+            // FIX F: Handle logout broadcast from a sibling tab (logoutFast).
+            // Without this, other tabs keep their session alive after the user
+            // explicitly logs out in one tab.
+            if (type === 'session:logout') {
+                console.log('[SessionManager] Cross-tab logout received — clearing session and reloading.');
+                await logout();
+                setTimeout(() => location.reload(), 100);
             }
         };
 

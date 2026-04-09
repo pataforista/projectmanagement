@@ -154,14 +154,77 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('push', event => {
-    const data = event.data ? event.data.text() : 'Nueva notificación';
+    // FIX 3 (Identity-aware notifications): Before showing a notification,
+    // query the active clients to get the current session email.
+    // If the notification is addressed to a specific user and that user is
+    // not currently active, suppress or generalize the notification title/body
+    // to avoid leaking information between accounts.
+    const rawData = event.data ? event.data.text() : '';
+    let payload = { title: 'Workspace', body: 'Nueva notificación', email: null };
+
+    try {
+        const parsed = JSON.parse(rawData);
+        payload = { ...payload, ...parsed };
+    } catch {
+        payload.body = rawData || payload.body;
+    }
+
     event.waitUntil(
-        self.registration.showNotification('Workspace', {
-            body: data,
-            icon: 'icons/icon-192.png'
-        })
+        (async () => {
+            // Query ALL active clients for the current session email.
+            // We use MessageChannel for a synchronous-ish roundtrip.
+            let activeEmail = null;
+            try {
+                const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+                if (clients.length > 0) {
+                    activeEmail = await new Promise((resolve) => {
+                        const channel = new MessageChannel();
+                        const timeout = setTimeout(() => resolve(null), 800);
+                        channel.port1.onmessage = (e) => {
+                            clearTimeout(timeout);
+                            resolve(e.data?.email || null);
+                        };
+                        clients[0].postMessage({ type: 'GET_ACTIVE_EMAIL' }, [channel.port2]);
+                    });
+                }
+            } catch (e) {
+                // Non-fatal: if we can't query the client, fall through to generic notification
+                console.warn('[SW] Could not query active client email:', e);
+            }
+
+            // If the push is addressed to a specific email and it doesn't
+            // match the active session, show a generic title only to prevent
+            // information leakage (e.g. another user's task assignment content).
+            const notifOptions = {
+                icon: 'icons/icon-192.png',
+                badge: 'icons/icon-192.png',
+                tag: payload.tag || 'nexus-notification',
+                data: { url: payload.url || './', email: payload.email },
+            };
+
+            if (payload.email && activeEmail && payload.email !== activeEmail) {
+                // Notification is for a different account — show a minimal,
+                // non-revealing notification to avoid exposing the other account's data.
+                return self.registration.showNotification('Nexus', {
+                    ...notifOptions,
+                    body: 'Tienes actividad pendiente en otra cuenta.',
+                    silent: true,
+                });
+            }
+
+            return self.registration.showNotification(payload.title, {
+                ...notifOptions,
+                body: payload.body,
+            });
+        })()
     );
 });
+
+// FIX 3: Allow clients to answer the GET_ACTIVE_EMAIL query from push handler.
+// Each open tab listens for this message and replies with the current session email.
+// Registered here so SW and tab page can coordinate identity.
+// (The tab-side listener is registered in app.js via navigator.serviceWorker.addEventListener('message', ...))
+
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
@@ -178,5 +241,16 @@ self.addEventListener('message', event => {
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         // Allow client to force skip waiting (used during forced updates)
         self.skipWaiting();
+    } else if (event.data && event.data.type === 'CLEAR_CACHE') {
+        // BUG 49 FIX (Security): Purge all caches to ensure account isolation.
+        // This is triggered by app.js when an account switch is detected.
+        event.waitUntil(
+            caches.keys().then(keys => {
+                return Promise.all(keys.map(k => {
+                    console.log(`[SW] Clearing cache due to account switch: ${k}`);
+                    return caches.delete(k);
+                }));
+            })
+        );
     }
 });

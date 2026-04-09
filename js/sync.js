@@ -31,10 +31,23 @@ const syncManager = (() => {
     // new device with empty local state could push an empty snapshot to Drive
     // before the initial pull completes, wiping all remote data.
     let _remoteChecked = false;
-    // BUG 31: channel for broadcasting IDB updates to sibling tabs (see pull()).
+    // FIX B: channel for broadcasting IDB updates to sibling tabs after pull().
+    // Previously declared but postMessage was never called — now it is used at
+    // the end of a successful pull() to notify other tabs immediately.
     const _syncChannel = typeof BroadcastChannel !== 'undefined'
         ? new BroadcastChannel('nexus-sync')
         : null;
+    // FIX B: Listen for sync notifications from sibling tabs so this tab can
+    // reload its store without waiting for the next auto-sync interval.
+    if (_syncChannel) {
+        _syncChannel.onmessage = (event) => {
+            if (event.data?.type === 'pull:complete' && !isSyncing) {
+                console.log('[Sync] Sibling tab completed a pull — reloading store from IDB.');
+                if (store?.load) store.load().catch(() => {});
+                if (window.refreshSidebarProjects) window.refreshSidebarProjects();
+            }
+        };
+    }
     // BUG 32: guard so the visibilitychange listener is registered at most once.
     let _visibilityListenerRegistered = false;
     // BUG 34: guard so the beforeunload listener is registered at most once.
@@ -412,6 +425,14 @@ const syncManager = (() => {
             pushPending = false;
             currentUser = null;    // Clear old Google identity so it doesn't linger
             tokenTimestamp = 0;    // Invalidate Drive token age check
+
+            // BUG 46 FIX (Security): Clear third-party tokens (Zotero, Todoist, etc.)
+            // stored in sessionStorage via StorageManager. These tokens are tied to
+            // the previous user and MUST NOT leak into the new account's session.
+            if (StorageManager && StorageManager.clearSessionData) {
+                console.log('[Sync] Purging third-party integration tokens for account switch.');
+                StorageManager.clearSessionData();
+            }
         } else {
             // Same account, just email changed — keep sync state
             console.log('[Sync] Email alias updated, maintaining sync state');
@@ -924,89 +945,95 @@ const syncManager = (() => {
     async function push() {
         if (!networkOnline || isSyncPaused()) return;
 
-        // If Backend is authenticated, use Phase 2 Granular Sync
-        if (BackendClient.isAuthenticated()) {
-            if (isSyncing) { pushPending = true; return; }
-            isSyncing = true;
-            pushPending = false;
-            updateSyncUI('syncing');
+        // BUG 45 FIX (Race Condition): Use Web Locks API to ensure only one tab
+        // processes the sync_push_queue at a time. Without this, multiple tabs
+        // could read the same changes, send them to the server, and then
+        // delete them concurrently, causing duplicate records on the server
+        // or data loss if one tab deletes records the other hasn't finished sending.
+        return navigator.locks.request('nexus_sync_push', { ifAvailable: true }, async (lock) => {
+            if (!lock) {
+                console.log('[Sync] Push already in progress in another tab. Skipping.');
+                return;
+            }
 
-            try {
-                const changes = await dbAPI.getAll('sync_push_queue');
-                if (changes.length === 0) {
-                    _dirtyLocalChanges = false;
-                    updateSyncUI('online');
-                    return;
-                }
+            // If Backend is authenticated, use Phase 2 Granular Sync
+            if (BackendClient.isAuthenticated()) {
+                if (isSyncing) { pushPending = true; return; }
+                isSyncing = true;
+                pushPending = false;
+                updateSyncUI('syncing');
 
-                console.log(`[Sync] Pushing ${changes.length} granular changes to backend...`);
-                // Split changes if too many? Backend handles array.
-                const res = await BackendClient.fetch('/api/sync/push', {
-                    method: 'POST',
-                    body: JSON.stringify({ changes })
-                });
-
-                if (!res.ok) throw new Error('Push failed: ' + res.status);
-
-                const data = await res.json();
-                const results = data.results || [];
-                
-                // PARTIAL SUCCESS & PURGE LOGIC:
-                // We remove an item from the queue if:
-                // a) The server confirmed success.
-                // b) The server returned a PERMANENT error (validation fail, missing column).
-                // Transient errors (network, D1 busy) stay in the queue for retry.
-                const successfulEntityIds = new Set(results.filter(r => r.status === 'success').map(r => r.entityId));
-                let remainingErrors = 0;
-
-                for (const item of changes) {
-                    const result = results.find(r => r.entityId === item.entityId);
-                    
-                    if (successfulEntityIds.has(item.entityId)) {
-                        await dbAPI.delete('sync_push_queue', item.id);
-                        continue;
+                try {
+                    const changes = await dbAPI.getAll('sync_push_queue');
+                    if (changes.length === 0) {
+                        _dirtyLocalChanges = false;
+                        updateSyncUI('online');
+                        return;
                     }
 
-                    if (result && result.status === 'error') {
-                        const isPermanent = 
-                            result.error?.includes('is required') ||
-                            result.error?.includes('no such column') ||
-                            result.error?.includes('constraint failed');
+                    console.log(`[Sync] Pushing ${changes.length} granular changes to backend...`);
+                    // Split changes if too many? Backend handles array.
+                    const res = await BackendClient.fetch('/api/sync/push', {
+                        method: 'POST',
+                        body: JSON.stringify({ changes })
+                    });
+
+                    if (!res.ok) throw new Error('Push failed: ' + res.status);
+
+                    const data = await res.json();
+                    const results = data.results || [];
+                    
+                    // PARTIAL SUCCESS & PURGE LOGIC:
+                    // We remove an item from the queue if:
+                    // a) The server confirmed success.
+                    // b) The server returned a PERMANENT error (validation fail, missing column).
+                    // Transient errors (network, D1 busy) stay in the queue for retry.
+                    const successfulEntityIds = new Set(results.filter(r => r.status === 'success').map(r => r.entityId));
+                    let remainingErrors = 0;
+
+                    for (const item of changes) {
+                        const result = results.find(r => r.entityId === item.entityId);
                         
-                        if (isPermanent) {
+                        if (successfulEntityIds.has(item.entityId)) {
                             await dbAPI.delete('sync_push_queue', item.id);
-                            console.warn(`[Sync] Purged invalid record ${item.entityId} from queue: ${result.error}`);
+                            continue;
+                        }
+
+                        if (result && result.status === 'error') {
+                            const isPermanent = 
+                                result.error?.includes('is required') ||
+                                result.error?.includes('no such column') ||
+                                result.error?.includes('constraint failed');
+                            
+                            if (isPermanent) {
+                                await dbAPI.delete('sync_push_queue', item.id);
+                                console.warn(`[Sync] Purged invalid record ${item.entityId} from queue: ${result.error}`);
+                            } else {
+                                remainingErrors++;
+                            }
                         } else {
+                            // If for some reason we have no result for this item, keep it as an error to retry
                             remainingErrors++;
                         }
-                    } else {
-                        // If for some reason we have no result for this item, keep it as an error to retry
-                        remainingErrors++;
                     }
+
+                    _dirtyLocalChanges = remainingErrors > 0;
+                    if (!_dirtyLocalChanges) localStorage.removeItem('nexus_dirty_flag');
+                    updateSyncUI('online');
+                    console.log('[Sync] Push successful.');
+                } catch (err) {
+                    console.error('[Sync] Backend Push failed:', err);
+                    updateSyncUI('error');
+                } finally {
+                    isSyncing = false;
+                    if (pushPending) setTimeout(push, 500);
                 }
-
-                _dirtyLocalChanges = remainingErrors > 0;
-                if (!_dirtyLocalChanges) localStorage.removeItem('nexus_dirty_flag');
-                updateSyncUI('online');
-                console.log('[Sync] Push successful.');
-            } catch (err) {
-                console.error('[Sync] Backend Push failed:', err);
-                updateSyncUI('error');
-            } finally {
-                isSyncing = false;
-                if (pushPending) setTimeout(push, 500);
+                return;
             }
-            return;
-        }
 
-        // --- OLD GDRIVE LOGIC (Legacy) ---
-        return; // PHASE 2 ENFORCEMENT: Disabled Google Drive sync to ensure Backend Sync is exclusively used.
-        if (!accessToken) return;
-        // ... (original GDrive push logic would continue here, but we are prioritizing the new backend)
-        // For now, I'll keep the GDrive logic as a fallback if Backend is NOT authenticated.
-        // (Removing the rest of GDrive implementation for brevity in this refactor, 
-        //  but in a real scenario we might want both or a clean switch).
-        // Since the user is implementing Phase 2, we assume they want this new logic.
+            // --- OLD GDRIVE LOGIC (Legacy) ---
+            return; // PHASE 2 ENFORCEMENT: Disabled Google Drive sync to ensure Backend Sync is exclusively used.
+        });
     }
 
     /**
@@ -1038,10 +1065,36 @@ const syncManager = (() => {
                     : `/api/sync/pull?lastSyncTime=${lastSync}`;
 
                 console.log(`[Sync] ${isInitialSync ? 'Full' : 'Delta'} pull (since ${lastSync})...`);
-                const res = await BackendClient.fetch(endpoint);
-                if (!res.ok) throw new Error('Pull failed: ' + res.status);
 
-                const { changes, lastSyncTime } = await res.json();
+                // FIX D (Client Pagination): Loop while the server reports hasMore=true,
+                // accumulating all pages. Without this, devices offline for a long time
+                // would silently drop changes beyond the first 500.
+                let allChanges = [];
+                let currentCursor = lastSync;
+                let paginationSafe = 0; // guard against infinite loops
+                const MAX_PAGES = 20;   // cap at 10,000 changes per pull cycle
+
+                do {
+                    const pageEndpoint = isInitialSync
+                        ? '/api/sync/full'
+                        : `/api/sync/pull?lastSyncTime=${currentCursor}`;
+
+                    const res = await BackendClient.fetch(pageEndpoint);
+                    if (!res.ok) throw new Error('Pull failed: ' + res.status);
+
+                    const pageData = await res.json();
+                    const pageChanges = pageData.changes || [];
+                    allChanges = allChanges.concat(pageChanges);
+                    currentCursor = pageData.lastSyncTime ?? currentCursor;
+
+                    if (!pageData.hasMore || isInitialSync) break; // full sync is never paginated
+                    paginationSafe++;
+                } while (paginationSafe < MAX_PAGES);
+
+                const lastSyncTime = currentCursor;
+                const changes = allChanges;
+
+
                 if (changes && changes.length > 0) {
                     console.log(`[Sync] Applying ${changes.length} remote changes...`);
 
@@ -1074,6 +1127,22 @@ const syncManager = (() => {
                         'log': 'logs'
                     };
 
+                    // FIX E (offline conflict detection): build a snapshot of entityIds
+                    // that have pending local changes BEFORE applying remote updates.
+                    // If a remote UPDATE targets an entity we have queued for push, we
+                    // report a conflict instead of silently overwriting the local edit.
+                    const localQueuedIds = new Set();
+                    try {
+                        const queuedItems = await dbAPI.getAll('sync_push_queue');
+                        for (const item of queuedItems) {
+                            if (item.action === 'UPDATE' || item.action === 'DELETE') {
+                                localQueuedIds.add(item.entityId);
+                            }
+                        }
+                    } catch { /* non-fatal */ }
+
+                    const detectedConflicts = [];
+
                     for (const change of changes) {
                         let resolvedAction = change.action;
 
@@ -1089,6 +1158,18 @@ const syncManager = (() => {
                                     if (!existing) {
                                         resolvedAction = 'CREATE';
                                         console.log(`[Sync] Promoted UPDATE→CREATE for missing ${change.entityType}#${change.entityId}`);
+                                    } else if (localQueuedIds.has(change.entityId)) {
+                                        // FIX E: Both local and remote have changes for this entity.
+                                        // Record conflict and skip applying the remote version blindly.
+                                        detectedConflicts.push({
+                                            entityId: change.entityId,
+                                            entityType: change.entityType,
+                                            localVersion: existing,
+                                            remoteVersion: change.payload,
+                                            remoteTimestamp: change.timestamp,
+                                        });
+                                        console.warn(`[Sync] Conflict detected for ${change.entityType}#${change.entityId} — skipping blind overwrite`);
+                                        continue; // Skip this change; let user or future merge resolve it
                                     }
                                 } catch { /* if check fails, try UPDATE anyway */ }
                             }
@@ -1108,12 +1189,30 @@ const syncManager = (() => {
                             await store.dispatch(storeAction, { ...payload, id: change.entityId, _sync: true });
                         }
                     }
+
+                    // FIX E: Emit conflict event so app.js can open the conflict resolution modal.
+                    if (detectedConflicts.length > 0) {
+                        window.dispatchEvent(new CustomEvent('sync:conflicts-detected', {
+                            detail: { conflicts: detectedConflicts }
+                        }));
+                        console.warn(`[Sync] ${detectedConflicts.length} conflict(s) detected — user notification dispatched.`);
+                    }
+
                     showToast(`Sincronizados ${changes.length} cambios remotos`, 'success');
                 }
 
                 localStorage.setItem(cursorKey, lastSyncTime);
                 _remoteChecked = true;
                 updateSyncUI('online');
+
+                // FIX B: Notify sibling tabs that this tab completed a pull so they
+                // can refresh their in-memory store from IDB without waiting for their
+                // own auto-sync interval (which could be up to 1 minute away).
+                if (_syncChannel && changes?.length > 0) {
+                    try {
+                        _syncChannel.postMessage({ type: 'pull:complete', count: changes.length });
+                    } catch { /* non-fatal */ }
+                }
             } catch (err) {
                 console.error('[Sync] Backend Pull failed:', err);
                 updateSyncUI('error');
@@ -2733,6 +2832,15 @@ const syncManager = (() => {
         uploadChatMessage,
         getChatSyncStatus,
         startChatSync,
+        handleAccountSwitch,
+        // FIX 7: Allows app.js to freeze the sync engine immediately when an
+        // AccountChangeDetector event fires, before handleAccountSwitch completes.
+        // Uses the existing Circuit Breaker (syncPausedUntil) mechanism so no new
+        // state is needed — just set the pause window to the requested duration.
+        pauseSync(ms = 10_000) {
+            syncPausedUntil = Date.now() + ms;
+            console.log(`[Sync] Paused for ${ms}ms (account switch guard)`);
+        },
         // Expose isSyncing as a getter so store.js debounce guard can read it.
         // (The private `isSyncing` variable was never in the public API, so
         //  store.js saw `syncManager.isSyncing === undefined` and the guard
@@ -2744,6 +2852,7 @@ const syncManager = (() => {
         // Cleared only after a confirmed 200 OK from Drive.
         markDirty,
     };
+
 })();
 
 export { syncManager };

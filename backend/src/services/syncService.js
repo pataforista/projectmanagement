@@ -443,8 +443,20 @@ export class SyncService {
       // WHERE clause: target the specific record, scope to owner, and only update non-deleted entities.
       // NOT setting _deleted = 0 here — an UPDATE from a stale/offline device must never
       // silently resurrect an entity that was soft-deleted on another device.
+      //
+      // FIX C (Optimistic Locking): If the client includes `clientUpdatedAt` in the payload,
+      // add a timestamp guard so a stale write cannot overwrite a more-recent server version.
+      // This prevents last-write-wins silent data loss when two devices push concurrently.
+      const clientUpdatedAt = payload.updatedAt || payload.updated_at || null;
       let sql = `UPDATE ${tableName} SET ${setParts.join(', ')} WHERE id = ? AND _deleted = 0`;
       vals.push(entityId);
+
+      if (clientUpdatedAt && schema.hasUpdatedAt) {
+        // Only overwrite if the server row is NOT newer than what the client last saw.
+        sql += ` AND updated_at <= ?`;
+        vals.push(clientUpdatedAt);
+      }
+
 
       if (schema.ownerCol === 'project_id' && resolvedProjectId) {
          sql += ` AND project_id = ?`;
@@ -463,18 +475,26 @@ export class SyncService {
     // Skip changes that originated from the same device (no echo)
     const time = lastSyncTime ? (parseInt(lastSyncTime) || 0) : 0;
 
+    // FIX D (Pagination): Fetch LIMIT+1 rows to detect whether there are more
+    // pages available. The client must call pull again with the returned
+    // lastSyncTime until hasMore is false. Without this, devices that were
+    // offline for a long time silently lose changes beyond the first 500.
+    const PAGE_SIZE = 500;
     const { results } = await db.prepare(`
       SELECT * FROM sync_queue
       WHERE user_id = ? AND device_id != ? AND created_at > ?
       ORDER BY created_at ASC
-      LIMIT 500
+      LIMIT ${PAGE_SIZE + 1}
     `).bind(userId, deviceId, time).all();
 
-    const maxTimestamp = results.length > 0 ? results[results.length - 1].created_at : time;
+    const hasMore = results.length > PAGE_SIZE;
+    const page = hasMore ? results.slice(0, PAGE_SIZE) : results;
+    const maxTimestamp = page.length > 0 ? page[page.length - 1].created_at : time;
 
     return {
       lastSyncTime: maxTimestamp,
-      changes: results.map(c => ({
+      hasMore,
+      changes: page.map(c => ({
         action: c.action,
         entityType: c.entity_type,
         entityId: c.entity_id,
@@ -483,6 +503,7 @@ export class SyncService {
       }))
     };
   }
+
 
   /**
    * Returns ALL non-deleted entities for a user from the actual entity tables.

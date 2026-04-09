@@ -16,6 +16,7 @@ import { setCurrentMemberId, getCurrentWorkspaceUser, getCurrentWorkspaceMember,
 import { StorageManager } from './utils/storage-manager.js';
 import { AccountChangeDetector } from './utils/account-detector.js';
 import { SessionManager } from './utils/session-manager.js';
+import { IDBScopedStorage } from './utils/idb-account-scope.js';
 import { companion as ollamaCompanion } from './components/ollama-companion.js';
 import { swUpdater } from './utils/sw-updater.js';
 import { BackendClient } from './api/backend-client.js';
@@ -47,6 +48,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         AccountChangeDetector.init(async (changeEvent) => {
             if (changeEvent.type === 'account_switched') {
                 console.log(`[Boot] Account switch detected: ${changeEvent.oldEmail} → ${changeEvent.newEmail}`);
+
+                // FIX 7: Freeze the sync engine IMMEDIATELY before any async work.
+                // Without this, the auto-sync timer can fire between the account
+                // detection and the handleAccountSwitch completion, pushing data
+                // from the old account under the new user's token.
+                if (window.syncManager?.pauseSync) {
+                    window.syncManager.pauseSync(10_000); // 10s safety window
+                }
+
+                // FIX 1: Purge IDB stores that belong to the outgoing account so
+                // the incoming account never sees the previous user's data.
+                await IDBScopedStorage.switchAccount(changeEvent.newEmail, window.db);
+
+                // BUG 49 FIX (Security): Invalidate Service Worker cache upon account switch.
+                // This prevents the new user from seeing cached assets or data
+                // that might have been tailored or leaked from the previous session.
+                if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                    navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
+                    console.log('[Boot] SW Cache clear requested for account switch.');
+                }
+
                 if (window.syncManager && window.syncManager.handleAccountSwitch) {
                     // Pass sameSub flag so email-alias updates don't trigger a full sync reset
                     await window.syncManager.handleAccountSwitch(
@@ -89,6 +111,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         // BackendClient.clearTokens() was already called inside refreshToken() on failure.
         // Clear the persisted email so the auth overlay is not bypassed on reload.
         localStorage.removeItem('nexus_last_email');
+        
+        // BUG 50 FIX (Security): Complete identity reset by clearing Google sub/aud.
+        // Without this, the AccountChangeDetector might wrongly assume a session
+        // continuity that doesn't exist anymore.
+        sessionStorage.removeItem('nexus_stored_google_sub');
+        sessionStorage.removeItem('nexus_stored_google_aud');
+        
         location.reload();
     });
 
@@ -435,13 +464,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             if (window.db && window.SessionManager) {
                 await SessionManager.init(window.db);
-                console.log('[Boot] Session Manager initialized');
+                // FIX A: Activate cross-tab BroadcastChannel listener so that
+                // when one tab calls switchSession(), all other tabs receive the
+                // 'session:switched' notification and load the new session.
+                // Without this call syncAcrossTabs() was exported but never invoked.
+                SessionManager.syncAcrossTabs();
+                console.log('[Boot] Session Manager initialized (cross-tab sync active)');
             }
         } catch (e) {
             console.warn('[Boot] Session Manager init failed:', e);
         }
     } catch (e) {
         console.warn('[Boot] IndexedDB init failed:', e);
+    }
+
+    // ── 1.1. FIX 1: Validate IDB ownership on boot ──────────────────────────
+    // Detects the case where this browser last used IDB for a different account
+    // and clears stale stores BEFORE the store is loaded into memory.
+    try {
+        const activeEmail = StorageManager.get('workspace_user_email', 'session')
+            || localStorage.getItem('nexus_last_email')
+            || '';
+        window.IDBScopedStorage = IDBScopedStorage; // expose globally for sync.js
+        if (activeEmail) {
+            const hadMismatch = await IDBScopedStorage.validateOnBoot(activeEmail, window.db);
+            if (hadMismatch) {
+                console.log('[Boot] IDB ownership mismatch corrected — stale data cleared.');
+            } else {
+                IDBScopedStorage.claimOwnership(activeEmail);
+            }
+        }
+    } catch (e) {
+        console.warn('[Boot] IDB ownership validation failed:', e);
     }
 
     // ── 2. Load store ───────────────────────────────────────────────────
@@ -466,6 +520,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Make updater globally available for debugging/testing
     window.swUpdater = swUpdater;
+
+    // FIX 3: Register SW message listener so the push handler in sw.js can
+    // query the active session email before revealing notification content.
+    // This closes the loop on identity-aware push notifications.
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data?.type === 'GET_ACTIVE_EMAIL') {
+                const email = StorageManager.get('workspace_user_email', 'session') || '';
+                // Reply on the MessageChannel port sent by the SW
+                event.ports?.[0]?.postMessage({ email });
+            }
+        });
+    }
+
 
     // Listen for updates and show notifications
     swUpdater.onUpdate(({ status, version }) => {
