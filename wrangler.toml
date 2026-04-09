@@ -1,14 +1,12 @@
-name = "workspace-backend"
-main = "src/index.js"
+name = "projectmanagement"
+pages_build_output_dir = "."
 compatibility_date = "2024-03-23"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "workspace-db"
 database_id = "ad306137-1205-4d00-8121-cfd408426d77"
-migrations_dir = "migrations"
+migrations_dir = "backend/migrations"
 
 [vars]
 CORS_ORIGIN = "https://tlacuachehub.pages.dev,https://clinicaesquizo.pages.dev,https://pataforista.github.io,https://workspace-frontend.pages.dev,https://47a4391a.workspace-frontend-7bo.pages.dev,https://workspace-frontend-7bo.pages.dev,http://localhost:5173,http://localhost:8080,http://127.0.0.1:5173"
-# JWT_SECRET should be set via 'wrangler secret put JWT_SECRET'
-# GOOGLE_CLIENT_ID should be set via 'wrangler secret put GOOGLE_CLIENT_ID'
