@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_sync_queue_entity ON sync_queue(entity_type, enti
 -- 2. Add message column to logs — the hardcoded INSERT in syncService.js
 --    references this column; without it every log sync fails with
 --    "no such column: message".
-ALTER TABLE logs ADD COLUMN message TEXT;
+-- ALTER TABLE logs ADD COLUMN message TEXT; -- Redundant: already exists in 0001_initial_schema.sql
 
 -- 3. Add columns that the frontend sends for time_logs but that were missing
 --    from the table definition, causing those fields to be silently discarded.
