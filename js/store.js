@@ -1,6 +1,6 @@
 import { dbAPI } from './db.js';
 import { createDelta, applyDelta } from './utils/versioning.js';
-import { generateUID as uid, esc, getCurrentWorkspaceActor } from './utils.js';
+import { generateUID as uid, esc, getCurrentWorkspaceActor, generatePremiumAvatar } from './utils.js';
 import { RoleManager } from '../scripts/roles.js';
 
 const store = (() => {
@@ -218,7 +218,7 @@ const store = (() => {
                     const project = _state.projects[idx];
 
                     // Permission check: only Lead or Author can edit content
-                    if (!RoleManager.canEditContent(project, actor.label)) {
+                    if (!RoleManager.canEditContent(project, actor.label, actor.role)) {
                         console.warn(`[Permissions] User ${actor.label} unauthorized to edit project ${project.id}`);
                         if (window.showToast) showToast('No tienes permiso para editar este proyecto.', 'error');
                         return;
@@ -280,7 +280,7 @@ const store = (() => {
                     const project = _state.projects[pIdx];
 
                     // Permission check
-                    if (!RoleManager.canEditContent(project, actor.label)) {
+                    if (!RoleManager.canEditContent(project, actor.label, actor.role)) {
                         console.warn(`[Permissions] User ${actor.label} unauthorized to delete project ${project.id}`);
                         if (window.showToast) showToast('No tienes permiso para eliminar este proyecto.', 'error');
                         return;
@@ -387,7 +387,7 @@ const store = (() => {
                 if (idx !== -1) {
                     const task = _state.tasks[idx];
                     // Permission check: only Lead or Author can edit content
-                    if (!RoleManager.canEditContent(task, actor.label)) {
+                    if (!RoleManager.canEditContent(task, actor.label, actor.role)) {
                         console.warn(`[Permissions] User ${actor.label} unauthorized to edit task ${task.id}`);
                         if (window.showToast) showToast('No tienes permiso para editar esta tarea.', 'error');
                         return;
@@ -662,7 +662,12 @@ const store = (() => {
             // ── Members ──
             case 'ADD_MEMBER': {
                 storeName = 'members';
-                const avatar = payload.avatar || (payload.name ? payload.name.charAt(0).toUpperCase() : '?');
+                const actor = getCurrentWorkspaceActor();
+                if (!RoleManager.can('ADD_MEMBER', actor.role)) {
+                    if (window.showToast) showToast('No tienes permiso para añadir miembros.', 'error');
+                    return;
+                }
+                const avatar = payload.avatar || generatePremiumAvatar(payload.name, payload.role);
                 const record = { id: _uid, createdAt: monotonicNow(), avatar, ...payload };
                 await dbAPI.put(storeName, record);
                 if (!payload._sync) await dbAPI.queueSync('CREATE', 'member', record.id, record);
@@ -674,6 +679,11 @@ const store = (() => {
 
             case 'UPDATE_MEMBER': {
                 storeName = 'members';
+                const actor = getCurrentWorkspaceActor();
+                if (!RoleManager.can('ADD_MEMBER', actor.role)) { // Assuming Edit requires same perm as Add for simplicity
+                    if (window.showToast) showToast('No tienes permiso para editar miembros.', 'error');
+                    return;
+                }
                 const existing = _state.members.find(m => m.id === payload.id);
                 if (!existing) throw new Error(`Member ${payload.id} not found`);
                 const updated = { ...existing, ...payload, updatedAt: monotonicNow() };
@@ -687,6 +697,11 @@ const store = (() => {
 
             case 'DELETE_MEMBER': {
                 storeName = 'members';
+                const actor = getCurrentWorkspaceActor();
+                if (!RoleManager.can('DELETE_MEMBER', actor.role)) {
+                    if (window.showToast) showToast('No tienes permiso para eliminar miembros.', 'error');
+                    return;
+                }
                 const index = _state.members.findIndex(m => m.id === payload.id);
                 if (index === -1) throw new Error(`Member ${payload.id} not found`);
                 const tombstone = {

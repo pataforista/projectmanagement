@@ -74,6 +74,17 @@
     --dur-fast: 180ms;
     --dur-med: 280ms;
     --dur-slow: 420ms;
+
+    /* M3 Neobauhaus Premium Tokens */
+    --surface-glass: rgba(20, 20, 24, 0.4);
+    --surface-glass-border: rgba(255, 255, 255, 0.08);
+    --accent-vibrant: linear-gradient(135deg, #5e6ad2 0%, #311b92 100%);
+    --accent-teal-vibrant: linear-gradient(135deg, #2dd4bf 0%, #0d9488 100%);
+    --accent-success-vibrant: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+    --accent-danger-vibrant: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
+    
+    --glow-primary: 0 0 20px rgba(94, 106, 210, 0.25);
+    --blur-premium: blur(16px) saturate(160%);
 }
 
 [data-theme="light"] {
@@ -134,7 +145,34 @@
     --font-family: 'Orbitron', var(--font-mono);
     --shadow-md: 0 0 12px rgba(0, 229, 255, 0.25), 0 0 4px rgba(240, 0, 255, 0.2);
     --shadow-lg: 0 0 24px rgba(240, 0, 255, 0.3), 0 0 8px rgba(0, 229, 255, 0.2);
-    --shadow-xl: 0 0 40px rgba(240, 0, 255, 0.35), 0 0 16px rgba(0, 229, 255, 0.25);
+    --blur-premium: blur(16px) saturate(160%);
+}
+
+/* --- Phase 6 Utility Classes --- */
+.glass-panel {
+    background: var(--surface-glass);
+    backdrop-filter: var(--blur-premium);
+    -webkit-backdrop-filter: var(--blur-premium);
+    border: 1px solid var(--surface-glass-border);
+}
+
+.premium-header {
+    background: var(--accent-vibrant);
+    color: white;
+    box-shadow: var(--shadow-md);
+}
+
+.playful-pop {
+    transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+.playful-pop:hover {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: var(--shadow-lg);
+}
+
+.playful-pop:active {
+    transform: translateY(0) scale(0.98);
 }
 
 /* CRT Scanlines and Perspective Grid for Rosel */

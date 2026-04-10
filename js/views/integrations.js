@@ -3,9 +3,16 @@
  */
 
 function renderIntegrations(root) {
+  const activeEmail = StorageManager.get('workspace_user_email', 'session');
   const syncConfig = (window.syncManager?.getConfig) ? syncManager.getConfig() : {};
-  const zoteroCreds = (window.zoteroApi?.getCredentials) ? zoteroApi.getCredentials() : { userId: '', apiKey: '' };
-  const zenodoCreds = (window.zenodoApi?.getCredentials) ? zenodoApi.getCredentials() : { token: '', sandbox: true };
+  const zoteroCreds = (window.zoteroApi?.getCredentials) ? zoteroApi.getCredentials() : { 
+    userId: StorageManager.getScoped('zotero_user_id', activeEmail) || '', 
+    apiKey: StorageManager.getScoped('zotero_api_key', activeEmail) || '' 
+  };
+  const zenodoCreds = (window.zenodoApi?.getCredentials) ? zenodoApi.getCredentials() : { 
+    token: StorageManager.getScoped('zenodo_token', activeEmail) || '', 
+    sandbox: StorageManager.getScoped('zenodo_sandbox', activeEmail) !== 'false' 
+  };
 
   root.innerHTML = `
     <div class="view-inner">
@@ -39,7 +46,7 @@ function renderIntegrations(root) {
                   <span>Google Drive (Backup & Team)</span>
                 </label>
                 <label class="checkbox-item">
-                  <input type="checkbox" id="sync-google-calendar" ${localStorage.getItem('sync_gcal') === 'true' ? 'checked' : ''}>
+                  <input type="checkbox" id="sync-google-calendar" ${StorageManager.get('sync_gcal', 'global') === 'true' ? 'checked' : ''}>
                   <span>Google Calendar (Eventos)</span>
                 </label>
                 <div style="font-size:0.75rem; color:var(--text-muted); margin-left:24px; margin-top:-4px;">
@@ -47,7 +54,7 @@ function renderIntegrations(root) {
                   <span class="sync-item-count" style="margin-left:8px;"></span>
                 </div>
                 <label class="checkbox-item" style="margin-top:8px;">
-                  <input type="checkbox" id="sync-google-tasks" ${localStorage.getItem('sync_gtasks') === 'true' ? 'checked' : ''}>
+                  <input type="checkbox" id="sync-google-tasks" ${StorageManager.get('sync_gtasks', 'global') === 'true' ? 'checked' : ''}>
                   <span>Google Tasks (Tareas)</span>
                 </label>
                 <div style="font-size:0.75rem; color:var(--text-muted); margin-left:24px; margin-top:-4px;">
@@ -109,7 +116,7 @@ function renderIntegrations(root) {
             <div class="integration-icon todoist"><i data-feather="check-circle"></i></div>
             <div class="integration-title">
               <h3>Todoist</h3>
-              <span class="badge ${localStorage.getItem('todoist_token') ? 'badge-success' : 'badge-neutral'}">${localStorage.getItem('todoist_token') ? 'Conectado' : 'No conectado'}</span>
+              <span class="badge ${StorageManager.getScoped('todoist_token', activeEmail) ? 'badge-success' : 'badge-neutral'}">${StorageManager.getScoped('todoist_token', activeEmail) ? 'Conectado' : 'No conectado'}</span>
             </div>
           </div>
           <div class="integration-body">
@@ -124,7 +131,7 @@ function renderIntegrations(root) {
               <button class="btn btn-primary btn-sm flex-1" id="btn-save-todoist" style="flex:1;">Guardar</button>
               <button class="btn btn-secondary btn-sm" id="btn-test-todoist" title="Probar conexión"><i data-feather="loader" style="display:none;" class="spin"></i> Probar</button>
             </div>
-            <button class="btn btn-ghost btn-sm" id="btn-sync-todoist" style="margin-top:8px;width:100%;" ${!localStorage.getItem('todoist_token') ? 'disabled' : ''}>
+            <button class="btn btn-ghost btn-sm" id="btn-sync-todoist" style="margin-top:8px;width:100%;" ${!StorageManager.getScoped('todoist_token', activeEmail) ? 'disabled' : ''}>
               <i data-feather="refresh-cw"></i> Sincronizar Tareas Ahora
             </button>
           </div>
@@ -166,8 +173,8 @@ function renderIntegrations(root) {
             <div class="integration-icon" style="background:var(--accent-teal);"><i data-feather="cpu"></i></div>
             <div class="integration-title">
               <h3>Ollama (IA Local)</h3>
-              <span class="badge ${localStorage.getItem('ollama_url') ? 'badge-success' : 'badge-neutral'}">
-                ${localStorage.getItem('ollama_url') ? 'Habilitado' : 'No configurado'}
+              <span class="badge ${StorageManager.getScoped('ollama_url', activeEmail) ? 'badge-success' : 'badge-neutral'}">
+                ${StorageManager.getScoped('ollama_url', activeEmail) ? 'Habilitado' : 'No configurado'}
               </span>
             </div>
           </div>
@@ -183,17 +190,17 @@ function renderIntegrations(root) {
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Servidor URL</label>
               <input type="text" class="form-input" id="int-ollama-url"
-                value="${esc(localStorage.getItem('ollama_url') || 'http://localhost:11434')}" placeholder="http://localhost:11434">
+                value="${esc(StorageManager.getScoped('ollama_url', activeEmail) || 'http://localhost:11434')}" placeholder="http://localhost:11434">
             </div>
             <div class="form-group" style="margin-top:8px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Modelo Base</label>
               <input type="text" class="form-input" id="int-ollama-model"
-                value="${esc(localStorage.getItem('ollama_model') || 'llama3')}" placeholder="Ej: mistral, llama3">
+                value="${esc(StorageManager.getScoped('ollama_model', activeEmail) || 'llama3')}" placeholder="Ej: mistral, llama3">
             </div>
             <div class="form-group" style="margin-top:8px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">CORS Proxy URL (opcional)</label>
               <input type="text" class="form-input" id="int-ollama-cors-proxy"
-                value="${esc(localStorage.getItem('ollama_cors_proxy') || '')}" placeholder="Ej: https://cors-proxy.example.com/?url=">
+                value="${esc(StorageManager.getScoped('ollama_cors_proxy', activeEmail) || '')}" placeholder="Ej: https://cors-proxy.example.com/?url=">
               <div style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
                 Si tienes problemas CORS, usa un proxy como <code>https://cors-anywhere.herokuapp.com/?url=</code> (requiere activación previa)
               </div>
@@ -211,8 +218,8 @@ function renderIntegrations(root) {
             <div class="integration-icon" style="background:#e11d48;"><i data-feather="activity"></i></div>
             <div class="integration-title">
               <h3>eLabFTW</h3>
-              <span class="badge ${localStorage.getItem('elabftw_api_key') ? 'badge-success' : 'badge-neutral'}">
-                ${localStorage.getItem('elabftw_api_key') ? 'Conectado' : 'No conectado'}
+              <span class="badge ${StorageManager.getScoped('elabftw_api_key', activeEmail) ? 'badge-success' : 'badge-neutral'}">
+                ${StorageManager.getScoped('elabftw_api_key', activeEmail) ? 'Conectado' : 'No conectado'}
               </span>
             </div>
           </div>
@@ -223,7 +230,7 @@ function renderIntegrations(root) {
             <div class="form-group" style="margin-top:12px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">Instancia URL</label>
               <input type="text" class="form-input" id="int-elab-url"
-                value="${esc(localStorage.getItem('elabftw_url') || '')}" placeholder="https://elab.tu-institucion.edu">
+                value="${esc(StorageManager.getScoped('elabftw_url', activeEmail) || '')}" placeholder="https://elab.tu-institucion.edu">
             </div>
             <div class="form-group" style="margin-top:8px;">
               <label style="font-size:0.75rem; color:var(--text-muted);">API Key</label>
@@ -242,7 +249,7 @@ function renderIntegrations(root) {
             <div class="integration-icon"><i data-feather="shield"></i></div>
             <div class="integration-title">
               <h3>Seguridad</h3>
-              <span class="badge ${localStorage.getItem('workspace_lock_hash') ? 'badge-success' : 'badge-neutral'}">${localStorage.getItem('workspace_lock_hash') ? 'Protegido' : 'Sin contraseña'}</span>
+              <span class="badge ${StorageManager.get('workspace_lock_hash', 'global') ? 'badge-success' : 'badge-neutral'}">${StorageManager.get('workspace_lock_hash', 'global') ? 'Protegido' : 'Sin contraseña'}</span>
             </div>
           </div>
           <div class="integration-body">
@@ -252,7 +259,7 @@ function renderIntegrations(root) {
               <input type="password" class="form-input" id="int-new-pwd" placeholder="Mínimo 8 caracteres">
             </div>
             <label class="checkbox-item" style="margin-top:8px;">
-              <input type="checkbox" id="int-autolock" ${localStorage.getItem('autolock_enabled') === 'true' ? 'checked' : ''}>
+              <input type="checkbox" id="int-autolock" ${StorageManager.get('autolock_enabled', 'global') === 'true' ? 'checked' : ''}>
               <span>Bloquear al minimizar pantalla</span>
             </label>
             <button class="btn btn-primary btn-sm" id="btn-save-security" style="margin-top:16px;width:100%;">
@@ -274,8 +281,8 @@ function renderIntegrations(root) {
     if (window.zoteroApi?.setCredentials) {
       zoteroApi.setCredentials(uid, key);
     } else {
-      localStorage.setItem('zotero_user_id', uid);
-      localStorage.setItem('zotero_api_key', key);
+      StorageManager.setScoped('zotero_user_id', uid, activeEmail);
+      StorageManager.setScoped('zotero_api_key', key, activeEmail);
     }
     showToast('Zotero configurado con éxito', 'success');
     renderIntegrations(root);
@@ -293,7 +300,7 @@ function renderIntegrations(root) {
     if (window.googleIntegrationHandler?.handleCalendarToggle) {
       window.googleIntegrationHandler.handleCalendarToggle(e);
     } else {
-      localStorage.setItem('sync_gcal', e.target.checked);
+      StorageManager.set('sync_gcal', e.target.checked, 'global');
       showToast(`Google Calendar ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
     }
   });
@@ -302,7 +309,7 @@ function renderIntegrations(root) {
     if (window.googleIntegrationHandler?.handleTasksToggle) {
       window.googleIntegrationHandler.handleTasksToggle(e);
     } else {
-      localStorage.setItem('sync_gtasks', e.target.checked);
+      StorageManager.set('sync_gtasks', e.target.checked, 'global');
       showToast(`Google Tasks ${e.target.checked ? 'activado' : 'desactivado'}`, 'info');
     }
   });
@@ -314,7 +321,7 @@ function renderIntegrations(root) {
 
   root.querySelector('#btn-save-todoist')?.addEventListener('click', () => {
     const token = root.querySelector('#int-todoist-token').value.trim();
-    localStorage.setItem('todoist_token', token);
+    StorageManager.setScoped('todoist_token', token, activeEmail);
     showToast(token ? 'Token de Todoist guardado.' : 'Token eliminado.', token ? 'success' : 'info');
     renderIntegrations(root);
   });
@@ -332,8 +339,8 @@ function renderIntegrations(root) {
     if (window.zenodoApi?.setCredentials) {
       zenodoApi.setCredentials(token, sandbox);
     } else {
-      localStorage.setItem('zenodo_token', token);
-      localStorage.setItem('zenodo_sandbox', String(sandbox));
+      StorageManager.setScoped('zenodo_token', token, activeEmail);
+      StorageManager.setScoped('zenodo_sandbox', String(sandbox), activeEmail);
     }
     showToast(token ? `Zenodo guardado (${sandbox ? 'sandbox' : 'producción'}).` : 'Token eliminado.', token ? 'success' : 'info');
     renderIntegrations(root);
@@ -372,8 +379,8 @@ function renderIntegrations(root) {
         hashPwd(normalized)
       ]);
 
-      localStorage.setItem('workspace_lock_hash', lockHash);
-      localStorage.setItem('workspace_recovery_hash', recoveryHash);
+      StorageManager.set('workspace_lock_hash', lockHash, 'global');
+      StorageManager.set('workspace_recovery_hash', recoveryHash, 'global');
 
       // Actualizar la clave de cifrado en la sesión actual
       if (cryptoLayer?.unlock) await cryptoLayer.unlock(pwd);
@@ -422,7 +429,7 @@ function renderIntegrations(root) {
       });
     }
 
-    localStorage.setItem('autolock_enabled', autolock);
+    StorageManager.set('autolock_enabled', String(autolock), 'global');
     if (pwd.length === 0) {
       showToast('Configuración de seguridad guardada.', 'success');
       renderIntegrations(root);
@@ -436,12 +443,12 @@ function renderIntegrations(root) {
     if (window.ollamaApi?.setSettings) {
       ollamaApi.setSettings(url, model, corsProxy);
     } else {
-      localStorage.setItem('ollama_url', url);
-      localStorage.setItem('ollama_model', model);
+      StorageManager.setScoped('ollama_url', url, activeEmail);
+      StorageManager.setScoped('ollama_model', model, activeEmail);
       if (corsProxy) {
-        localStorage.setItem('ollama_cors_proxy', corsProxy);
+        StorageManager.setScoped('ollama_cors_proxy', corsProxy, activeEmail);
       } else {
-        localStorage.removeItem('ollama_cors_proxy');
+        StorageManager.removeScoped('ollama_cors_proxy', activeEmail);
       }
     }
     showToast('Ollama configurado correctamente', 'success');
@@ -454,8 +461,8 @@ function renderIntegrations(root) {
     if (window.elabftwApi?.setCredentials) {
       elabftwApi.setCredentials(url, key);
     } else {
-      localStorage.setItem('elabftw_url', url);
-      localStorage.setItem('elabftw_api_key', key);
+      StorageManager.setScoped('elabftw_url', url, activeEmail);
+      StorageManager.setScoped('elabftw_api_key', key, activeEmail);
     }
     showToast('eLabFTW configurado correctamente', 'success');
     renderIntegrations(root);

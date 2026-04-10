@@ -1,3 +1,7 @@
+import { getCurrentWorkspaceUser, esc, statPill, emptyState, taskItem, cycleWidget, miniProjectCard, bindTaskCheckboxes } from '../utils.js';
+import { store } from '../store.js';
+import { openTaskModal } from '../modals.js';
+
 /**
  * views/dashboard.js — Dashboard view
  */
@@ -27,6 +31,18 @@ function renderDashboard(root) {
         ${statPill(cycles.length, 'Ciclos en curso', 'refresh-cw')}
         ${statPill(blocked.length, 'Bloqueadas', 'alert-circle', blocked.length > 0 ? 'var(--accent-danger)' : null)}
         ${statPill(upcoming.length, 'Vencen en 7 días', 'calendar', upcoming.length > 3 ? 'var(--accent-warning)' : null)}
+      </div>
+
+      <!-- Phase 7: Productivity Analytics -->
+      <div class="card glass-panel" style="margin-bottom:24px; padding:24px;">
+        <div class="card-header" style="margin-bottom:20px;">
+          <h3><i data-feather="trending-up" style="width:18px; vertical-align:middle; margin-right:8px; color:var(--accent-primary);"></i> Estadísticas Nexus</h3>
+        </div>
+        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:20px; min-height:280px;">
+          <div id="chart-velocity" class="glass-panel" style="background:rgba(255,255,255,0.02); border-radius:12px; padding:12px;"></div>
+          <div id="chart-status" class="glass-panel" style="background:rgba(255,255,255,0.02); border-radius:12px; padding:12px;"></div>
+          <div id="chart-priority" class="glass-panel" style="background:rgba(255,255,255,0.02); border-radius:12px; padding:12px;"></div>
+        </div>
       </div>
 
       <div class="dashboard-grid">
@@ -134,6 +150,79 @@ function renderDashboard(root) {
 
   bindTaskCheckboxes(root);
   root.querySelector('#dash-new-task')?.addEventListener('click', () => openTaskModal());
+
+  // --- Phase 7 Chart Initialization ---
+  if (typeof FrappeChart !== 'undefined') {
+    initDashboardCharts(root);
+  } else {
+    console.warn('[Dashboard] FrappeChart not found. Verify CDN script.');
+  }
+}
+
+/**
+ * Initializes productivity charts using Frappe Charts.
+ */
+function initDashboardCharts(root) {
+  const allTasks = store.get.allTasks();
+  if (!allTasks.length) return;
+
+  // 1. Velocity (completed in last 15 days)
+  const days = 15;
+  const labels = [];
+  const completedCounts = [];
+  const now = new Date();
+  
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    labels.push(d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }));
+    
+    const count = allTasks.filter(t => t.status === 'Terminado' && t.updatedAt && new Date(t.updatedAt).toISOString().slice(0, 10) === dateStr).length;
+    completedCounts.push(count);
+  }
+
+  new FrappeChart.Chart('#chart-velocity', {
+    title: "Velocidad (Tareas de Alta)",
+    data: {
+      labels: labels,
+      datasets: [{ name: "Completadas", values: completedCounts, chartType: 'line' }]
+    },
+    type: 'axis-mixed',
+    height: 240,
+    colors: ['#5e6ad2'],
+    lineOptions: { hideDots: 0, regionFill: 1 },
+  });
+
+  // 2. Status Distribution (Donut)
+  const statusCounts = {};
+  allTasks.forEach(t => { statusCounts[t.status] = (statusCounts[t.status] || 0) + 1; });
+  
+  new FrappeChart.Chart('#chart-status', {
+    title: "Distribución de Carga",
+    data: {
+      labels: Object.keys(statusCounts),
+      datasets: [{ values: Object.values(statusCounts) }]
+    },
+    type: 'donut',
+    height: 240,
+    colors: ['#38bdf8', '#a78bfa', '#f59e0b', '#22c55e', '#ef4444', '#64748b']
+  });
+
+  // 3. Priority Map (Pie)
+  const priorityCounts = { alta: 0, media: 0, baja: 0 };
+  allTasks.forEach(t => { if (priorityCounts[t.priority] !== undefined) priorityCounts[t.priority]++; });
+
+  new FrappeChart.Chart('#chart-priority', {
+    title: "Triaje por Prioridad",
+    data: {
+      labels: ["Alta", "Media", "Baja"],
+      datasets: [{ values: [priorityCounts.alta, priorityCounts.media, priorityCounts.baja] }]
+    },
+    type: 'pie',
+    height: 240,
+    colors: ['#ef4444', '#f59e0b', '#38bdf8']
+  });
 }
 
 window.renderDashboard = renderDashboard;

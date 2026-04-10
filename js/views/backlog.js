@@ -1,3 +1,8 @@
+import { RoleManager } from '../scripts/roles.js';
+import { getCurrentWorkspaceUser, esc, statusBadge, fmtDate, isTaskAssignedToCurrentUser, safeExternalUrl } from '../utils.js';
+import { store } from '../store.js';
+import { openTaskModal, openTaskDetail } from '../modals.js';
+
 /**
  * views/backlog.js — Backlog view
  */
@@ -6,36 +11,43 @@ const PRIORITIES = ['alta', 'media', 'baja'];
 const BACKLOG_STATUSES = window.STATUSES || ['Capturado', 'Definido', 'En preparación', 'En elaboración', 'En revisión', 'En espera', 'Terminado', 'Archivado'];
 
 function renderBacklog(root) {
+  const user = getCurrentWorkspaceUser();
+  const role = user.role;
+  const canModify = RoleManager.can('ADD_TASK', role);
+
   root.innerHTML = `
-    <div class="view-inner">
-      <div class="view-header">
+    <div class="view-inner glass-panel" style="margin:20px; border-radius:var(--radius-lg); padding:24px; min-height:calc(100vh - 120px); border:1px solid var(--surface-glass-border);">
+      <div class="view-header" style="margin-bottom:32px;">
         <div class="view-header-text">
-          <h1>Backlog</h1>
-          <p class="view-subtitle">Captura y priorización de todo el trabajo pendiente.</p>
+          <h1 style="font-size:2.2rem; font-weight:800; letter-spacing:-0.04em;">Backlog</h1>
+          <p class="view-subtitle" style="font-size:1.05rem; opacity:0.8;">Captura y priorización de todo el trabajo pendiente.</p>
         </div>
         <div class="view-actions">
-          <button class="btn btn-primary" id="backlog-new-btn"><i data-feather="plus"></i> Nueva tarea</button>
+          ${canModify ? `<button class="btn btn-primary playful-pop" id="backlog-new-btn" style="background:var(--accent-vibrant); border:none; box-shadow:var(--glow-primary);"><i data-feather="plus"></i> Nueva tarea</button>` : ''}
         </div>
       </div>
 
-      <div class="filter-bar" id="backlog-filters">
-        <select class="filter-select" id="bl-proj">
-          <option value="">Todos los proyectos</option>
-          ${store.get.projects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
-        </select>
+      <div class="filter-bar glass-panel" id="backlog-filters" style="background:var(--bg-surface-2); padding:12px 20px; border-radius:var(--radius-md); margin-bottom:24px; display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <i data-feather="filter" style="width:16px; color:var(--text-muted);"></i>
+          <select class="filter-select" id="bl-proj" style="background:transparent; border:none; color:var(--text-primary); cursor:pointer;">
+            <option value="">Todos los proyectos</option>
+            ${store.get.projects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
         <span id="backlog-drive-link-container"></span>
-        <select class="filter-select" id="bl-status">
+        <select class="filter-select" id="bl-status" style="background:transparent; border:none; color:var(--text-primary); cursor:pointer;">
           <option value="">Todos los estados</option>
           ${BACKLOG_STATUSES.map(s => `<option value="${s}">${s}</option>`).join('')}
         </select>
-        <select class="filter-select" id="bl-priority">
+        <select class="filter-select" id="bl-priority" style="background:transparent; border:none; color:var(--text-primary); cursor:pointer;">
           <option value="">Todas las prioridades</option>
           ${PRIORITIES.map(p => `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`).join('')}
         </select>
       </div>
 
-      <div id="backlog-table-wrap">
-        ${renderBacklogTable(store.get.allTasks())}
+      <div id="backlog-table-wrap" style="overflow-x:auto;">
+        ${renderBacklogTable(store.get.allTasks(), role)}
       </div>
     </div>`;
 
@@ -70,44 +82,51 @@ function getBacklogFilters(root) {
 }
 
 function refreshBacklog(root) {
+  const user = getCurrentWorkspaceUser();
   const f = getBacklogFilters(root);
   let tasks = store.get.allTasks();
   if (f.projectId) tasks = tasks.filter(t => t.projectId === f.projectId);
   if (f.status) tasks = tasks.filter(t => t.status === f.status);
   if (f.priority) tasks = tasks.filter(t => t.priority === f.priority);
-  root.querySelector('#backlog-table-wrap').innerHTML = renderBacklogTable(tasks);
+  root.querySelector('#backlog-table-wrap').innerHTML = renderBacklogTable(tasks, user.role);
   feather.replace();
   bindInlineStatus(root);
 }
 
-function renderBacklogTable(tasks) {
+function renderBacklogTable(tasks, role) {
+  const canModify = RoleManager.can('ADD_TASK', role);
+  
   return `
-    <table class="notion-table">
+    <table class="notion-table" style="width:100%; border-collapse:separate; border-spacing:0 4px;">
       <thead>
-        <tr>
-          <th style="width:32px;"></th>
-          <th><span class="prop-icon">Aa</span> Título</th>
-          <th><i data-feather="folder"></i> Proyecto</th>
-          <th><span class="prop-icon">#</span> Estado</th>
-          <th><i data-feather="user"></i> Asignado</th>
-          <th><span class="prop-icon">!</span> Prioridad</th>
-          <th><i data-feather="tag"></i> Tipo</th>
-          <th><i data-feather="calendar"></i> Fecha límite</th>
-          <th style="width:32px;"></th>
+        <tr style="background:var(--accent-vibrant); color:white;">
+          <th style="width:48px; border-radius:12px 0 0 12px; padding:12px;"></th>
+          <th style="padding:12px;">Título</th>
+          <th>Proyecto</th>
+          <th>Estado</th>
+          <th>Asignado</th>
+          <th>Prioridad</th>
+          <th>Tipo</th>
+          <th>Fecha límite</th>
+          <th style="width:48px; border-radius:0 12px 12px 0;"></th>
         </tr>
       </thead>
       <tbody>
-        ${tasks.map(t => backlogRow(t)).join('')}
-        <tr class="quick-add-row" style="background:var(--bg-surface)40;">
-          <td></td>
-          <td colspan="7">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <i data-feather="plus" style="width:14px; height:14px; color:var(--text-muted);"></i>
-              <input type="text" id="quick-add-input" placeholder="Añadir nueva fila..." style="background:transparent; border:none; color:var(--text-primary); outline:none; font-size:0.85rem; width:100%; padding:8px 0;">
-            </div>
-          </td>
-          <td></td>
-        </tr>
+        ${tasks.map(t => backlogRow(t, role)).join('')}
+        ${canModify ? `
+          <tr class="quick-add-row" style="background:var(--bg-surface-2); border-radius:12px; transition:all 0.2s;">
+            <td></td>
+            <td colspan="7" style="padding:12px;">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:24px; height:24px; background:var(--bg-surface-hover); border-radius:50%; display:flex; align-items:center; justify-content:center;">
+                  <i data-feather="plus" style="width:14px; height:14px; color:var(--accent-primary);"></i>
+                </div>
+                <input type="text" id="quick-add-input" placeholder="Añadir nueva tarea rápidamente..." style="background:transparent; border:none; color:var(--text-primary); outline:none; font-size:0.95rem; width:100%; font-weight:500;">
+              </div>
+            </td>
+            <td></td>
+          </tr>
+        ` : ''}
       </tbody>
     </table>
     ${tasks.length === 0 ? `
@@ -118,18 +137,21 @@ function renderBacklogTable(tasks) {
   `;
 }
 
-function backlogRow(t) {
+function backlogRow(t, role) {
+  const canModify = RoleManager.can('UPDATE_TASK', role);
+  const canDelete = RoleManager.can('DELETE_MEMBER', role); // Re-using delete member permission level or similar
   const proj = store.get.projectById(t.projectId);
   const isDone = t.status === 'Terminado' || t.status === 'Archivado';
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && !isDone;
   const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
   const ownershipStyle = isTaskAssignedToCurrentUser(t)
-    ? 'background:rgba(16,185,129,0.14); color:#86efac;'
-    : 'background:rgba(59,130,246,0.14); color:#93c5fd;';
+    ? 'background:var(--accent-success-bg); color:var(--accent-success); border:1px solid rgba(34,197,94,0.2);'
+    : 'background:var(--accent-info-bg); color:var(--accent-info); border:1px solid rgba(56,189,248,0.2);';
+  
   return `
-    <tr data-task-id="${t.id}">
-      <td>
-        <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}" style="margin:0 auto;"></div>
+    <tr data-task-id="${t.id}" style="background:var(--bg-surface-2); transition:transform 0.2s, background 0.2s;" class="playful-pop">
+      <td style="padding:16px; border-radius:12px 0 0 12px;">
+        <div class="task-checkbox ${isDone ? 'checked' : ''}" data-id="${t.id}" style="margin:0 auto; width:22px; height:22px; border-radius:8px;"></div>
       </td>
       <td style="max-width: 300px;">
         <div style="display:flex; align-items:center;">
@@ -149,25 +171,31 @@ function backlogRow(t) {
         </span>` : '<span style="color:var(--text-muted);">—</span>'}
       </td>
       <td>
-        <select class="notion-pill-select inline-status-select" data-task-id="${t.id}">
-          ${BACKLOG_STATUSES.map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
-        </select>
+        ${canModify ? `
+          <select class="notion-pill-select inline-status-select" data-task-id="${t.id}" style="padding:4px 10px; background:var(--bg-surface-hover); border-radius:8px; border:none; font-size:0.8rem; font-weight:600; color:var(--text-primary);">
+            ${BACKLOG_STATUSES.map(s => `<option ${t.status === s ? 'selected' : ''}>${s}</option>`).join('')}
+          </select>
+        ` : statusBadge(t.status)}
       </td>
       <td>
         ${t.assigneeId ? `<span class="badge badge-neutral" style="font-size:0.68rem; background:var(--bg-surface-2);">${esc(store.get.memberById(t.assigneeId)?.name || '—')}</span>` : '<span style="color:var(--text-muted); font-size:0.7rem;">—</span>'}
         <span style="display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:0.62rem; font-weight:700; ${ownershipStyle}">${ownershipLabel}</span>
       </td>
       <td>
-        <select class="notion-pill-select inline-priority-select" data-task-id="${t.id}" style="text-transform:capitalize;">
-          ${PRIORITIES.map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p}</option>`).join('')}
-        </select>
+        ${canModify ? `
+          <select class="notion-pill-select inline-priority-select" data-task-id="${t.id}" style="text-transform:capitalize; padding:4px 10px; background:var(--bg-surface-hover); border-radius:8px; border:none; font-size:0.8rem; font-weight:600;">
+            ${PRIORITIES.map(p => `<option value="${p}" ${t.priority === p ? 'selected' : ''}>${p}</option>`).join('')}
+          </select>
+        ` : `<span class="badge badge-neutral" style="text-transform:capitalize;">${esc(t.priority || 'media')}</span>`}
       </td>
       <td><span class="badge badge-neutral" style="font-size:0.68rem;">${esc(t.type || 'tarea')}</span></td>
       <td style="font-size:0.78rem; ${isOverdue ? 'color:var(--accent-danger);font-weight:600;' : 'color:var(--text-muted);'}">
         ${t.dueDate ? fmtDate(t.dueDate) : '—'}
       </td>
-      <td>
-        <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="color:var(--text-muted); opacity:0.3; transition:opacity 0.2s;"><i data-feather="trash-2" style="width:14px;height:14px;"></i></button>
+      <td style="padding-right:16px; border-radius:0 12px 12px 0;">
+        ${canDelete ? `
+          <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="color:var(--accent-danger); opacity:0.3; transition:opacity 0.2s;"><i data-feather="trash-2" style="width:16px;height:16px;"></i></button>
+        ` : ''}
       </td>
     </tr>`;
 }

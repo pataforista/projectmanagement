@@ -30,7 +30,7 @@ window.TASK_TYPES = TASK_TYPES;
  * @param {string} html - HTML que contiene la estructura interna (header, body, footer) del modal.
  * @returns {HTMLElement} Elemento DOM activo que representa este modal.
  */
-function openModal(html) {
+export function openModal(html) {
   closeModal();
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -46,7 +46,7 @@ function openModal(html) {
  * Cierra inmediatamente el modal actual destruyendo su nodo de overlay en el DOM.
  * No requiere parámetros.
  */
-function closeModal() {
+export function closeModal() {
   document.getElementById('modal-overlay')?.remove();
 }
 
@@ -148,10 +148,19 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
         </div>
         <div class="form-group">
           <label class="form-label">Asignado a</label>
-          <select class="form-select" id="task-assignee">
-            <option value="">Sin asignar</option>
-            ${store.get.members().map(m => `<option value="${m.id}" ${isEdit && task.assigneeId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
-          </select>
+          <div id="assignee-picker-wrap">
+            <button class="btn btn-secondary playful-pop" id="btn-pick-assignee" style="width:100%; justify-content:flex-start; gap:10px; padding:10px 14px; border:1px solid var(--border-color); background:var(--bg-input);">
+              ${(() => {
+                const mid = isEdit ? task.assigneeId : null;
+                const m = mid ? store.get.memberById(mid) : null;
+                if (m) {
+                  return `<div class="avatar" style="width:24px;height:24px;font-size:0.65rem;">${esc(m.avatar)}</div> <span>${esc(m.name)}</span>`;
+                }
+                return `<i data-feather="user" style="width:16px;"></i> <span>Sin asignar</span>`;
+              })()}
+            </button>
+            <input type="hidden" id="task-assignee" value="${isEdit ? (task.assigneeId || '') : ''}">
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Fecha límite</label>
@@ -227,6 +236,24 @@ function openTaskModal(defaultProjectIdOrTask, defaultStatus) {
         `).join('');
     feather.replace();
   }
+
+  // --- Member Picker Binding ---
+  modal.querySelector('#btn-pick-assignee').addEventListener('click', async () => {
+    const selectedId = await openMemberPicker();
+    if (selectedId !== undefined) {
+      const input = modal.querySelector('#task-assignee');
+      const btn = modal.querySelector('#btn-pick-assignee');
+      input.value = selectedId || '';
+      
+      const m = selectedId ? store.get.memberById(selectedId) : null;
+      if (m) {
+        btn.innerHTML = `<div class="avatar" style="width:24px;height:24px;font-size:0.65rem;">${esc(m.avatar)}</div> <span>${esc(m.name)}</span>`;
+      } else {
+        btn.innerHTML = `<i data-feather="user" style="width:16px;"></i> <span>Sin asignar</span>`;
+      }
+      feather.replace();
+    }
+  });
 
   // --- AI Integration for Task Description ---
   modal.querySelector('#btn-ai-task-desc')?.addEventListener('click', async () => {
@@ -1770,4 +1797,130 @@ window.closeDetailsPanel = closeDetailsPanel;
 window.openSessionModal = openSessionModal;
 window.openMemberSelectModal = openMemberSelectModal;
 window.openConflictModal = openConflictModal;
+
+/**
+ * Abre un selector visual de miembros del equipo.
+ * @returns {Promise<string|null|undefined>} ID del miembro seleccionado, null para "Sin asignar", o undefined si se canceló.
+ */
+export async function openMemberPicker() {
+  const members = store.get.members().filter(m => !m._deleted);
+  
+  return new Promise((resolve) => {
+    // We create a temporary overlay/modal for picking
+    const modalWrap = document.createElement('div');
+    modalWrap.className = 'modal-overlay';
+    modalWrap.style.zIndex = '10002'; // Higher than other modals
+    
+    modalWrap.innerHTML = `
+      <div class="modal" style="max-width:400px; animation: viewIn 0.2s var(--ease); box-shadow: var(--shadow-xl);">
+        <div class="modal-header">
+          <h2><i data-feather="users"></i> Asignar Miembro</h2>
+          <button class="btn btn-icon" id="picker-close"><i data-feather="x"></i></button>
+        </div>
+        <div class="modal-body" style="padding:10px;">
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="btn btn-secondary picker-option playful-pop" data-id="" style="width:100%; justify-content:flex-start; gap:12px; padding:12px; border:1px dashed var(--border-color);">
+              <div class="avatar" style="width:32px; height:32px; background:var(--bg-surface-2); display:flex; align-items:center; justify-content:center;">
+                <i data-feather="user-x" style="width:16px; color:var(--text-muted);"></i>
+              </div>
+              <div style="text-align:left;">
+                <div style="font-weight:600; color:var(--text-primary);">Sin asignar</div>
+                <div style="font-size:0.7rem; color:var(--text-muted);">Quitar asignación actual</div>
+              </div>
+            </button>
+            <div style="height:1px; background:var(--border-color); margin:4px 0;"></div>
+            ${members.map(m => `
+              <button class="btn btn-secondary picker-option playful-pop" data-id="${m.id}" style="width:100%; justify-content:flex-start; gap:12px; padding:12px; border: 1px solid transparent; transition: all 0.2s;">
+                <div class="avatar" style="width:44px; height:44px; border: 2px solid var(--border-color);">${esc(m.avatar)}</div>
+                <div style="text-align:left;">
+                  <div style="font-weight:700; color:var(--text-primary); font-size:1.05rem;">${esc(m.name)}</div>
+                  <div style="font-size:0.75rem; color:var(--accent-primary); font-weight:700; text-transform:uppercase; letter-spacing:0.02em;">${esc(m.role || 'Colaborador')}</div>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(modalWrap);
+    feather.replace();
+    
+    const finish = (result) => {
+      modalWrap.remove();
+      resolve(result);
+    };
+
+    modalWrap.onclick = (e) => { if (e.target === modalWrap) finish(undefined); };
+    const closeBtn = modalWrap.querySelector('#picker-close');
+    if (closeBtn) closeBtn.onclick = () => finish(undefined);
+    
+    modalWrap.querySelectorAll('.picker-option').forEach(btn => {
+      btn.onclick = () => finish(btn.dataset.id || null);
+    });
+  });
+}
+
+window.openMemberPicker = openMemberPicker;
+
+/**
+ * Muestra un resumen de alto impacto de las mejoras de la Phase 5 (Nexus Hub Upgrade).
+ */
+export function showMissionBriefing() {
+  const user = getCurrentWorkspaceUser();
+  
+  openModal(`
+    <div class="modal-header" style="border:none; padding-bottom:0;">
+      <div style="width:48px; height:48px; background:var(--accent-vibrant); color:white; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:10px; box-shadow:0 8px 16px -4px var(--accent-primary);">
+        <i data-feather="zap" style="width:24px; height:24px;"></i>
+      </div>
+      <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+    </div>
+    <div class="modal-body" style="padding-top:10px; text-align:center;">
+      <h1 style="font-size:1.8rem; font-weight:800; letter-spacing:-0.03em; margin-bottom:8px; line-height:1.1;">Hub Modernizado con Éxito</h1>
+      <p style="color:var(--text-muted); font-size:1rem; margin-bottom:24px;">Bienvenido, <b>${esc(user.name)}</b>. Tu espacio de trabajo ha sido elevado a los estándares de Nexus Clinical Ops.</p>
+      
+      <div style="display:grid; grid-template-columns:1fr; gap:16px; text-align:left; margin-bottom:20px;">
+        <div style="background:var(--bg-surface-2); padding:16px; border-radius:16px; border:1px solid var(--border-color); display:flex; gap:16px; align-items:start;">
+          <div style="color:var(--accent-info);"><i data-feather="shield" style="width:20px;"></i></div>
+          <div>
+            <div style="font-weight:700; font-size:0.95rem; margin-bottom:2px;">Aislamiento de Identidad</div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">Tus datos ahora viven en silos cifrados por email, garantizando privacidad total entre cuentas.</div>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg-surface-2); padding:16px; border-radius:16px; border:1px solid var(--border-color); display:flex; gap:16px; align-items:start;">
+          <div style="color:var(--accent-purple);"><i data-feather="eye" style="width:20px;"></i></div>
+          <div>
+            <div style="font-weight:700; font-size:0.95rem; margin-bottom:2px;">El Ojo de Horus</div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">Monitorizamos la actividad clínica en tiempo real. Cada cambio tiene ahora un rastro auditable.</div>
+          </div>
+        </div>
+        
+        <div style="background:var(--bg-surface-2); padding:16px; border-radius:16px; border:1px solid var(--border-color); display:flex; gap:16px; align-items:start;">
+          <div style="color:var(--accent-success);"><i data-feather="user-check" style="width:20px;"></i></div>
+          <div>
+            <div style="font-weight:700; font-size:0.95rem; margin-bottom:2px;">Control de Roles (RBAC)</div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">Jerarquía Hospitalaria implementada. Solo los autorizados pueden alterar el equipo.</div>
+          </div>
+        </div>
+      </div>
+      
+      <button class="btn btn-primary" id="briefing-confirm" style="width:100%; height:48px; border-radius:12px; font-weight:700;">Entendido, ¡adelante!</button>
+    </div>
+    <div class="modal-footer" style="border:none; padding-top:0;"></div>
+  `);
+  
+  feather.replace();
+  
+  const finish = () => {
+    localStorage.setItem('nexus_hub_upgrade_v1_shown', 'true');
+    closeModal();
+  };
+  
+  document.getElementById('briefing-confirm').onclick = finish;
+  document.getElementById('modal-close').onclick = finish;
+}
+
+window.showMissionBriefing = showMissionBriefing;
 

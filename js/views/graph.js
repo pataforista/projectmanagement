@@ -66,6 +66,17 @@ export const renderGraph = (root) => {
                 <div id="graph-canvas-wrap" style="width:100%; height:100%; position:relative; z-index:2;"></div>
             </div>
         </div>
+
+        <!-- Phase 7 Legend Overlay -->
+        <div class="glass-panel" style="position:absolute; bottom:20px; left:20px; padding:12px; border-radius:16px; z-index:10; font-size:0.75rem;">
+            <div style="font-weight:700; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.6;">Leyenda del Grafo</div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#4f46e5;"></span> Proyectos</div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#a78bfa;"></span> Equipo</div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></span> Wiki / Libros</div>
+                <div style="display:flex; align-items:center; gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#14b8a6;"></span> Documentos</div>
+            </div>
+        </div>
     `;
 
     // Logic to build data for the graph
@@ -147,6 +158,27 @@ export const renderGraph = (root) => {
         }
     });
 
+    // 3. Add Members
+    const members = store.get.members();
+    members.forEach(m => {
+        data.nodes.push({
+            id: `member-${m.id}`,
+            name: m.name,
+            type: 'member',
+            val: 18,
+            color: '#a78bfa', // Purple for personnel
+            avatar: m.avatar || '?'
+        });
+
+        // Link member to tasks they are assigned to
+        const assignedTasks = store.get.allTasks().filter(t => t.assigneeId === m.id);
+        assignedTasks.forEach(t => {
+            if (data.nodes.find(n => n.id === t.id)) {
+                data.links.push({ source: `member-${m.id}`, target: t.id, type: 'assignment' });
+            }
+        });
+    });
+
     const container = root.querySelector('#graph-canvas-wrap');
     if (typeof ForceGraph === 'undefined') {
         container.innerHTML = '<div style="color:var(--accent-danger); padding:20px;">Error: No se pudo cargar Force-Graph JS desde CDN.</div>';
@@ -188,10 +220,11 @@ export const renderGraph = (root) => {
         .nodeLabel('name')
         .nodeColor('color')
         .linkColor(link => {
-            if (link.type === 'hierarchy' || link.type === 'containment') return 'rgba(99, 102, 241, 0.3)';
-            if (link.type === 'crosslink') return 'rgba(20, 184, 166, 0.6)';
-            if (link.type === 'custom_link') return 'rgba(245, 158, 11, 0.6)';
-            if (link.type === 'tag_link') return 'rgba(45, 212, 191, 0.3)';
+            if (link.type === 'hierarchy' || link.type === 'containment') return 'rgba(99, 102, 241, 0.4)';
+            if (link.type === 'crosslink') return 'rgba(20, 184, 166, 0.7)';
+            if (link.type === 'custom_link') return 'rgba(245, 158, 11, 0.7)';
+            if (link.type === 'assignment') return 'rgba(167, 139, 250, 0.4)';
+            if (link.type === 'tag_link') return 'rgba(45, 212, 191, 0.4)';
             return 'rgba(255,255,255,0.1)';
         })
         .linkWidth(link => link.type === 'hierarchy' ? 3 : link.type === 'custom_link' ? 2 : 1)
@@ -279,11 +312,23 @@ export const renderGraph = (root) => {
             ctx.shadowBlur = 15 / globalScale;
             ctx.shadowColor = node.color;
 
-            // Node Circle
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, node.type === 'project' ? 6 : 3, 0, 2 * Math.PI, false);
-            ctx.fillStyle = node.color;
-            ctx.fill();
+            // Member Node Special Rendering (Avatar Circular)
+            if (node.type === 'member') {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 6 / globalScale, 0, 2 * Math.PI, false);
+                ctx.fillStyle = '#1e1b4b'; // Deep background for avatar text
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = `bold ${8 / globalScale}px Inter`;
+                ctx.textAlign = 'center';
+                ctx.fillText(node.avatar, node.x, node.y);
+            } else {
+                // Node Circle
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.type === 'project' ? 8 / globalScale : 4 / globalScale, 0, 2 * Math.PI, false);
+                ctx.fillStyle = node.color;
+                ctx.fill();
+            }
 
             // Reset shadow for text
             ctx.shadowBlur = 0;

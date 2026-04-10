@@ -129,7 +129,7 @@ export const StorageManager = (() => {
     /**
      * Remove value from appropriate storage
      */
-    function remove(key, scope = 'auto') {
+    async function remove(key, scope = 'auto') {
         const target = getStorageTarget(key, scope);
 
         if (target === 'global') {
@@ -137,6 +137,36 @@ export const StorageManager = (() => {
         } else if (target === 'session') {
             sessionStorage.removeItem(key);
         }
+    }
+
+    /**
+     * Account-Scoped Storage (Phase 3)
+     * For persistent tokens that should stay isolated by email.
+     */
+    function getAccountScopedKey(key, email) {
+        if (!email) return key;
+        const normalized = email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+        return `${key}_${normalized}`;
+    }
+
+    function setScoped(key, value, email) {
+        if (!email) {
+            console.error('[StorageManager] email is required for setScoped');
+            return;
+        }
+        const scopedKey = getAccountScopedKey(key, email);
+        localStorage.setItem(scopedKey, value);
+    }
+
+    function getScoped(key, email) {
+        if (!email) return null;
+        const scopedKey = getAccountScopedKey(key, email);
+        return localStorage.getItem(scopedKey);
+    }
+
+    function removeScoped(key, email) {
+        const scopedKey = getAccountScopedKey(key, email);
+        localStorage.removeItem(scopedKey);
     }
 
     /**
@@ -329,6 +359,10 @@ export const StorageManager = (() => {
         getStats,
         getStorageTarget,
         isSensitiveKey,
+        getAccountScopedKey,
+        setScoped,
+        getScoped,
+        removeScoped,
 
         // Expose key lists for debugging
         GLOBAL_KEYS: Object.freeze(new Set(GLOBAL_KEYS)),

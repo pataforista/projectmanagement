@@ -14,10 +14,54 @@ async function getCrypto() {
 }
 
 
-const DB_NAME = 'WorkspaceProduccionDB';
-const DB_VERSION = 12; // v12: added sync_push_queue for optimized sync flow
+const LEGACY_DB = 'WorkspaceProduccionDB';
+const DB_VERSION = 13; // v13: consolidated syncQueue into sync_push_queue
 
 let db;
+
+/**
+ * Gets the account-scoped database name based on the current session email.
+ */
+function getScopedDbName() {
+  const email = (window.StorageManager && window.StorageManager.get('workspace_user_email', 'session')) || 'default';
+  const normalized = email.trim().toLowerCase();
+  return `nexus_${normalized.replace(/[^a-z0-9]/g, '_')}`;
+}
+
+/**
+ * Clean Slate Strategy: Deletes the legacy WorkspaceProduccionDB if it exists.
+ */
+async function deleteLegacyDB() {
+  return new Promise((resolve) => {
+    // Check if browsers support databases() (most modern browsers do)
+    if (indexedDB.databases) {
+      indexedDB.databases().then(dbs => {
+        if (dbs.some(d => d.name === LEGACY_DB)) {
+          console.log(`[DB] Legacy database "${LEGACY_DB}" detected. Deleting...`);
+          const req = indexedDB.deleteDatabase(LEGACY_DB);
+          req.onsuccess = () => {
+            console.log('[DB] Legacy database deleted successfully.');
+            resolve();
+          };
+          req.onerror = () => {
+            console.warn('[DB] Could not delete legacy database.');
+            resolve();
+          };
+          req.onblocked = () => {
+            console.warn('[DB] Legacy deletion blocked by another tab.');
+            resolve();
+          };
+        } else {
+          resolve();
+        }
+      }).catch(() => resolve());
+    } else {
+      // Fallback: just try to delete it regardless
+      indexedDB.deleteDatabase(LEGACY_DB);
+      resolve();
+    }
+  });
+}
 
 const STORES = {
   projects: 'projects',
@@ -26,11 +70,11 @@ const STORES = {
   decisions: 'decisions',
   documents: 'documents',
   members: 'members',
-  syncQueue: 'syncQueue',
   logs: 'logs',
   library: 'library',
   interconsultations: 'interconsultations',
   sessions: 'sessions',
+  account_sessions: 'account_sessions',
   timeLogs: 'timeLogs',
   snapshots: 'snapshots',
   annotations: 'annotations',
@@ -46,6 +90,12 @@ const STORES = {
  * @returns {Promise<IDBDatabase>} Promesa que resuelve la instancia de la base de datos.
  */
 const _initDB = () => new Promise(async (resolve, reject) => {
+  // 1. Wipe legacy data if existing
+  await deleteLegacyDB();
+
+  const DB_NAME = getScopedDbName();
+  console.log(`[DB] Opening scoped database: ${DB_NAME}`);
+
   const openDB = () => new Promise((res, rej) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -155,16 +205,23 @@ const _initDB = () => new Promise(async (resolve, reject) => {
         d.createObjectStore('members', { keyPath: 'id' });
       }
 
-      // Sync queue
-      if (!d.objectStoreNames.contains('syncQueue')) {
-        d.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
+      // Sync Push Queue (replaces legacy syncQueue)
+      if (!d.objectStoreNames.contains('sync_push_queue')) {
+        d.createObjectStore('sync_push_queue', { keyPath: 'id', autoIncrement: true });
+      }
+      if (d.objectStoreNames.contains('syncQueue')) {
+        d.deleteObjectStore('syncQueue');
       }
 
-      // Activity Logs
       if (!d.objectStoreNames.contains('logs')) {
         const s = d.createObjectStore('logs', { keyPath: 'id' });
         s.createIndex('type', 'type', { unique: false });
         s.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+
+      // Account Sessions (SessionManager)
+      if (!d.objectStoreNames.contains('account_sessions')) {
+        d.createObjectStore('account_sessions', { keyPath: 'id' });
       }
 
       // Library (Zotero)
@@ -229,10 +286,7 @@ const _initDB = () => new Promise(async (resolve, reject) => {
         s.createIndex('type', 'type', { unique: false });
       }
 
-      // Sync Push Queue (v12)
-      if (!d.objectStoreNames.contains('sync_push_queue')) {
-        d.createObjectStore('sync_push_queue', { keyPath: 'id', autoIncrement: true });
-      }
+      // (sync_push_queue handled above)
     };
   });
 
@@ -262,9 +316,14 @@ const _initDB = () => new Promise(async (resolve, reject) => {
   resolve(result);
 });
 
-// Re-export as a permanent promise that can be awaited by任何人
-export const dbPromise = _initDB();
-export const initDB = () => dbPromise;
+// Re-export as a permanent promise that can be awaited by anyone
+// NOTE: Must use a fresh promise if called again after an account switch happens
+let _dbPromise = _initDB();
+export const dbPromise = _dbPromise;
+export const initDB = (forceFresh = false) => {
+  if (forceFresh) _dbPromise = _initDB();
+  return _dbPromise;
+};
 
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -306,12 +365,13 @@ function tx(storeName, mode, fn) {
     // wait for the initialization promise instead of failing immediately.
     if (!db) {
       try {
+        console.log(`[DB] tx(${storeName}) waiting for dbPromise...`);
         await dbPromise;
       } catch (e) {
-        return reject('DB initialization failed: ' + e.message);
+        return reject(new Error('DB initialization failed: ' + e.message));
       }
     }
-    if (!db) return reject('DB not initialized');
+    if (!db) return reject(new Error('DB not initialized after awaiting promise'));
     
     try {
       const transaction = db.transaction([storeName], mode);
@@ -358,8 +418,8 @@ export const dbAPI = {
       }
 
       const res = await tx(storeName, 'readwrite', s => s.put(dataToStore));
-      // Show a throttled save indicator (single reusable DOM node)
-      if (storeName !== 'logs' && storeName !== 'syncQueue') {
+      // Show a throttled save indicator
+      if (storeName !== 'logs' && storeName !== 'sync_push_queue') {
         _showSaveIndicator();
       }
       return res;

@@ -1,3 +1,8 @@
+import { RoleManager } from '../scripts/roles.js';
+import { getCurrentWorkspaceUser, esc, statusBadge, fmtDate, isTaskAssignedToCurrentUser, safeExternalUrl } from '../utils.js';
+import { store } from '../store.js';
+import { openTaskModal, openTaskDetail } from '../modals.js';
+
 /**
  * views/board.js — Kanban board view
  */
@@ -21,24 +26,28 @@ let _dragSourceStatus = null;
  * @param {HTMLElement} root - El nodo DOM donde se inyectará la vista.
  */
 function renderBoard(root) {
+  const user = getCurrentWorkspaceUser();
+  const role = user.role;
+  const canAdd = RoleManager.can('ADD_TASK', role);
+
   root.innerHTML = `
-    <div class="view-inner" style="padding-bottom:0;">
-      <div class="view-header">
+    <div class="view-inner glass-panel" style="margin:20px; border-radius:var(--radius-lg); padding:24px; min-height:calc(100vh - 120px); border:1px solid var(--surface-glass-border);">
+      <div class="view-header" style="margin-bottom:32px;">
         <div class="view-header-text">
-          <h1>Tablero</h1>
-          <p class="view-subtitle">Vista Kanban por estado del trabajo.</p>
+          <h1 style="font-size:2.2rem; font-weight:800; letter-spacing:-0.04em;">Tablero</h1>
+          <p class="view-subtitle" style="font-size:1.05rem; opacity:0.8;">Vista Kanban por estado del trabajo clínico.</p>
         </div>
-        <div class="view-actions">
-          <select class="filter-select" id="board-proj-filter">
+        <div class="view-actions" style="gap:16px;">
+          <select class="filter-select glass-panel" id="board-proj-filter" style="background:var(--bg-surface-2); border-radius:var(--radius-sm); padding:8px 12px; border:1px solid var(--border-color); color:var(--text-primary);">
             <option value="">Todos los proyectos</option>
             ${store.get.projects().map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
           </select>
           <span id="board-drive-link-container"></span>
-          <button class="btn btn-primary" id="board-new-btn"><i data-feather="plus"></i> Nueva tarea</button>
+          ${canAdd ? `<button class="btn btn-primary playful-pop" id="board-new-btn" style="background:var(--accent-vibrant); border:none; box-shadow:var(--glow-primary);"><i data-feather="plus"></i> Nueva tarea</button>` : ''}
         </div>
       </div>
-    </div>
-    <div class="board-container" id="board-columns" style="padding: 0 36px 24px;"></div>`;
+      <div class="board-container" id="board-columns" style="display:flex; overflow-x:auto; gap:20px; padding-bottom:12px; height: calc(100% - 120px);"></div>
+    </div>`;
 
   feather.replace();
   renderBoardColumns(root, '');
@@ -64,6 +73,10 @@ function renderBoard(root) {
  * @param {string} projectId - Filtro opcional para mostrar solo tareas de un proyecto.
  */
 function renderBoardColumns(root, projectId) {
+  const user = getCurrentWorkspaceUser();
+  const role = user.role;
+  const canModify = RoleManager.can('ADD_TASK', role);
+  
   const container = root.querySelector('#board-columns') || document.getElementById('board-columns');
   let tasks = store.get.allTasks();
   if (projectId) tasks = tasks.filter(t => t.projectId === projectId);
@@ -71,18 +84,22 @@ function renderBoardColumns(root, projectId) {
   container.innerHTML = BOARD_STATUSES.map(col => {
     const colTasks = tasks.filter(t => t.status === col.id);
     return `
-      <div class="board-column" data-status="${col.id}">
-        <div class="board-column-header">
-          <span class="board-status-dot" style="width:8px;height:8px;border-radius:50%;background:${col.color};flex-shrink:0;"></span>
-          <span class="board-column-title">${col.id}</span>
-          <span class="board-column-count">${colTasks.length}</span>
+      <div class="board-column glass-panel" data-status="${col.id}" style="min-width:300px; background:rgba(255,255,255,0.01); border-radius:var(--radius-md); display:flex; flex-direction:column; border:1px solid var(--border-color);">
+        <div class="board-column-header" style="padding:16px; border-bottom:1px solid var(--border-color); background:rgba(0,0,0,0.1); border-radius:var(--radius-md) var(--radius-md) 0 0;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="board-status-dot" style="width:10px;height:10px;border-radius:50%;background:${col.color}; box-shadow:0 0 8px ${col.color}80;"></span>
+            <span class="board-column-title" style="font-weight:700; font-size:0.95rem; letter-spacing:0.01em;">${col.id.toUpperCase()}</span>
+            <span class="board-column-count" style="margin-left:auto; background:var(--bg-surface-hover); padding:2px 8px; border-radius:10px; font-size:0.75rem; font-weight:700; color:var(--text-muted);">${colTasks.length}</span>
+          </div>
         </div>
-        <div class="board-cards" data-status="${col.id}">
-          ${colTasks.map(t => kanbanCard(t)).join('')}
+        <div class="board-cards" data-status="${col.id}" style="flex:1; padding:12px; display:flex; flex-direction:column; gap:12px; min-height:100px;">
+          ${colTasks.map(t => kanbanCard(t, role)).join('')}
         </div>
-        <div class="board-add-btn" data-status="${col.id}">
-          <i data-feather="plus"></i> Añadir
-        </div>
+        ${canModify ? `
+          <div class="board-add-btn playful-pop" data-status="${col.id}" style="margin:12px; padding:10px; border-radius:12px; border:1px dashed var(--border-color); text-align:center; color:var(--text-muted); cursor:pointer; font-size:0.85rem; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <i data-feather="plus" style="width:14px;"></i> Añadir Tarea
+          </div>
+        ` : ''}
       </div>`;
   }).join('');
 
@@ -99,40 +116,49 @@ function renderBoardColumns(root, projectId) {
  * @param {Object} t - El objeto de la Tarea.
  * @returns {string} Cadena HTML de la tarjeta.
  */
-function kanbanCard(t) {
+function kanbanCard(t, role) {
+  const canModify = RoleManager.can('UPDATE_TASK', role);
+  const canDelete = RoleManager.can('DELETE_MEMBER', role); // Re-using delete member permission level
   const proj = store.get.projectById(t.projectId);
   const isOverdue = t.dueDate && new Date(t.dueDate) < new Date() && t.status !== 'Terminado';
   const ownershipLabel = isTaskAssignedToCurrentUser(t) ? 'Mía' : 'Equipo';
 
   return `
-    <div class="kanban-card" draggable="true" data-task-id="${t.id}" data-status="${t.status}">
-      ${proj ? `
-        <div class="kanban-card-project" style="color:${proj.color || 'var(--accent-primary)'};">
-          <span class="project-dot" style="background:currentColor;"></span>
-          ${esc(proj.name)}
-        </div>` : ''}
-
-      <div class="kanban-card-title">${esc(t.title)}</div>
-
-      <div class="kanban-card-tags">
-        <span class="status-pill ${ownershipLabel === 'Mía' ? 'status-terminado' : 'status-definido'}" style="font-size:0.6rem; padding:1px 6px; opacity:0.8;">
-          ${ownershipLabel}
-        </span>
-        <span class="priority-pip ${t.priority || 'baja'}"></span>
+    <div class="kanban-card glass-panel playful-pop" data-task-id="${t.id}" data-status="${t.status}" draggable="${canModify}" style="background:var(--bg-surface-2); border-radius:16px; padding:16px; border:1px solid var(--border-color); cursor:pointer; position:relative; overflow:hidden;">
+      <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:${proj ? (proj.color || 'var(--accent-primary)') : 'transparent'}; opacity:0.8;"></div>
+      
+      <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
+        ${proj ? `
+          <div class="kanban-card-project" style="color:var(--text-muted); font-size:0.75rem; font-weight:700; text-transform:uppercase; letter-spacing:0.02em; display:flex; align-items:center; gap:6px;">
+            <span class="project-dot" style="width:6px; height:6px; background:${proj.color || 'var(--accent-primary)'}; border-radius:50%;"></span>
+            ${esc(proj.name)}
+          </div>` : '<div></div>'}
+          
+        <div class="card-pills" style="display:flex; gap:6px;">
+          <span style="font-size:0.6rem; padding:2px 8px; border-radius:8px; font-weight:800; text-transform:uppercase; ${ownershipLabel === 'Mía' ? 'background:var(--accent-success-bg); color:var(--accent-success);' : 'background:var(--accent-info-bg); color:var(--accent-info);'}">
+            ${ownershipLabel}
+          </span>
+          <span class="priority-pip ${t.priority || 'media'}" style="width:8px; height:8px; border-radius:50%; margin-top:4px;"></span>
+        </div>
       </div>
 
-      <div class="kanban-card-foot">
-        <div class="kanban-card-date ${isOverdue ? 'overdue' : ''}">
-          ${t.dueDate ? `<i data-feather="calendar"></i>${fmtDate(t.dueDate)}` : ''}
+      <div class="kanban-card-title" style="font-weight:700; line-height:1.2; margin-bottom:16px; font-size:0.95rem; color:var(--text-primary);">${esc(t.title)}</div>
+
+      <div class="kanban-card-foot" style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="kanban-card-date ${isOverdue ? 'overdue' : ''}" style="display:flex; align-items:center; gap:6px; font-size:0.75rem; ${isOverdue ? 'color:var(--accent-danger); font-weight:700;' : 'color:var(--text-muted);'}">
+          ${t.dueDate ? `<i data-feather="calendar" style="width:14px; height:14px;"></i> <span>${fmtDate(t.dueDate)}</span>` : ''}
         </div>
-        <div class="kanban-card-meta">
+        
+        <div class="kanban-card-meta" style="display:flex; align-items:center; gap:8px;">
           ${t.assigneeId ? `
-            <div class="member-avatar-xs" title="${esc(store.get.memberById(t.assigneeId)?.name)}">
+            <div class="member-avatar-xs" style="width:24px; height:24px; border-radius:50%; border:1px solid var(--border-color); overflow:hidden;" title="${esc(store.get.memberById(t.assigneeId)?.name)}">
               ${esc(store.get.memberById(t.assigneeId)?.avatar || '?')}
             </div>` : ''}
-          <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar">
-            <i data-feather="trash-2"></i>
-          </button>
+          ${canDelete ? `
+            <button class="btn btn-icon btn-sm task-quick-delete" data-id="${t.id}" title="Eliminar" style="color:var(--accent-danger); opacity:0; transition:opacity 0.2s;">
+              <i data-feather="trash-2" style="width:14px; height:14px;"></i>
+            </button>
+          ` : ''}
         </div>
       </div>
     </div>`;
@@ -209,6 +235,13 @@ function bindDragDrop(container) {
     col.addEventListener('drop', async e => {
       e.preventDefault();
       col.classList.remove('drag-over');
+      
+      const user = getCurrentWorkspaceUser();
+      if (!RoleManager.can('UPDATE_TASK', user.role)) {
+          showToast('No tienes permisos para mover tareas.', 'error');
+          return;
+      }
+
       const newStatus = col.dataset.status;
       if (_dragTaskId && newStatus !== _dragSourceStatus) {
         await store.dispatch('UPDATE_TASK', { id: _dragTaskId, status: newStatus });

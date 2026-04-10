@@ -19,7 +19,7 @@ export const AccountChangeDetector = (() => {
     const STORED_SUB_KEY = 'nexus_stored_google_sub';
     const STORED_AUD_KEY = 'nexus_stored_google_aud';
     const LAST_VERIFIED_KEY = 'nexus_last_verified_account';
-    const VERIFICATION_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    const VERIFICATION_INTERVAL = 2 * 60 * 1000; // 2 minutes
 
     // State
     let verificationTimer = null;
@@ -196,11 +196,11 @@ export const AccountChangeDetector = (() => {
     /**
      * Verify current session (called periodically)
      */
-    async function verifyCurrent() {
+    async function verifyCurrent(isForced = false) {
         const now = Date.now();
-
-        // Rate limit: don't check more than every 1 minute
-        if (now - lastVerifiedAt < 60 * 1000) {
+        
+        // Rate limit: don't check more than every 1 minute UNLESS specifically forced by user action
+        if (!isForced && (now - lastVerifiedAt < 60 * 1000)) {
             return;
         }
 
@@ -290,13 +290,13 @@ export const AccountChangeDetector = (() => {
             // the second the user returns to the tab.
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
-                    console.log('[AccountChangeDetector] Tab visible — forcing re-verification.');
-                    verifyCurrent();
+                    console.log('[AccountChangeDetector] Tab visible — forcing immediate re-verification.');
+                    verifyCurrent(true); // Bypass rate limit
                 }
             });
             window.addEventListener('focus', () => {
-                console.log('[AccountChangeDetector] Tab focused — forcing re-verification.');
-                verifyCurrent();
+                console.log('[AccountChangeDetector] Tab focused — forcing immediate re-verification.');
+                verifyCurrent(true); // Bypass rate limit
             });
 
             console.log('[AccountChangeDetector] Initialized');

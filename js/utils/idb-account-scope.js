@@ -12,27 +12,21 @@
 
 import { StorageManager } from './storage-manager.js';
 
-// Stores que contienen datos de usuario y deben limpiarse al cambiar cuenta.
-// 'sessions' se excluye — contiene las sesiones de SessionManager (multi-cuenta por diseño).
-const USER_DATA_STORES = [
-    'projects', 'tasks', 'cycles', 'decisions', 'documents',
-    'members', 'logs', 'library', 'interconsultations',
-    'timeLogs', 'snapshots', 'annotations', 'messages',
-    'notifications', 'sync_push_queue',
-];
-
-const IDB_OWNER_KEY = 'nexus_idb_owner_email';
-
 export const IDBScopedStorage = {
-    /** Retorna el email del propietario actual de los datos en IDB. */
-    getCurrentOwner() {
-        return localStorage.getItem(IDB_OWNER_KEY) || null;
+    /** Gets the account-scoped database name based on the email. */
+    getDbName(email) {
+        if (!email) return 'default';
+        const normalized = email.trim().toLowerCase();
+        return `nexus_${normalized.replace(/[^a-z0-9]/g, '_')}`;
     },
 
-    /** Registra el email activo como propietario de los datos en IDB. */
+    getCurrentOwner() {
+        return localStorage.getItem('nexus_idb_owner_email') || null;
+    },
+
     claimOwnership(email) {
         if (!email) return;
-        localStorage.setItem(IDB_OWNER_KEY, email.trim().toLowerCase());
+        localStorage.setItem('nexus_idb_owner_email', email.trim().toLowerCase());
     },
 
     /** Verifica si el email activo coincide con el propietario de los datos en IDB. */
@@ -54,63 +48,45 @@ export const IDBScopedStorage = {
             return;
         }
 
-        const targetDb = db || window.db;
+        const currentOwner = this.getCurrentOwner();
         const normalized = newEmail.trim().toLowerCase();
-        const previousOwner = this.getCurrentOwner();
 
-        if (previousOwner === normalized) {
+        if (currentOwner === normalized) {
             console.log('[IDBScope] switchAccount: same owner, no-op');
             return;
         }
 
-        console.log(`[IDBScope] Switching IDB scope: ${previousOwner || 'none'} → ${normalized}`);
+        console.log(`[IDBScope] Switching Account DB: ${currentOwner || 'none'} → ${normalized}`);
 
-        if (targetDb) {
-            const clearPromises = USER_DATA_STORES
-                .filter(name => targetDb.objectStoreNames.contains(name))
-                .map(name => new Promise((resolve) => {
-                    try {
-                        const tx = targetDb.transaction(name, 'readwrite');
-                        const req = tx.objectStore(name).clear();
-                        req.onsuccess = () => resolve(name);
-                        // non-fatal — continue clearing other stores even if one fails
-                        req.onerror = () => {
-                            console.warn(`[IDBScope] Could not clear store "${name}":`, req.error);
-                            resolve(name);
-                        };
-                    } catch (e) {
-                        console.warn(`[IDBScope] Exception clearing store "${name}":`, e);
-                        resolve(name);
-                    }
-                }));
-
-            await Promise.all(clearPromises);
-            console.log('[IDBScope] User data stores cleared for account switch.');
-        } else {
-            console.warn('[IDBScope] DB not available — stores not cleared. Reload recommended.');
+        // 1. Close the old connection if exists
+        const oldDb = db || window.db;
+        if (oldDb) {
+            console.log('[IDBScope] Closing old DB connection...');
+            oldDb.close();
         }
 
-        // Limpia la cola de push para evitar enviar cambios del usuario anterior
-        if (targetDb && targetDb.objectStoreNames.contains('sync_push_queue')) {
-            try {
-                const tx = targetDb.transaction('sync_push_queue', 'readwrite');
-                tx.objectStore('sync_push_queue').clear();
-            } catch (e) {
-                console.warn('[IDBScope] Could not clear sync_push_queue:', e);
-            }
-        }
+        // 2. Clear window.db so tx() knows to wait for a fresh init
+        window.db = null;
 
-        // Actualiza la firma de propietario
+        // 3. Mark ownership
         this.claimOwnership(normalized);
 
-        // Resetea el cursor de sincronización del nuevo usuario a 0 si no existe,
-        // forzando un full-pull en lugar de un delta vacío
+        // 4. Re-initialize DB (this will pick up the new name from StorageManager)
+        // We import initDB dynamically to avoid circular dependencies if needed,
+        // or just rely on the global initDB if it's available.
+        if (window.initDB) {
+            const newDb = await window.initDB(true); // forceFresh = true
+            window.db = newDb;
+            console.log(`[IDBScope] Scoped DB initialized for: ${normalized}`);
+        }
+
+        // 5. Reset sync cursor if new user
         const cursorKey = `last_sync_server_${normalized}`;
         if (!localStorage.getItem(cursorKey)) {
             localStorage.setItem(cursorKey, '0');
         }
 
-        console.log(`[IDBScope] Account scope switched to: ${normalized}`);
+        console.log(`[IDBScope] Account switch complete: ${normalized}`);
     },
 
     /**
@@ -127,12 +103,11 @@ export const IDBScopedStorage = {
         const owner = this.getCurrentOwner();
         const normalized = activeEmail.trim().toLowerCase();
 
+        // If mismatch, reload the DB instance to point to the correct account-scoped file
         if (owner && owner !== normalized) {
-            console.warn(
-                `[IDBScope] BOOT MISMATCH: IDB owned by "${owner}" but active session is "${normalized}". Clearing stale data.`
-            );
+            console.warn(`[IDBScope] BOOT MISMATCH: Current DB owner is "${owner}", active session is "${normalized}".`);
             await this.switchAccount(normalized, db);
-            return true; // caller should reload the store
+            return true;
         }
 
         if (!owner) {

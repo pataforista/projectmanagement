@@ -102,8 +102,8 @@ function renderMembersTab(container, members, isAdmin) {
               <tr>
                 <td style="padding:16px; border-top:1px solid var(--border-color);">
                   <div style="display:flex; align-items:center; gap:12px;">
-                    <div class="avatar" style="width:32px; height:32px;">${esc(m.avatar || m.name.charAt(0))}</div>
-                    <span style="font-weight:600;">${esc(m.name)}</span>
+                    <div class="avatar" style="width:32px; height:32px;">${esc(m.avatar || (m.name || '').charAt(0) || 'U')}</div>
+                    <span style="font-weight:600;">${esc(m.name || 'Sin nombre')}</span>
                   </div>
                 </td>
                 <td style="padding:16px; border-top:1px solid var(--border-color); color:var(--text-secondary); font-size:0.85rem;">
@@ -436,7 +436,7 @@ window.openAddMemberModalAdmin = function() {
             name,
             email,
             role,
-            avatar: name.charAt(0).toUpperCase(),
+            avatar: (name || 'U').charAt(0).toUpperCase(),
             joinedAt: new Date().toISOString()
         });
 

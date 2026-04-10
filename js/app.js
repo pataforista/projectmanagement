@@ -21,69 +21,89 @@ import { companion as ollamaCompanion } from './components/ollama-companion.js';
 import { swUpdater } from './utils/sw-updater.js';
 import { BackendClient } from './api/backend-client.js';
 
+// Expose critical infrastructure to window for legacy scripts
+window.StorageManager = StorageManager;
+window.IDBScopedStorage = IDBScopedStorage;
+
 document.addEventListener('DOMContentLoaded', async () => {
     window.BackendClient = BackendClient;
     initGlobalEffects();
     initCommandPalette();
     ollamaCompanion.init();
 
-    // ── OPCIÓN 2: Initialize Storage Manager ──────────────────────────────────
-    // Migrate session keys from localStorage to sessionStorage for per-tab isolation
+    // ── 1. CORE: Initialize Infrastructure (Storage & Database) ──────────────
     try {
+        // A. Storage Manager: Migrate and validate security boundaries
         StorageManager.migrateSessionKeys();
         StorageManager.validateSecurityBoundaries();
         console.log('[Boot] Storage Manager initialized');
-    } catch (e) {
-        console.warn('[Boot] Storage migration failed:', e);
-    }
 
-    // ── OPCIÓN 3: Initialize Session Manager with IndexedDB ─────────────────
-    // Make SessionManager globally available
-    window.SessionManager = SessionManager;
+        // B. IndexedDB: Initialize the physical storage layer
+        const db = await initDB();
+        window.db = db;
 
-    // ── OPCIÓN 1: Initialize Account Change Detector ────────────────────────
-    // Monitor for Google account switches
-    window.AccountChangeDetector = AccountChangeDetector;
-    try {
+        // Phase 5: Validate Account Scope on Boot
+        // Ensures the opened DB matches the active session email.
+        const activeEmail = StorageManager.get('workspace_user_email', 'session');
+        if (activeEmail && IDBScopedStorage.validateOnBoot) {
+            await IDBScopedStorage.validateOnBoot(activeEmail, db);
+            
+            // Auto-recovery: If we have an email but no token in session, try to recover from scoped storage
+            if (!StorageManager.get('google_id_token', 'session')) {
+                const recoveredToken = StorageManager.getScoped('google_id_token', activeEmail);
+                if (recoveredToken) {
+                    console.log('[Boot] Token recovered from scoped storage');
+                    StorageManager.set('google_id_token', recoveredToken, 'session');
+                    // Sync the recovered token to SessionManager if it exists
+                    const session = await SessionManager.findSessionByEmail(activeEmail);
+                    if (session && !session.idToken) {
+                        session.idToken = recoveredToken;
+                        // update would go here but createSession/switchSession handle it mostly
+                    }
+                }
+            }
+        }
+
+        // C. Session Manager: Initialize account coordination
+        window.SessionManager = SessionManager;
+        if (db) {
+            await SessionManager.init(db);
+            SessionManager.syncAcrossTabs();
+            console.log('[Boot] Session Manager initialized');
+        }
+
+        // D. Account Detection: Start monitoring for identity changes
+        window.AccountChangeDetector = AccountChangeDetector;
         AccountChangeDetector.init(async (changeEvent) => {
             if (changeEvent.type === 'account_switched') {
                 console.log(`[Boot] Account switch detected: ${changeEvent.oldEmail} → ${changeEvent.newEmail}`);
-
-                // FIX 7: Freeze the sync engine IMMEDIATELY before any async work.
-                // Without this, the auto-sync timer can fire between the account
-                // detection and the handleAccountSwitch completion, pushing data
-                // from the old account under the new user's token.
+                
                 if (window.syncManager?.pauseSync) {
-                    window.syncManager.pauseSync(10_000); // 10s safety window
+                    window.syncManager.pauseSync(10_000); 
                 }
 
-                // FIX 1: Purge IDB stores that belong to the outgoing account so
-                // the incoming account never sees the previous user's data.
                 await IDBScopedStorage.switchAccount(changeEvent.newEmail, window.db);
 
-                // BUG 49 FIX (Security): Invalidate Service Worker cache upon account switch.
-                // This prevents the new user from seeing cached assets or data
-                // that might have been tailored or leaked from the previous session.
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHE' });
-                    console.log('[Boot] SW Cache clear requested for account switch.');
                 }
 
-                if (window.syncManager && window.syncManager.handleAccountSwitch) {
-                    // Pass sameSub flag so email-alias updates don't trigger a full sync reset
+                if (window.syncManager?.handleAccountSwitch) {
                     await window.syncManager.handleAccountSwitch(
                         changeEvent.oldEmail,
                         changeEvent.newEmail,
                         changeEvent.sameSub === true
                     );
                 }
-            } else if (changeEvent.type === 'token_expired') {
-                console.log('[Boot] Google token expired');
             }
         });
-        console.log('[Boot] Account Change Detector initialized');
+        console.log('[Boot] Critical infrastructure ready');
+
     } catch (e) {
-        console.warn('[Boot] Account detector init failed:', e);
+        console.error('[Boot] CRITICAL: Infrastructure initialization failed:', e);
+        if (window.showToast) {
+            showToast('Error crítico al iniciar la base de datos. Verifica el modo privado de tu navegador.', 'error', true);
+        }
     }
 
     // ── 0. Pre-init syncManager (config is already available via exports) ──────
@@ -107,17 +127,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     window.addEventListener('session:expired', () => {
-        console.log('[Boot] Session expired — clearing tokens and reloading to show login');
-        // BackendClient.clearTokens() was already called inside refreshToken() on failure.
-        // Clear the persisted email so the auth overlay is not bypassed on reload.
-        localStorage.removeItem('nexus_last_email');
+        console.log('[Boot] Session expired — performing full identity reset');
         
-        // BUG 50 FIX (Security): Complete identity reset by clearing Google sub/aud.
-        // Without this, the AccountChangeDetector might wrongly assume a session
-        // continuity that doesn't exist anymore.
+        // 1. Clear persisted identity and session state
+        localStorage.removeItem('nexus_last_email');
+        localStorage.removeItem('nexus_dirty_flag');
+        
+        // 2. Clear Google Identity metadata
         sessionStorage.removeItem('nexus_stored_google_sub');
         sessionStorage.removeItem('nexus_stored_google_aud');
         
+        // 3. Purge all storage manager keys to ensure complete isolation
+        StorageManager.clearAll();
+        
+        // 4. Force reload to return to the auth overlay
         location.reload();
     });
 
@@ -456,27 +479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    // ── 1. Initialize IndexedDB ────────────────────────────────────────────────
-    try {
-        await initDB();
-
-        // ── Initialize Session Manager now that DB is ready ─────────────────
-        try {
-            if (window.db && window.SessionManager) {
-                await SessionManager.init(window.db);
-                // FIX A: Activate cross-tab BroadcastChannel listener so that
-                // when one tab calls switchSession(), all other tabs receive the
-                // 'session:switched' notification and load the new session.
-                // Without this call syncAcrossTabs() was exported but never invoked.
-                SessionManager.syncAcrossTabs();
-                console.log('[Boot] Session Manager initialized (cross-tab sync active)');
-            }
-        } catch (e) {
-            console.warn('[Boot] Session Manager init failed:', e);
-        }
-    } catch (e) {
-        console.warn('[Boot] IndexedDB init failed:', e);
-    }
+    // (Async DB initialization moved to start of boot function)
 
     // ── 1.1. FIX 1: Validate IDB ownership on boot ──────────────────────────
     // Detects the case where this browser last used IDB for a different account
@@ -716,6 +719,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             setTimeout(() => {
                 if (window.openMemberSelectModal) openMemberSelectModal();
             }, 1500);
+        }
+
+        // --- Phase 5: Mission Briefing (One-time) ---
+        if (!localStorage.getItem('nexus_hub_upgrade_v1_shown')) {
+            setTimeout(() => {
+                if (window.showMissionBriefing) showMissionBriefing();
+            }, 3000); // Give some time for initial renders
         }
     }
 

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nexus — Autenticación en curso...</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #09090b;
+            color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .loader {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #27272a;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { font-size: 1.2rem; margin-bottom: 8px; }
+        p { color: #a1a1aa; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="loader"></div>
+    <h1>Conectando con Google</h1>
+    <p>Estamos procesando tu sesión. Esta ventana se cerrará automáticamente.</p>
+
+    <script>
+        // OAuth 2.0 Fragment Parser
+        const params = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = params.get('access_token');
+        const error = params.get('error');
+
+        if (accessToken) {
+            console.log('[OAuth] Access token received');
+            
+            // Signal the main app via BroadcastChannel
+            const channel = new BroadcastChannel('nexus-oauth-flow');
+            channel.postMessage({ type: 'oauth:success', token: accessToken });
+            channel.close();
+
+            // Fallback: update opener directly if possible
+            if (window.opener) {
+                try {
+                    window.opener.postMessage({ type: 'oauth:success', token: accessToken }, window.location.origin);
+                } catch (e) {}
+            }
+
+            setTimeout(() => window.close(), 1000);
+        } else if (error) {
+            console.error('[OAuth] Error:', error);
+            const channel = new BroadcastChannel('nexus-oauth-flow');
+            channel.postMessage({ type: 'oauth:error', error: error });
+            channel.close();
+            
+            document.querySelector('h1').textContent = 'Error de Autenticación';
+            document.querySelector('p').textContent = 'No pudimos conectar con Google: ' + error;
+            document.querySelector('.loader').style.display = 'none';
+        } else {
+            // Wait for potential redirected state or timeout
+            setTimeout(() => {
+                if (!accessToken && !error) {
+                    document.querySelector('p').textContent = 'No se detectó respuesta de Google. Puedes cerrar esta ventana.';
+                }
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

@@ -145,6 +145,7 @@ function getCurrentWorkspaceActor() {
         email: user.email,
         memberId: user.memberId,
         team: user.team,
+        role: user.role,
     };
 }
 
@@ -280,6 +281,50 @@ export async function fetchWithTimeout(url, options = {}) {
         }
         throw error;
     }
+}
+
+// ── Premium Avatar Engine ─────────────────────────────────────────────────────
+/**
+ * Generates a consistent, premium medical-grade SVG avatar based on the member's name.
+ * Uses a stable hash to pick from a curated set of professional gradients.
+ */
+function generatePremiumAvatar(name, role = '') {
+    const rawName = String(name || 'Usuario');
+    const initials = rawName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+    // Curated medical/professional gradients
+    const gradients = [
+        { from: '#5e6ad2', to: '#4a54ab', text: '#ffffff' }, // Primary Indigo
+        { from: '#2dd4bf', to: '#14b8a6', text: '#ffffff' }, // Medical Teal
+        { from: '#a78bfa', to: '#8b5cf6', text: '#ffffff' }, // Professional Purple
+        { from: '#38bdf8', to: '#0ea5e9', text: '#ffffff' }, // Soft Blue
+        { from: '#fbbf24', to: '#d97706', text: '#ffffff' }, // Amber Alert
+        { from: '#22c55e', to: '#16a34a', text: '#ffffff' }, // Success Green
+    ];
+
+    // Simple hash to ensure consistency
+    let hash = 0;
+    for (let i = 0; i < rawName.length; i++) {
+        hash = rawName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const color = gradients[Math.abs(hash) % gradients.length];
+
+    // SVG construction: using a circle with a radial gradient for depth
+    return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%; display:block; border-radius:inherit;">
+        <defs>
+            <linearGradient id="grad-${Math.abs(hash)}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:${color.from}" />
+                <stop offset="100%" style="stop-color:${color.to}" />
+            </linearGradient>
+            <filter id="shadow">
+                <feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.2"/>
+            </filter>
+        </defs>
+        <circle cx="50" cy="50" r="48" fill="url(#grad-${Math.abs(hash)})" />
+        <text x="50" y="54" font-family="'Inter', sans-serif" font-weight="700" font-size="38" text-anchor="middle" dominant-baseline="middle" fill="${color.text}" style="filter:url(#shadow); letter-spacing:-0.02em;">
+            ${esc(initials)}
+        </text>
+    </svg>`;
 }
 
 // ── Date formatting ───────────────────────────────────────────────────────────
@@ -605,4 +650,4 @@ window.SYNCABLE_SETTINGS_KEYS = SYNCABLE_SETTINGS_KEYS;
 window.syncSettingsToLocalStorage = syncSettingsToLocalStorage;
 window.fetchWithTimeout = fetchWithTimeout;
 
-export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId };
+export { esc, parseCsv, fmtDate, statusBadge, emptyState, showToast, bindTaskCheckboxes, getObsidianFileName, downloadFile, PROJECT_TYPES, getCurrentWorkspaceUser, getCurrentWorkspaceMember, isTaskAssignedToCurrentUser, getCurrentWorkspaceActor, isMobileRuntime, renderCompatibilityNotice, syncSettingsToLocalStorage, hasMemberId, setCurrentMemberId, generatePremiumAvatar };

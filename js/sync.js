@@ -4,6 +4,7 @@ import { AccountChangeDetector } from './utils/account-detector.js';
 import { StorageManager } from './utils/storage-manager.js';
 import { SessionManager } from './utils/session-manager.js';
 import { BackendClient } from './api/backend-client.js';
+import { openModal, closeModal } from './modals.js';
 
 const syncManager = (() => {
     // drive.file only allows access to files created by THIS app instance for THIS user,
@@ -63,6 +64,8 @@ const syncManager = (() => {
     // is false between the push failure and the next retry). This flag survives failed
     // pushes so beforeunload/pagehide can warn the user until Drive acknowledges.
     let _dirtyLocalChanges = false;
+    // GIS INITIALIZATION GUARD: Prevents "google.accounts.id.initialize() is called multiple times".
+    let _isGISInitialized = false;
 
     // SCHEMA SKEW GUARD: top-level keys this version of the code produces.
     // Any key present in the remote JSON that is NOT in this set is "unknown" —
@@ -203,9 +206,14 @@ const syncManager = (() => {
         });
     }
 
+    let _gisLoadingPromise = null;
+    let _gisInitializedPromise = null;
+
     async function loadGIS() {
         if (window.google?.accounts?.oauth2 && window.google?.accounts?.id) return;
-        await new Promise((resolve, reject) => {
+        if (_gisLoadingPromise) return _gisLoadingPromise;
+
+        _gisLoadingPromise = new Promise((resolve, reject) => {
             const existing = document.querySelector('script[data-gis="true"]');
             if (existing) {
                 // If already appended but maybe not loaded, wait. Or if loaded, resolve.
@@ -221,6 +229,8 @@ const syncManager = (() => {
             script.onerror = reject;
             document.head.appendChild(script);
         });
+
+        return _gisLoadingPromise;
     }
 
     /**
@@ -228,6 +238,11 @@ const syncManager = (() => {
      * Obtiene el ID Token de Google para identificar al usuario.
      */
     async function signIn(optionalClientId) {
+        // Guard against race conditions during initialization
+        if (_gisInitializedPromise) {
+            await _gisInitializedPromise;
+        }
+
         return new Promise(async (resolve, reject) => {
             const cfg = getConfig();
             const client_id = (optionalClientId || cfg.clientId || '').trim();
@@ -242,11 +257,15 @@ const syncManager = (() => {
                 fn(payload);
             };
 
-            google.accounts.id.initialize({
-                client_id: client_id,
-                auto_select: false,          // Disabling auto-select to force the account chooser
-                use_fedcm_for_prompt: true, // Enabled FedCM as required by Google's new policy
-                callback: async (response) => {
+            // Global init guard
+            if (!_isGISInitialized) {
+                _gisInitializedPromise = (async () => {
+                    google.accounts.id.initialize({
+                        client_id: client_id,
+                    auto_select: false,          // Disabling auto-select to force the account chooser
+                    use_fedcm_for_prompt: true, // Enabled FedCM as required by Google's new policy
+                    callback: async (response) => {
+                        // ... (rest of the callback remains logic-wise same but inside the guard)
                     if (!response.credential) {
                         settleOnce(reject, 'No credential returned');
                         return;
@@ -300,48 +319,70 @@ const syncManager = (() => {
                             if (sessionId) {
                                 StorageManager.set('nexus_current_session_id', sessionId, 'session');
                             }
+
+                            // Phase 5: Persist token for boot recovery (Scoped)
+                            if (StorageManager.setScoped) {
+                                StorageManager.setScoped('google_id_token', response.credential, currentUser.email);
+                            }
                         } catch (e) {
                             console.warn('[Sync] Session creation failed:', e);
                         }
                     }
 
-                    // SECURITY FIX: Do not log email to console in production — leaks PII to DevTools.
-                    console.log('[Sync] Identity confirmed for user.');
-                    if (window.updateUserProfileUI) window.updateUserProfileUI();
-                    settleOnce(resolve, currentUser);
-                }
-            });
-
-            // BUG FIX: Add a small delay for manual triggers to avoid the click itself
-            // being counted as a "tap_outside" which immediately skips the prompt.
-            setTimeout(() => {
-                google.accounts.id.prompt((notification) => {
-                    if (settled) return;
-
-                    if (notification.isNotDisplayed?.()) {
-                        console.warn('[Sync] Google One Tap not displayed:', notification.getNotDisplayedReason?.());
-                    }
-                    if (notification.isSkippedMoment?.()) {
-                        console.warn('[Sync] Google One Tap skipped:', notification.getSkippedReason?.());
-                    }
-
-                    if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
-                        const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
-
-                        // FIX: 'credential_returned' is a success state (the callback was triggered).
-                        // Do not reject if this is the reason.
-                        if (reason === 'credential_returned') return;
-
-                        // Special handling for tap_outside: inform the user
-                        let errorMsg = 'Google sign-in prompt was closed or skipped. Reason: ' + reason;
-                        if (reason === 'tap_outside') {
-                            errorMsg = 'El selector de Google se cerró porque se detectó un clic fuera. Por favor, intenta de nuevo sin hacer clic fuera del aviso.';
-                        }
-
-                        settleOnce(reject, errorMsg);
+                        // security fix end
+                        console.log('[Sync] Identity confirmed for user.');
+                        if (window.updateUserProfileUI) window.updateUserProfileUI();
+                        settleOnce(resolve, currentUser);
                     }
                 });
-            }, 100);
+                _isGISInitialized = true;
+            })();
+            await _gisInitializedPromise;
+        }
+
+        // BUG FIX: Add a small delay for manual triggers to avoid the click itself
+        // being counted as a "tap_outside" which immediately skips the prompt.
+        setTimeout(() => {
+            google.accounts.id.prompt((notification) => {
+                if (settled) return;
+
+                const momentType = notification.getMomentType?.() || 'unknown';
+                
+                // FedCM/OneTap Feedback Handling
+                if (notification.isNotDisplayed?.()) {
+                    const reason = notification.getNotDisplayedReason?.() || 'unknown';
+                    console.warn(`[Sync] Google Prompt not displayed (${momentType}):`, reason);
+                    
+                    // Fallback logic for FedCM failures
+                    if (reason === 'suppressed_by_user' || reason === 'opt_out_or_no_session') {
+                        if (window.showToast) {
+                            showToast('Inicia sesión en Google para activar la sincronización.', 'info');
+                        }
+                    }
+                }
+                
+                if (notification.isSkippedMoment?.()) {
+                    const reason = notification.getSkippedReason?.() || 'unknown';
+                    console.warn(`[Sync] Google Prompt skipped (${momentType}):`, reason);
+                }
+
+                if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.() || notification.isDismissedMoment?.()) {
+                    const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || notification.getDismissedReason?.() || 'unknown';
+
+                    // If credential was already returned via callback, don't treat as error
+                    if (reason === 'credential_returned') return;
+
+                    let errorMsg = 'Google sign-in closed. Reason: ' + reason;
+                    if (reason === 'tap_outside') {
+                        errorMsg = 'El selector se cerró al hacer clic fuera. Intenta de nuevo.';
+                    } else if (reason === 'user_cancel') {
+                        errorMsg = 'Has cancelado el inicio de sesión.';
+                    }
+
+                    settleOnce(reject, errorMsg);
+                }
+            });
+        }, 120);
         });
     }
 
@@ -384,90 +425,106 @@ const syncManager = (() => {
      * EMAIL IS PRIMARY KEY — coordinates with SessionManager
      */
     async function handleAccountSwitch(oldEmail, newEmail, isSameAccount = false) {
-        console.log(`[Sync] Account switch detected: ${oldEmail || 'unknown'} → ${newEmail} (same account: ${isSameAccount})`);
+        // Use Web Locks to coordinate multi-tab switches
+        return navigator.locks.request('nexus-account-switch', { mode: 'exclusive' }, async () => {
+            console.log(`[Sync] [Locked] Account switch detected: ${oldEmail || 'unknown'} → ${newEmail} (same account: ${isSameAccount})`);
 
-        // Validate email is set (PRIMARY KEY)
-        if (!newEmail) {
-            console.error('[Sync] Cannot handle account switch: newEmail is required');
-            return;
-        }
-
-        // 1. Pause sync temporarily
-        const wasSyncing = isSyncing;
-        isSyncing = true;
-
-        // 2. Record account switch/email update
-        const idToken = StorageManager.get(ID_TOKEN_KEY, 'session');
-        if (idToken && AccountChangeDetector) {
-            AccountChangeDetector.recordAccountSwitch(newEmail, idToken);
-        }
-
-        // 3. Update account scope in IDB if needed
-        // For email-only changes (same sub), this might just update the key
-        if (window.IDBScopedStorage && window.IDBScopedStorage.switchAccount) {
-            try {
-                await window.IDBScopedStorage.switchAccount(newEmail);
-            } catch (e) {
-                console.warn('[Sync] IDB account scope switch failed:', e);
+            // Validate email is set (PRIMARY KEY)
+            if (!newEmail) {
+                console.error('[Sync] Cannot handle account switch: newEmail is required');
+                return;
             }
-        }
 
-        // 4. Emit event for UI to react
-        window.dispatchEvent(new CustomEvent('account:switched', {
-            detail: { oldEmail, newEmail, isSameAccount }
-        }));
+            // 1. Pause sync temporarily
+            const wasSyncing = isSyncing;
+            isSyncing = true;
 
-        // 5. Reset sync state for new account (only if different account)
-        if (!isSameAccount) {
-            _remoteChecked = false;
-            _dirtyLocalChanges = false;
-            accessToken = null;
-            pushPending = false;
-            currentUser = null;    // Clear old Google identity so it doesn't linger
-            tokenTimestamp = 0;    // Invalidate Drive token age check
-
-            // BUG 46 FIX (Security): Clear third-party tokens (Zotero, Todoist, etc.)
-            // stored in sessionStorage via StorageManager. These tokens are tied to
-            // the previous user and MUST NOT leak into the new account's session.
-            if (StorageManager && StorageManager.clearSessionData) {
-                console.log('[Sync] Purging third-party integration tokens for account switch.');
-                StorageManager.clearSessionData();
+            // 2. Record account switch/email update
+            const idToken = StorageManager.get(ID_TOKEN_KEY, 'session');
+            if (idToken && AccountChangeDetector) {
+                AccountChangeDetector.recordAccountSwitch(newEmail, idToken);
             }
-        } else {
-            // Same account, just email changed — keep sync state
-            console.log('[Sync] Email alias updated, maintaining sync state');
-        }
 
-        // 6. Try to resume if it was syncing
-        if (wasSyncing) {
-            isSyncing = false;
-            // Give UI time to refresh
-            setTimeout(async () => {
+            // 3. Update account scope in IDB if needed
+            if (window.IDBScopedStorage && window.IDBScopedStorage.switchAccount) {
                 try {
-                    if (!isSameAccount) {
-                        // Different account — full sync cycle
-                        await pull();
-                        if (!isSyncing) {
-                            await push();
-                        }
-                    } else {
-                        // Same account — lighter refresh
-                        if (!isSyncing) {
-                            await push();
-                        }
-                    }
+                    await window.IDBScopedStorage.switchAccount(newEmail);
                 } catch (e) {
-                    console.warn('[Sync] Auto-sync after account switch failed:', e);
+                    console.warn('[Sync] IDB account scope switch failed:', e);
                 }
-            }, 500);
-        } else {
-            isSyncing = false;
-        }
+            }
 
-        // 7. Show toast
-        if (window.showToast) {
-            showToast(`Sesión cambiada a: ${newEmail}`, 'info');
-        }
+            // 4. Emit event for UI to react
+            window.dispatchEvent(new CustomEvent('account:switched', {
+                detail: { oldEmail, newEmail, isSameAccount }
+            }));
+
+            // 5. Reset sync state for new account (only if different account)
+            if (!isSameAccount) {
+                _remoteChecked = false;
+                _dirtyLocalChanges = false;
+                accessToken = null;
+                pushPending = false;
+                currentUser = null;    // Clear old Google identity so it doesn't linger
+                tokenTimestamp = 0;    // Invalidate Drive token age check
+
+                // BUG 46 FIX (Security): Clear third-party tokens (Zotero, Todoist, etc.)
+                // stored in sessionStorage via StorageManager. These tokens are tied to
+                // the previous user and MUST NOT leak into the new account's session.
+                if (StorageManager && StorageManager.clearSessionData) {
+                    console.log('[Sync] Purging third-party integration tokens for account switch.');
+                    StorageManager.clearSessionData();
+                }
+
+                // Phase 3: Reload third-party tokens from account-scoped persistent storage
+                const SCOPED_KEYS = [
+                    'todoist_token', 'ollama_url', 'ollama_model', 
+                    'elabftw_url', 'elabftw_api_key', 'zenodo_token',
+                    'zotero_user_id', 'zotero_api_key'
+                ];
+                SCOPED_KEYS.forEach(key => {
+                    const savedValue = StorageManager.getScoped(key, newEmail);
+                    if (savedValue) {
+                        console.log(`[Sync] Restoring scoped token: ${key} for ${newEmail}`);
+                        StorageManager.set(key, savedValue, 'session');
+                    }
+                });
+            } else {
+                // Same account, just email changed — keep sync state
+                console.log('[Sync] Email alias updated, maintaining sync state');
+            }
+
+            // 6. Try to resume if it was syncing
+            if (wasSyncing) {
+                isSyncing = false;
+                // Give UI time to refresh
+                setTimeout(async () => {
+                    try {
+                        if (!isSameAccount) {
+                            // Different account — full sync cycle
+                            await pull();
+                            if (!isSyncing) {
+                                await push();
+                            }
+                        } else {
+                            // Same account — lighter refresh
+                            if (!isSyncing) {
+                                await push();
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Sync] Auto-sync after account switch failed:', e);
+                    }
+                }, 500);
+            } else {
+                isSyncing = false;
+            }
+
+            // 7. Show toast
+            if (window.showToast) {
+                showToast(`Sesión cambiada a: ${newEmail}`, 'info');
+            }
+        });
     }
 
     async function syncIdentityToWorkspaceProfile(user) {
@@ -539,7 +596,71 @@ const syncManager = (() => {
             });
             // Use empty prompt for silent refresh if already authorized.
             // Only force the consent screen on first use or when explicitly needed.
-            tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
+            try {
+                tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
+            } catch (err) {
+                console.error('[Sync] requestAccessToken failed (likely popup blocked):', err);
+                showRedirectFallback(client_id).then(resolve).catch(reject);
+            }
+        });
+    }
+
+    /**
+     * Fallback for blocked popups (Phase 4)
+     * Shows a modal with a direct link for redirect-based OAuth.
+     */
+    async function showRedirectFallback(clientId) {
+        return new Promise((resolve, reject) => {
+            const redirectUri = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '')}/oauth-callback.html`;
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(SCOPES)}&prompt=consent`;
+
+            openModal(`
+                <div class="modal-header">
+                    <h2><i data-feather="shield"></i> Autorización Requerida</h2>
+                    <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom:16px;">El navegador bloqueó la ventana de Google. Para sincronizar con Drive, necesitamos tu permiso explícito.</p>
+                    <div style="background:var(--bg-accent); padding:16px; border-radius:8px; border:1px solid var(--accent-primary)40; text-align:center;">
+                        <a href="${authUrl}" target="_blank" id="btn-oauth-redirect" class="btn btn-primary" style="display:inline-flex; gap:8px; text-decoration:none;">
+                            <i data-feather="external-link"></i> Abrir Ventana de Google
+                        </a>
+                    </div>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-top:12px;">Una vez autorices, esta ventana se cerrará automáticamente y la sincronización se activará.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+                </div>
+            `);
+
+            // Listen for the success signal from the secondary tab
+            const channel = new BroadcastChannel('nexus-oauth-flow');
+            channel.onmessage = (event) => {
+                if (event.data.type === 'oauth:success') {
+                    accessToken = event.data.token;
+                    tokenTimestamp = Date.now();
+                    StorageManager.set(STATUS_KEY, 'true', 'session');
+                    updateSyncUI('online');
+                    
+                    if (window.googleSyncOrchestrator?.initialize) {
+                        window.googleSyncOrchestrator.initialize(accessToken);
+                    }
+
+                    closeModal();
+                    channel.close();
+                    resolve(accessToken);
+                } else if (event.data.type === 'oauth:error') {
+                    closeModal();
+                    channel.close();
+                    reject(event.data.error);
+                }
+            };
+
+            document.getElementById('modal-close').onclick = () => { channel.close(); closeModal(); reject('USER_CANCELLED'); };
+            document.getElementById('modal-cancel').onclick = () => { channel.close(); closeModal(); reject('USER_CANCELLED'); };
+            
+            // Re-bind feather icons in the new modal
+            if (window.feather) feather.replace();
         });
     }
 
@@ -2266,8 +2387,11 @@ const syncManager = (() => {
     }
 
     async function syncTodoist() {
-        const token = localStorage.getItem('todoist_token');
-        if (!token || localStorage.getItem('sync_todoist') !== 'true') return;
+        const activeEmail = StorageManager.get('workspace_user_email', 'session');
+        const token = StorageManager.getScoped('todoist_token', activeEmail);
+        const isSyncEnabled = StorageManager.get('sync_todoist', 'global') === 'true';
+
+        if (!token || !isSyncEnabled) return;
         console.log('[Sync] Syncing with Todoist (Push only)...');
         const tasks = store.get.activeTasks().filter(t => !t.todoistId);
         for (const t of tasks) {

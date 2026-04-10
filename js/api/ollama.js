@@ -5,11 +5,14 @@
  * providing researchers with local, private LLM capabilities.
  */
 
+import { StorageManager } from '../utils/storage-manager.js';
+
 class OllamaAPI {
     constructor() {
-        this.baseUrl = localStorage.getItem('ollama_url') || 'http://localhost:11434';
-        this.model = localStorage.getItem('ollama_model') || 'llama3';
-        this.corsProxyUrl = localStorage.getItem('ollama_cors_proxy') || '';
+        const activeEmail = StorageManager.get('workspace_user_email', 'session');
+        this.baseUrl = StorageManager.getScoped('ollama_url', activeEmail) || 'http://localhost:11434';
+        this.model = StorageManager.getScoped('ollama_model', activeEmail) || 'llama3';
+        this.corsProxyUrl = StorageManager.getScoped('ollama_cors_proxy', activeEmail) || '';
         this._isOffline = false;
         this._lastCheck = 0;
 
@@ -32,6 +35,7 @@ class OllamaAPI {
     }
 
     setSettings(url, model, corsProxy = '') {
+        const activeEmail = StorageManager.get('workspace_user_email', 'session');
         if (url) {
             try {
                 const parsed = new URL(url);
@@ -39,7 +43,7 @@ class OllamaAPI {
                     throw new Error('Solo se permiten URLs HTTP/HTTPS');
                 }
                 this.baseUrl = url.endsWith('/') ? url.slice(0, -1) : url;
-                localStorage.setItem('ollama_url', this.baseUrl);
+                StorageManager.setScoped('ollama_url', this.baseUrl, activeEmail);
             } catch (e) {
                 console.error('[Ollama] Invalid URL:', e);
                 throw new Error('URL inválida para Ollama: ' + e.message);
@@ -47,14 +51,14 @@ class OllamaAPI {
         }
         if (model) {
             this.model = model;
-            localStorage.setItem('ollama_model', model);
+            StorageManager.setScoped('ollama_model', model, activeEmail);
         }
         if (corsProxy !== undefined) {
             this.corsProxyUrl = corsProxy;
             if (corsProxy) {
-                localStorage.setItem('ollama_cors_proxy', corsProxy);
+                StorageManager.setScoped('ollama_cors_proxy', corsProxy, activeEmail);
             } else {
-                localStorage.removeItem('ollama_cors_proxy');
+                StorageManager.removeScoped('ollama_cors_proxy', activeEmail);
             }
         }
     }

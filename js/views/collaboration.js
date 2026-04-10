@@ -60,15 +60,18 @@ async function renderCollaboration(root) {
     .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
     .slice(0, 6);
 
+  // SECURITY: Import hasMemberId helper and RoleManager
+  const { hasMemberId, setCurrentMemberId } = await import('../utils.js');
+  const { RoleManager } = await import('../../scripts/roles.js');
+
+  const canManageMembers = RoleManager.can('ADD_MEMBER', currentUser.role);
+
   const conflictRiskTasks = tasks.filter(task => {
     if (!task.updatedAt || !task.updatedBy) return false;
     if (task.updatedById && task.updatedById === currentUser.identityKey) return false;
     if (!task.updatedById && task.updatedBy === currentUser.name) return false;
     return (now - task.updatedAt) <= (15 * 60 * 1000);
   });
-
-  // SECURITY: Import hasMemberId helper
-  const { hasMemberId, setCurrentMemberId } = await import('../utils.js');
 
   // WARNING: If no memberId configured, show alert banner
   const memberIdWarning = !hasMemberId() ? `
@@ -89,59 +92,97 @@ async function renderCollaboration(root) {
           <h1>Colaboración de Equipo</h1>
           <p class="view-subtitle">Claridad operativa sobre asignaciones, protocolos y usuarios activos.</p>
         </div>
-        <button class="btn btn-primary" id="btn-add-member"><i data-feather="user-plus"></i> Nuevo Miembro</button>
+        ${canManageMembers ? `<button class="btn btn-primary" id="btn-add-member"><i data-feather="user-plus"></i> Nuevo Miembro</button>` : ''}
       </div>
 
-      <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px;">
-        <div class="glass-panel" style="padding:16px;">
-          <h3 style="margin-bottom:10px;">Usuario activo</h3>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div class="avatar" style="width:42px;height:42px;">${esc(currentUser.avatar)}</div>
+      <div class="dashboard-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px;">
+        <div class="glass-panel" style="padding:20px; border-radius:var(--radius-lg); background:var(--surface-glass); backdrop-filter:var(--blur-premium); border:1px solid var(--surface-glass-border);">
+          <h3 style="margin-bottom:14px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Usuario activo</h3>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div class="avatar" style="width:56px;height:56px; border:2px solid var(--accent-primary); box-shadow:var(--glow-primary);">${esc(currentUser.avatar)}</div>
             <div>
-              <div style="font-weight:600;">${esc(currentUser.name)}</div>
-              <div style="font-size:0.82rem;color:var(--text-muted);">${esc(currentUser.role)}</div>
-              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${linkedMember ? `Miembro vinculado: ${esc(linkedMember.name)}` : 'Miembro sin vincular'}</div>
-              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${currentUser.email ? esc(currentUser.email) : 'Sin correo de identidad'}</div>
+              <div style="font-weight:700; font-size:1.1rem; color:var(--text-primary);">${esc(currentUser.name)}</div>
+              <div style="font-size:0.85rem; font-weight:500; color:var(--accent-primary);">${esc(currentUser.role)}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">${currentUser.email ? esc(currentUser.email) : 'Sin enlace de identidad'}</div>
             </div>
           </div>
-          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Este perfil controla la autoría de cambios y mensajes del chat. Recomendación: define correo de identidad en Perfil para mantener continuidad aunque cambies de equipo o dispositivo.</p>
+          <p style="margin:16px 0 0; color:var(--text-secondary); font-size:0.82rem; line-height:1.5;">Este perfil firma tus cambios y mensajes. La identidad escopada asegura que tus tokens de Todoist y Zotero sean privados.</p>
           ${!linkedMember ? `
-            <button id="selectMemberBtn" style="margin-top:12px;padding:8px 12px;background:var(--accent-primary);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
-              Seleccionar mi miembro →
+            <button id="selectMemberBtn" class="btn btn-primary playful-pop" style="margin-top:16px; width:100%; justify-content:center; background:var(--accent-vibrant); border:none;">
+              Vincular Miembro del Equipo
             </button>
-          ` : ''}
+          ` : `<div style="margin-top:16px; font-size:0.75rem; padding:8px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border:1px solid var(--border-color); color:var(--text-secondary);">
+                <i data-feather="link" style="width:12px;height:12px;vertical-align:middle;margin-right:4px;"></i> Miembro: <strong>${esc(linkedMember.name)}</strong>
+              </div>`}
         </div>
 
-        <div class="glass-panel" style="padding:16px;">
-          <h3 style="margin-bottom:10px;">Indicadores de coordinación</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="kpi-card" style="padding:10px;">
-              <div style="font-size:0.76rem;color:var(--text-muted);">Tareas sin asignar</div>
-              <div style="font-size:1.35rem;font-weight:700;">${unassignedTasks}</div>
+        <div class="glass-panel" style="padding:20px; border-radius:var(--radius-lg); background:var(--surface-glass); backdrop-filter:var(--blur-premium); border:1px solid var(--surface-glass-border);">
+          <h3 style="margin-bottom:14px; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Indicadores de coordinación</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="kpi-card" style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border-left:4px solid var(--accent-warning);">
+              <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Sin asignar</div>
+              <div style="font-size:1.5rem; font-weight:800; color:var(--accent-warning);">${unassignedTasks}</div>
             </div>
-            <div class="kpi-card" style="padding:10px;">
-              <div style="font-size:0.76rem;color:var(--text-muted);">En revisión</div>
-              <div style="font-size:1.35rem;font-weight:700;">${inReviewTasks}</div>
+            <div class="kpi-card" style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border-left:4px solid var(--accent-teal);">
+              <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">En revisión</div>
+              <div style="font-size:1.5rem; font-weight:800; color:var(--accent-teal);">${inReviewTasks}</div>
             </div>
-            <div class="kpi-card" style="padding:10px;">
-              <div style="font-size:0.76rem;color:var(--text-muted);">Mis tareas</div>
-              <div style="font-size:1.35rem;font-weight:700;">${myTasks}</div>
+            <div class="kpi-card" style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border-left:4px solid var(--accent-primary);">
+              <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Mis tareas</div>
+              <div style="font-size:1.5rem; font-weight:800; color:var(--text-primary); text-shadow:var(--glow-primary);">${myTasks}</div>
             </div>
-            <div class="kpi-card" style="padding:10px;">
-              <div style="font-size:0.76rem;color:var(--text-muted);">Tareas del equipo</div>
-              <div style="font-size:1.35rem;font-weight:700;">${teamTasks}</div>
+            <div class="kpi-card" style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border-left:4px solid var(--text-muted);">
+              <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">Equipo</div>
+              <div style="font-size:1.5rem; font-weight:800; color:var(--text-secondary);">${teamTasks}</div>
             </div>
           </div>
-          <p style="margin:12px 0 0;color:var(--text-muted);font-size:0.8rem;">Si hay tareas sin dueño, se recomienda asignarlas desde Backlog, Tablero o formularios médicos.</p>
         </div>
       </div>
 
       <div class="glass-panel" style="padding:16px; margin-top:16px;">
-        <h3 style="margin-bottom:12px;">Cómo distinguir "mío" vs "de todos"</h3>
-        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:6px; color:var(--text-muted); font-size:0.83rem;">
+        <h3 style="margin-bottom:12px;">Carga de trabajo por miembro</h3>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Miembro</th>
+              <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Activas</th>
+              <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Terminadas</th>
+              <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total</th>
+              ${canManageMembers ? `<th style="text-align:center;padding:8px;border-bottom:1px solid var(--border-color);">Acciones</th>` : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${workloadRows.map(row => `
+                  <tr data-member-id="${row.member.id}" style="border-bottom:1px solid var(--border-color); transition:background 0.2s;">
+                    <td style="padding:12px 8px;">
+                      <div style="display:flex;align-items:center;gap:12px;">
+                        <div class="avatar" style="width:32px;height:32px;font-size:0.8rem; background:var(--surface-tonal);">${esc(row.member.avatar)}</div>
+                        <div style="display:flex; flex-direction:column;">
+                          <span style="font-weight:600; color:var(--text-primary);">${esc(row.member.name)}</span>
+                          <span style="font-size:0.75rem; color:var(--accent-primary);">${esc(row.member.role)}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td style="padding:12px 8px;text-align:right; font-weight:600;">${row.inProgress}</td>
+                    <td style="padding:12px 8px;text-align:right; color:var(--accent-success);">${row.done}</td>
+                    <td style="padding:12px 8px;text-align:right; font-weight:700;">${row.total}</td>
+                    ${canManageMembers ? `
+                    <td style="padding:12px 8px;text-align:center;">
+                      <button class="btn btn-icon edit-member playful-pop" title="Configurar" data-member-id="${row.member.id}"><i data-feather="settings" style="width:18px;height:18px;"></i></button>
+                      <button class="btn btn-icon delete-member playful-pop" title="Eliminar" data-member-id="${row.member.id}" style="color:var(--accent-danger);"><i data-feather="user-x" style="width:18px;height:18px;"></i></button>
+                    </td>` : ''}
+                  </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="glass-panel" style="padding:20px; margin-top:20px; border-radius:var(--radius-lg); background:var(--bg-surface); border:1px solid var(--border-color);">
+        <h3 style="margin-bottom:12px; font-size:1rem; color:var(--text-primary);"><i data-feather="info" style="width:16px;height:16px;vertical-align:text-bottom;margin-right:6px;"></i> Protocolos de Identidad</h3>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px; color:var(--text-secondary); font-size:0.85rem;">
           <li><b>Mía</b>: la tarea tiene <b>assigneeId</b> igual a tu miembro vinculado.</li>
           <li><b>Equipo</b>: está asignada a otra persona o no está asignada.</li>
-          <li>Backlog y Tablero muestran chips "Mía/Equipo" para revisar rápido antes de editar.</li>
+          <li>La identidad escopada evita fugas de credenciales entre cuentas de un mismo navegador.</li>
         </ul>
       </div>
 
@@ -222,44 +263,61 @@ async function renderCollaboration(root) {
         ` : `<p style="color:var(--text-muted);margin:0;">Aún no hay historial de edición por otros usuarios.</p>`}
       </div>
 
-      <div class="glass-panel" style="padding:16px; margin-top:16px;">
-        <h3 style="margin-bottom:12px;">Carga por miembro</h3>
-        ${workloadRows.length ? `
-          <div style="overflow:auto;">
-            <table class="table" style="width:100%; border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Miembro</th>
-                  <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Activas</th>
-                  <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Terminadas</th>
-                  <th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total</th>
-                  <th style="text-align:center;padding:8px;border-bottom:1px solid var(--border-color);">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${workloadRows.map(row => `
-                  <tr data-member-id="${row.member.id}">
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);">
-                      <div style="display:flex;align-items:center;gap:8px;">
-                        <div class="avatar" style="width:28px;height:28px;font-size:0.7rem;">${esc(row.member.avatar)}</div>
-                        ${esc(row.member.name)}
-                      </div>
-                    </td>
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.inProgress}</td>
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.done}</td>
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:right;">${row.total}</td>
-                    <td style="padding:8px;border-bottom:1px solid var(--border-color);text-align:center;">
-                      <button class="btn btn-icon edit-member" title="Editar" data-member-id="${row.member.id}"><i data-feather="edit-2" style="width:16px;height:16px;"></i></button>
-                      <button class="btn btn-icon delete-member" title="Eliminar" data-member-id="${row.member.id}" style="color:var(--accent-danger);"><i data-feather="trash-2" style="width:16px;height:16px;"></i></button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        ` : `<p style="color:var(--text-muted);margin:0;">No hay miembros cargados aún.</p>`}
+      <div class="glass-panel" style="padding:16px; margin-top:16px; border:1px solid var(--accent-primary-alpha);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h3 style="margin:0;"><i data-feather="activity" style="width:18px;height:18px;vertical-align:text-bottom;margin-right:6px;"></i> El Ojo de Horus: Actividad Viva</h3>
+          <span class="badge badge-success pulse" style="font-size:0.7rem;">Live</span>
+        </div>
+        <div id="activity-feed-container">
+          ${renderActivityFeed(store.get.logs())}
+        </div>
       </div>
     </div>`;
+
+  // Start real-time activity subscription
+  const activityUnsub = store.subscribe('logs', (newLogs) => {
+    const container = root.querySelector('#activity-feed-container');
+    if (container) {
+      container.innerHTML = renderActivityFeed(newLogs);
+      feather.replace();
+      
+      // Re-bind view detail buttons
+      container.querySelectorAll('.view-entity').forEach(btn => {
+        btn.onclick = () => handleEntityView(btn.dataset.type, btn.dataset.id);
+      });
+    }
+  });
+
+  // Ensure cleanup if view changes
+  const observer = new MutationObserver((mutations) => {
+    if (!document.contains(root)) {
+      activityUnsub();
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Handle entity navigation
+  async function handleEntityView(type, id) {
+    if (type === 'task') {
+      const task = store.get.allTasks().find(t => t.id === id);
+      if (task && window.openTaskDetail) {
+        window.openTaskDetail(task);
+      } else {
+        showToast('Tarea no encontrada o eliminada', 'warning');
+      }
+    } else if (type === 'project') {
+       if (window.renderProjects) {
+         // Quick navigation logic could be added here
+         showToast('Navegando al proyecto...', 'info');
+       }
+    }
+  }
+
+  // Setup entity detail buttons
+  root.querySelectorAll('.view-entity').forEach(btn => {
+    btn.onclick = () => handleEntityView(btn.dataset.type, btn.dataset.id);
+  });
 
   // Setup member selector button
   const selectBtn = root.querySelector('#selectMemberBtn');
@@ -302,7 +360,9 @@ async function renderCollaboration(root) {
   }
 
   // Setup add member button
-  root.querySelector('#btn-add-member').onclick = async () => {
+  const addMemberBtn = root.querySelector('#btn-add-member');
+  if (addMemberBtn) {
+    addMemberBtn.onclick = async () => {
     const modal = openModal(`
       <div class="modal-header">
         <h2><i data-feather="user-plus"></i> Nuevo Miembro</h2>
@@ -370,6 +430,7 @@ async function renderCollaboration(root) {
       if (e.key === 'Enter') doSave();
     });
   };
+}
 
   // Setup edit member buttons
   root.querySelectorAll('.edit-member').forEach(btn => {
@@ -460,6 +521,55 @@ async function renderCollaboration(root) {
   });
 
   feather.replace();
+}
+
+function renderActivityFeed(logs) {
+  if (!logs || logs.length === 0) {
+    return `<p style="color:var(--text-muted);margin:0;font-size:0.85rem;">No hay actividad reciente registrada.</p>`;
+  }
+
+  // Sort logs by timestamp descending
+  const sortedLogs = [...logs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 50);
+
+  return `
+    <div class="activity-timeline" style="display:flex; flex-direction:column; gap:12px; max-height:400px; overflow-y:auto; padding-right:8px;">
+      ${sortedLogs.map(log => {
+        const icon = getLogIcon(log.action, log.entityType);
+        const color = getLogColor(log.action);
+        return `
+          <div class="activity-item" style="display:flex; gap:12px; position:relative; padding-bottom:4px;">
+            <div class="activity-icon-wrapper" style="flex-shrink:0; width:28px; height:28px; border-radius:50%; background:${color}22; color:${color}; display:flex; align-items:center; justify-content:center;">
+              <i data-feather="${icon}" style="width:14px; height:14px;"></i>
+            </div>
+            <div class="activity-content" style="flex-grow:1; font-size:0.82rem;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <span style="font-weight:600; color:var(--text-primary);">${esc(log.updatedBy || 'Usuario')}</span>
+                <span style="font-size:0.72rem; color:var(--text-muted);">${timeAgo(log.timestamp)}</span>
+              </div>
+              <div style="color:var(--text-secondary); margin-top:2px; line-height:1.4;">
+                ${esc(log.message || 'Realizó una acción')}
+              </div>
+              ${log.entityId ? `<button class="btn-link view-entity" data-type="${log.entityType}" data-id="${log.entityId}" style="font-size:0.75rem; padding:0; margin-top:4px; color:var(--accent-primary); border:none; background:none; cursor:pointer;">Ver detalle →</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function getLogIcon(action, type) {
+  if (action === 'DELETE') return 'trash-2';
+  if (action === 'CREATE') return 'plus-circle';
+  if (type === 'task' && action === 'UPDATE') return 'edit-3';
+  if (type === 'project') return 'folder';
+  return 'circle';
+}
+
+function getLogColor(action) {
+  if (action === 'DELETE') return 'var(--accent-danger)';
+  if (action === 'CREATE') return 'var(--accent-success)';
+  return 'var(--accent-primary)';
 }
 
 function timeAgo(timestamp) {
