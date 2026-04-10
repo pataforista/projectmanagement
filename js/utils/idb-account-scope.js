@@ -17,16 +17,16 @@ export const IDBScopedStorage = {
     getDbName(email) {
         if (!email) return 'default';
         const normalized = email.trim().toLowerCase();
-        return `nexus_${normalized.replace(/[^a-z0-9]/g, '_')}`;
+        return `tlacuache_${normalized.replace(/[^a-z0-9]/g, '_')}`;
     },
 
     getCurrentOwner() {
-        return localStorage.getItem('nexus_idb_owner_email') || null;
+        return localStorage.getItem('tlacuache_idb_owner_email') || null;
     },
 
     claimOwnership(email) {
         if (!email) return;
-        localStorage.setItem('nexus_idb_owner_email', email.trim().toLowerCase());
+        localStorage.setItem('tlacuache_idb_owner_email', email.trim().toLowerCase());
     },
 
     /** Verifica si el email activo coincide con el propietario de los datos en IDB. */

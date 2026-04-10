@@ -16,16 +16,16 @@ export const StorageManager = (() => {
         'autolock_enabled',         // Security preference
         'low_feedback_enabled',     // UI preference
         'pwa-install-dismissed',    // PWA state
-        'nexus_pbkdf2_iterations',          // PBKDF2 iterations (global)
-        'nexus_pbkdf2_iterations_pending',  // PBKDF2 pending iterations (key rotation)
-        'nexus_key_rotating',               // Key rotation in-progress flag
+        'tlacuache_pbkdf2_iterations',          // PBKDF2 iterations (global)
+        'tlacuache_pbkdf2_iterations_pending',  // PBKDF2 pending iterations (key rotation)
+        'tlacuache_key_rotating',               // Key rotation in-progress flag
         'workspace_lock_hash',              // Password hash
         'workspace_recovery_hash',  // Recovery code hash
-        'nexus_salt',               // Encryption salt (CRITICAL)
-        'nexus_storage_migrated_v2', // Migration marker
-        'nexus_migration_timestamp', // Migration timestamp
-        'nexus_account_history',    // Account history (global)
-        'nexus_last_verified_sub',  // Last verified Google sub
+        'tlacuache_salt',               // Encryption salt (CRITICAL)
+        'tlacuache_storage_migrated_v2', // Migration marker
+        'tlacuache_migration_timestamp', // Migration timestamp
+        'tlacuache_account_history',    // Account history (global)
+        'tlacuache_last_verified_sub',  // Last verified Google sub
         'sync_gcal',                // Google Calendar sync pref
         'sync_gtasks',              // Google Tasks sync pref
     ]);

@@ -36,7 +36,7 @@ const syncManager = (() => {
     // Previously declared but postMessage was never called — now it is used at
     // the end of a successful pull() to notify other tabs immediately.
     const _syncChannel = typeof BroadcastChannel !== 'undefined'
-        ? new BroadcastChannel('nexus-sync')
+        ? new BroadcastChannel('tlacuache-sync')
         : null;
     // FIX B: Listen for sync notifications from sibling tabs so this tab can
     // reload its store without waiting for the next auto-sync interval.

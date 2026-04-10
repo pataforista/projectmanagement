@@ -714,15 +714,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // If there are members but still no memberId linked (no email match, no invite),
         // prompt the user to manually select themselves. Shown once per session.
-        if (!hasMemberId() && allMembers.length > 0 && !sessionStorage.getItem('nexus_member_select_shown')) {
-            sessionStorage.setItem('nexus_member_select_shown', '1');
+        if (!hasMemberId() && allMembers.length > 0 && !sessionStorage.getItem('tlacuache_member_select_shown')) {
+            sessionStorage.setItem('tlacuache_member_select_shown', '1');
             setTimeout(() => {
                 if (window.openMemberSelectModal) openMemberSelectModal();
             }, 1500);
         }
 
-        // --- Phase 5: Mission Briefing (One-time) ---
-        if (!localStorage.getItem('nexus_hub_upgrade_v1_shown')) {
+        // --- Tlacuache Hub Upgrade: Mission Briefing (One-time) ---
+        if (!localStorage.getItem('tlacuache_hub_upgrade_v1_shown')) {
             setTimeout(() => {
                 if (window.showMissionBriefing) showMissionBriefing();
             }, 3000); // Give some time for initial renders

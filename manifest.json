@@ -1,7 +1,7 @@
 {
-  "name": "Workspace de Producción",
-  "short_name": "Workspace",
-  "description": "Gestión colaborativa de proyectos académicos, médicos y creativos. Integrado con Google Calendar, Tasks y Todoist.",
+  "name": "Tlacuache Hub",
+  "short_name": "Tlacuache",
+  "description": "Gestión inteligente de proyectos clínicos, académicos y creativos. El centro de operaciones de la madriguera.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
@@ -13,66 +13,66 @@
     "productivity",
     "utilities"
   ],
-  "id": "/workspace-pwa",
+  "id": "/tlacuache-hub",
   "dir": "ltr",
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "icons/icon-72.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-96.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-128.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-144.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-152.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "152x152",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-192.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-192.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "icons/icon-384.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "icons/icon-512.png",
+      "src": "icons/tlacuache_8bit.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

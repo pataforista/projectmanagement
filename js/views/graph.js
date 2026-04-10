@@ -20,7 +20,7 @@ export const renderGraph = (root) => {
                 <div class="view-header">
                     <div class="view-header-text">
                         <h1>Grafo de Conocimiento</h1>
-                        <p class="view-subtitle">Visualiza y vincula tus proyectos y referencias.</p>
+                        <p class="view-subtitle">Escanea la red de la madriguera y visualiza tus enlaces.</p>
                     </div>
                 </div>
                 ${renderCompatibilityNotice({
@@ -38,8 +38,8 @@ export const renderGraph = (root) => {
         <div class="view-container" style="padding:0; overflow:hidden; display:flex; flex-direction:column; height:100%;">
             <header class="view-header" style="padding:15px 20px;">
                 <div class="view-title">
-                    <h1>Grafo de Conocimiento</h1>
-                    <p>Visualiza y vincula tus proyectos y referencias.</p>
+                    <h1>Malla de Inteligencia</h1>
+                    <p>Visualiza y vincula los nodos de la madriguera.</p>
                 </div>
                 <div class="header-actions" style="display:flex; gap:8px;">
                     <button class="btn btn-primary btn-sm" id="btn-toggle-link" title="Vincular proyectos manualmente">

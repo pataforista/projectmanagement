@@ -8,27 +8,26 @@ function renderMedical(root) {
   const isSyncing = root.dataset.syncing === 'true';
 
   root.innerHTML = `
-    <div class="view-inner">
-      <div class="view-header">
+    <div class="view-inner" style="padding:20px; max-width:1400px; margin:0 auto;">
+      <div class="view-header premium-header" style="border-radius:var(--radius-lg); padding:24px; margin-bottom:24px; box-shadow:var(--shadow-lg); color:white;">
         <div class="view-header-text">
-          <h1>Panel de Interconsultas</h1>
-          <p class="view-subtitle">Seguimiento de derivaciones y consultas especializadas.</p>
+          <h1 style="font-size:1.8rem; font-weight:800; letter-spacing:-0.03em; color:white;">Seguimiento Clínico Tlacuache</h1>
+          <p class="view-subtitle" style="color:rgba(255,255,255,0.85);">Centro de inteligencia para derivaciones e interconsultas especializadas.</p>
         </div>
-        <div class="view-actions" style="display:flex; gap:8px;">
+        <div class="view-actions" style="display:flex; gap:12px; align-items:center;">
            ${savedSheetsUrl ? `
-             <button class="btn btn-secondary ${isSyncing ? 'btn-loading' : ''}" id="btn-sync-medical" onclick="syncInterconsultations()">
-               <i data-feather="${isSyncing ? 'loader' : 'refresh-cw'}"></i> Sincronizar Excel
+             <button class="btn btn-secondary ${isSyncing ? 'btn-loading' : ''}" id="btn-sync-medical" onclick="syncInterconsultations()" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); color:white;">
+               <i data-feather="${isSyncing ? 'loader' : 'refresh-cw'}"></i> Sincronizar
              </button>
-             <button class="btn btn-ghost" id="btn-toggle-excel" onclick="toggleExcelEmbed()">
-               <i data-feather="eye"></i> <span id="text-toggle-excel">Ver Excel</span>
+             <button class="btn btn-ghost" id="btn-toggle-excel" onclick="toggleExcelEmbed()" style="color:white; opacity:0.9;">
+               <i data-feather="eye"></i> <span id="text-toggle-excel">Ver Datos</span>
              </button>
            ` : ''}
-           <button class="btn btn-secondary" onclick="openImportInterconsultationModal()">
-             <i data-feather="download"></i> Configurar Origen
-           </button>
-           <button class="btn btn-primary" onclick="openInterconsultationModal()">
-             <i data-feather="plus"></i> Nueva
-           </button>
+           ${RoleManager.can('ADD_TASK') ? `
+             <button class="btn btn-primary playful-pop" onclick="openInterconsultationModal()" style="background:white; color:var(--accent-primary); border:none; box-shadow:0 8px 16px rgba(0,0,0,0.15);">
+               <i data-feather="plus"></i> Nueva Interconsulta
+             </button>
+           ` : ''}
         </div>
       </div>
 
@@ -36,10 +35,34 @@ function renderMedical(root) {
         <iframe id="medical-excel-iframe" src="" style="width:100%; height:100%; border:none;"></iframe>
       </div>
 
-      <div class="medical-stats" style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-        ${statPill(interconsultations.length, 'Totales', 'activity')}
-        ${statPill(interconsultations.filter(i => i.status === 'Solicitada').length, 'Pendientes', 'clock')}
-        ${statPill(interconsultations.filter(i => i.status === 'Respondida').length, 'Completadas', 'check-circle')}
+      <div class="medical-stats" style="display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;">
+        <div class="glass-panel" style="padding:16px; border-radius:16px; flex:1; min-width:180px; display:flex; align-items:center; gap:12px; border:1px solid var(--border-highlight);">
+           <div style="background:var(--accent-primary-glow); color:var(--accent-primary); width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center;">
+             <i data-feather="activity"></i>
+           </div>
+           <div>
+             <div style="font-size:1.4rem; font-weight:800;">${interconsultations.length}</div>
+             <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">Totales</div>
+           </div>
+        </div>
+        <div class="glass-panel" style="padding:16px; border-radius:16px; flex:1; min-width:180px; display:flex; align-items:center; gap:12px;">
+           <div style="background:var(--accent-warning-bg); color:var(--accent-warning); width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center;">
+             <i data-feather="clock"></i>
+           </div>
+           <div>
+             <div style="font-size:1.4rem; font-weight:800;">${interconsultations.filter(i => i.status === 'Solicitada').length}</div>
+             <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">Pendientes</div>
+           </div>
+        </div>
+        <div class="glass-panel" style="padding:16px; border-radius:16px; flex:1; min-width:180px; display:flex; align-items:center; gap:12px;">
+           <div style="background:var(--accent-success-bg); color:var(--accent-success); width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center;">
+             <i data-feather="check-circle"></i>
+           </div>
+           <div>
+             <div style="font-size:1.4rem; font-weight:800;">${interconsultations.filter(i => i.status === 'Respondida').length}</div>
+             <div style="font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em;">Completadas</div>
+           </div>
+        </div>
       </div>
 
       <div class="card glass-panel" style="overflow:auto;">
@@ -107,9 +130,9 @@ window.openInterconsultationModal = function (id = null) {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal" style="max-width:480px;">
-      <div class="modal-header">
-        <h2>${id ? 'Editar' : 'Nueva'} Interconsulta</h2>
-        <button class="btn btn-icon" id="int-close"><i data-feather="x"></i></button>
+      <div class="modal-header premium-header" style="border-radius:var(--radius-md) var(--radius-md) 0 0; padding:20px;">
+        <h2 style="color:white; margin:0;">${id ? 'Editar' : 'Nueva'} Interconsulta</h2>
+        <button class="btn btn-icon" id="int-close" style="color:white;"><i data-feather="x"></i></button>
       </div>
       <form id="int-form" class="modal-body">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -166,7 +189,7 @@ window.openInterconsultationModal = function (id = null) {
           </select>
         </div>
         <div class="modal-footer" style="padding:16px 0 0 0; display:flex; justify-content:space-between;">
-          ${id ? `<button type="button" class="btn btn-ghost" id="int-delete" style="color:var(--accent-danger);"><i data-feather="trash-2"></i> Eliminar</button>` : '<div></div>'}
+          ${id && RoleManager.can('DELETE_TASK') ? `<button type="button" class="btn btn-ghost" id="int-delete" style="color:var(--accent-danger);"><i data-feather="trash-2"></i> Eliminar</button>` : '<div></div>'}
           <div style="display:flex; gap:8px;">
             <button type="button" class="btn btn-secondary" id="int-cancel">Cancelar</button>
             <button type="submit" class="btn btn-primary">${id ? 'Actualizar' : 'Crear'} Registro</button>

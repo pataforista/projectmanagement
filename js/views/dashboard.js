@@ -33,10 +33,10 @@ function renderDashboard(root) {
         ${statPill(upcoming.length, 'Vencen en 7 días', 'calendar', upcoming.length > 3 ? 'var(--accent-warning)' : null)}
       </div>
 
-      <!-- Phase 7: Productivity Analytics -->
+      <!-- Phase 7: Analytics Rebranded -->
       <div class="card glass-panel" style="margin-bottom:24px; padding:24px;">
         <div class="card-header" style="margin-bottom:20px;">
-          <h3><i data-feather="trending-up" style="width:18px; vertical-align:middle; margin-right:8px; color:var(--accent-primary);"></i> Estadísticas Nexus</h3>
+          <h3><i data-feather="trending-up" style="width:18px; vertical-align:middle; margin-right:8px; color:var(--accent-primary);"></i> Analíticas Tlacuache</h3>
         </div>
         <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:20px; min-height:280px;">
           <div id="chart-velocity" class="glass-panel" style="background:rgba(255,255,255,0.02); border-radius:12px; padding:12px;"></div>

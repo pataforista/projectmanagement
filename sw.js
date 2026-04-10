@@ -4,8 +4,8 @@
  */
 
 // ── VERSION CONTROL FOR FORCED UPDATES ──────────────────────────────────────
-const SW_VERSION = '12.0.4';  // Increment this to force all clients to update
-const CACHE_NAME = 'workspace-v12.4';
+const SW_VERSION = '13.0.0';  // Increment this to force all clients to update
+const CACHE_NAME = 'workspace-v13.0';
 const VERSION_CACHE = 'workspace-version';
 const SHELL_ASSETS = [
     './',
@@ -43,7 +43,7 @@ const SHELL_ASSETS = [
     'js/views/writing.js',
     'js/views/collaboration.js',
     'js/vendor/feather.min.js',
-    'icons/icon-192.png'
+    'icons/tlacuache_8bit.png'
 ];
 
 self.addEventListener('install', event => {

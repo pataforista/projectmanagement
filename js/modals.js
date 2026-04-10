@@ -1864,7 +1864,7 @@ export async function openMemberPicker() {
 window.openMemberPicker = openMemberPicker;
 
 /**
- * Muestra un resumen de alto impacto de las mejoras de la Phase 5 (Nexus Hub Upgrade).
+ * Muestra un resumen de alto impacto de las mejoras (Tlacuache Hub Upgrade).
  */
 export function showMissionBriefing() {
   const user = getCurrentWorkspaceUser();
@@ -1877,8 +1877,8 @@ export function showMissionBriefing() {
       <button class="btn btn-icon" id="modal-close"><i data-feather="x"></i></button>
     </div>
     <div class="modal-body" style="padding-top:10px; text-align:center;">
-      <h1 style="font-size:1.8rem; font-weight:800; letter-spacing:-0.03em; margin-bottom:8px; line-height:1.1;">Hub Modernizado con Éxito</h1>
-      <p style="color:var(--text-muted); font-size:1rem; margin-bottom:24px;">Bienvenido, <b>${esc(user.name)}</b>. Tu espacio de trabajo ha sido elevado a los estándares de Nexus Clinical Ops.</p>
+      <h1 style="font-size:1.8rem; font-weight:800; letter-spacing:-0.03em; margin-bottom:8px; line-height:1.1;">Tlacuache Hub Madurando</h1>
+      <p style="color:var(--text-muted); font-size:1rem; margin-bottom:24px;">Bienvenido a la madriguera, <b>${esc(user.name)}</b>. Tu espacio de trabajo ha sido elevado a los estándares del Tlacuache Hub.</p>
       
       <div style="display:grid; grid-template-columns:1fr; gap:16px; text-align:left; margin-bottom:20px;">
         <div style="background:var(--bg-surface-2); padding:16px; border-radius:16px; border:1px solid var(--border-color); display:flex; gap:16px; align-items:start;">
@@ -1914,7 +1914,7 @@ export function showMissionBriefing() {
   feather.replace();
   
   const finish = () => {
-    localStorage.setItem('nexus_hub_upgrade_v1_shown', 'true');
+    localStorage.setItem('tlacuache_hub_upgrade_v1_shown', 'true');
     closeModal();
   };
   
